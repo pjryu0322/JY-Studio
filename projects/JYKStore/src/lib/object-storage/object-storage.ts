@@ -28,12 +28,23 @@ export type ObjectStorageGetResult = {
   checksumSha256Metadata?: string | null;
 };
 
+export type ObjectStorageByteRange = {
+  start: number;
+  /** Inclusive end byte offset. Omit for open-ended range. */
+  end?: number;
+};
+
 export type ObjectStorageStreamResult = {
   /** Node.js readable stream of object bytes — do not buffer entire body. */
   body: Readable;
+  /** Length of this response body (partial when Range applied). */
   contentLength: number;
   etag?: string | null;
   checksumSha256Metadata?: string | null;
+  /** Present when a Range request was satisfied (e.g. bytes 0-1023/5000). */
+  contentRange?: string | null;
+  /** True when body is a partial object (HTTP 206). */
+  partial?: boolean;
 };
 
 export type ObjectStorageHeadResult = {
@@ -103,7 +114,10 @@ export type AbortMultipartUploadInput = {
 export interface ObjectStorage {
   putSmallObject(input: PutSmallObjectInput): Promise<StoredObjectDescriptor>;
   getObject(input: { objectKey: string }): Promise<ObjectStorageGetResult>;
-  getObjectStream(input: { objectKey: string }): Promise<ObjectStorageStreamResult>;
+  getObjectStream(input: {
+    objectKey: string;
+    range?: ObjectStorageByteRange;
+  }): Promise<ObjectStorageStreamResult>;
   headObject(input: { objectKey: string }): Promise<ObjectStorageHeadResult>;
   deleteObject(input: { objectKey: string }): Promise<void>;
 

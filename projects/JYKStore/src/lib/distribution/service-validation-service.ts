@@ -36,8 +36,10 @@ import {
   type InternalValidationResultItem,
 } from "@/lib/distribution/service-validation-result-snapshot";
 import {
+  assertSharedConfirmationEvidence,
   canShareProviderConfirmation,
   computeResultFingerprint,
+  isLegacySharedConfirmationMissingFingerprint,
 } from "@/lib/distribution/service-validation-share";
 
 export type ProviderConfirmationStatusDto =
@@ -311,15 +313,36 @@ async function mapRunToProviderChannelDto(input: {
     bindingIndexGenerationId: input.bindingIndexGenerationId,
     resultItemCount: channel === "DOWNLOAD" ? null : resultRows.length,
   });
-  const systemStatus =
-    run.status === "PASS" && validity === "STALE" ? ("STALE" as const) : run.status;
-
-  const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+  let effectiveValidity = validity;
+  let legacyFingerprintMissing = false;
+  const confirmationEarly = await prisma.serviceValidationProviderConfirmation.findUnique({
     where: { runId: run.id },
   });
+  if (confirmationEarly?.sharedConfirmationGroupId && (channel === "API" || channel === "MCP")) {
+    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
+      where: { sharedConfirmationGroupId: confirmationEarly.sharedConfirmationGroupId },
+      include: { run: { select: { channel: true, resultFingerprint: true } } },
+    });
+    const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
+    const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
+    if (
+      isLegacySharedConfirmationMissingFingerprint({
+        sharedConfirmationGroupId: confirmationEarly.sharedConfirmationGroupId,
+        apiResultFingerprint: apiPeer?.resultFingerprint,
+        mcpResultFingerprint: mcpPeer?.resultFingerprint,
+      })
+    ) {
+      effectiveValidity = "STALE";
+      legacyFingerprintMissing = true;
+    }
+  }
+  const systemStatus =
+    run.status === "PASS" && effectiveValidity === "STALE" ? ("STALE" as const) : run.status;
+
+  const confirmation = confirmationEarly;
   const providerConfirmationStatus = resolveConfirmationStatusDto({
     confirmationStatus: confirmation?.status,
-    runValidity: validity,
+    runValidity: effectiveValidity,
   });
 
   const results = toProviderResultItemDtos(resultRows);
@@ -357,7 +380,7 @@ async function mapRunToProviderChannelDto(input: {
   if (
     (channel === "API" || channel === "MCP") &&
     systemStatus === "PASS" &&
-    validity === "CURRENT" &&
+    effectiveValidity === "CURRENT" &&
     providerConfirmationStatus === "NOT_REVIEWED" &&
     resultRows.length > 0
   ) {
@@ -407,7 +430,7 @@ async function mapRunToProviderChannelDto(input: {
   const canConfirm =
     canRunValidation &&
     systemStatus === "PASS" &&
-    validity === "CURRENT" &&
+    effectiveValidity === "CURRENT" &&
     providerConfirmationStatus === "NOT_REVIEWED" &&
     (channel === "DOWNLOAD"
       ? downloadTestCompleted
@@ -418,12 +441,14 @@ async function mapRunToProviderChannelDto(input: {
     selected: true,
     systemStatus,
     providerConfirmationStatus,
-    currentValidity: validity,
+    currentValidity: effectiveValidity,
     runId: run.id,
     testedAt: run.testedAt?.toISOString() ?? null,
     query: run.query,
     resultCount: run.resultCount,
-    failureMessage: run.failureMessage,
+    failureMessage: legacyFingerprintMissing
+      ? "검색 결과 증적 형식이 변경되어 API와 MCP를 다시 검증해야 합니다."
+      : run.failureMessage,
     latencyMs: run.latencyMs,
     results,
     canRun: canRunValidation,
@@ -965,16 +990,39 @@ export async function assertSelectedServiceValidationsPassed(input: {
     });
     if (
       apiConf?.sharedConfirmationGroupId &&
-      apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId &&
-      apiRun?.resultFingerprint &&
-      mcpRun?.resultFingerprint &&
-      apiRun.resultFingerprint !== mcpRun.resultFingerprint
+      apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId
     ) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "공통 품질 확인 증적의 검색 결과가 일치하지 않습니다. 다시 검증해 주세요.",
-        400,
-      );
+      const [apiResults, mcpResults] = await Promise.all([
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: snapshot.API.runId },
+          orderBy: { rank: "asc" },
+        }),
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: snapshot.MCP.runId },
+          orderBy: { rank: "asc" },
+        }),
+      ]);
+      const asserted = assertSharedConfirmationEvidence({
+        apiRun,
+        mcpRun,
+        apiResults: apiResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+        mcpResults: mcpResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+      });
+      if (!asserted.ok) {
+        throw new PayloadServiceError(asserted.code, asserted.message, 400);
+      }
     }
   }
   return snapshot;
@@ -1124,16 +1172,39 @@ export async function assertCurrentServiceValidationEvidence(input: {
       : null;
     if (
       apiConf?.sharedConfirmationGroupId &&
-      apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId &&
-      apiRun?.resultFingerprint &&
-      mcpRun?.resultFingerprint &&
-      apiRun.resultFingerprint !== mcpRun.resultFingerprint
+      apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId
     ) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      const [apiResults, mcpResults] = await Promise.all([
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: apiSnap.runId },
+          orderBy: { rank: "asc" },
+        }),
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: mcpSnap.runId },
+          orderBy: { rank: "asc" },
+        }),
+      ]);
+      const asserted = assertSharedConfirmationEvidence({
+        apiRun,
+        mcpRun,
+        apiResults: apiResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+        mcpResults: mcpResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+      });
+      if (!asserted.ok) {
+        throw new PayloadServiceError(asserted.code, asserted.message, 400);
+      }
     }
   }
 }
@@ -1177,6 +1248,10 @@ export type AdminServiceValidationRunDto = {
   confirmedByName: string | null;
   confirmedAt: string | null;
   downloadTestCompleted: boolean;
+  downloadTestedAt: string | null;
+  downloadTestedByUserId: string | null;
+  downloadTestedByName: string | null;
+  downloadTestFileId: string | null;
   createdAt: string;
   details: Record<string, unknown> | null;
   results: Array<{
@@ -1221,19 +1296,43 @@ async function mapAdminRunDto(
   const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
     where: { runId: run.id },
   });
-  const validity = resolveRunCurrentValidity({
+  let validity = resolveRunCurrentValidity({
     run,
     bindingFingerprint: binding?.fingerprint,
     bindingIndexGenerationId: binding?.indexGenerationId,
     resultItemCount: run.channel === "DOWNLOAD" ? null : results.length,
   });
-  const details = asRecord(run.details);
   let invalidationReason: string | null = null;
-  if (run.invalidatedAt) invalidationReason = "INVALIDATED_AT";
-  else if (validity === "STALE" && (run.channel === "API" || run.channel === "MCP") && results.length < 1) {
-    invalidationReason = "RESULT_SNAPSHOT_EMPTY";
-  } else if (validity === "STALE") {
-    invalidationReason = "BINDING_DRIFT";
+  if (confirmation?.sharedConfirmationGroupId && (run.channel === "API" || run.channel === "MCP")) {
+    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
+      where: { sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId },
+      include: { run: { select: { channel: true, resultFingerprint: true } } },
+    });
+    const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
+    const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
+    if (
+      isLegacySharedConfirmationMissingFingerprint({
+        sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId,
+        apiResultFingerprint: apiPeer?.resultFingerprint,
+        mcpResultFingerprint: mcpPeer?.resultFingerprint,
+      })
+    ) {
+      validity = "STALE";
+      invalidationReason = "RESULT_FINGERPRINT_MISSING";
+    }
+  }
+  const details = asRecord(run.details);
+  if (!invalidationReason) {
+    if (run.invalidatedAt) invalidationReason = "INVALIDATED_AT";
+    else if (
+      validity === "STALE" &&
+      (run.channel === "API" || run.channel === "MCP") &&
+      results.length < 1
+    ) {
+      invalidationReason = "RESULT_SNAPSHOT_EMPTY";
+    } else if (validity === "STALE") {
+      invalidationReason = "BINDING_DRIFT";
+    }
   }
   return {
     runId: run.id,
@@ -1279,6 +1378,12 @@ async function mapAdminRunDto(
       : null,
     confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
     downloadTestCompleted: Boolean(downloadTest?.responseReady),
+    downloadTestedAt: downloadTest?.testedAt.toISOString() ?? null,
+    downloadTestedByUserId: downloadTest?.testedByUserId ?? null,
+    downloadTestedByName: downloadTest?.testedByUserId
+      ? userNames.get(downloadTest.testedByUserId) ?? null
+      : null,
+    downloadTestFileId: downloadTest?.fileId ?? null,
     createdAt: run.createdAt.toISOString(),
     details,
     results: results.map((r) => ({
@@ -1310,6 +1415,16 @@ export async function getAdminServiceValidationForPack(input: {
   return listed.latestByChannel;
 }
 
+function parseAdminHistoryDateBound(raw: string, endOfDay: boolean): Date {
+  const trimmed = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const d = new Date(`${trimmed}T00:00:00.000`);
+    if (endOfDay) d.setHours(23, 59, 59, 999);
+    return d;
+  }
+  return new Date(trimmed);
+}
+
 export async function listAdminServiceValidationHistory(input: {
   packId: string;
   versionId?: string;
@@ -1337,22 +1452,37 @@ export async function listAdminServiceValidationHistory(input: {
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 20));
 
-  const where: {
+  type AdminWhere = {
     packId: string;
     versionId?: string;
     channel?: ServiceValidationChannel;
     status?: ServiceValidationStatus;
     createdAt?: { gte?: Date; lte?: Date };
-  } = { packId: input.packId, versionId };
-  if (input.channel) where.channel = input.channel as ServiceValidationChannel;
-  if (input.systemStatus === "PASS" || input.systemStatus === "FAIL") {
-    where.status = input.systemStatus as ServiceValidationStatus;
-  }
+    confirmation?:
+      | { is: null }
+      | { is: { status: "CONFIRMED" | "REJECTED" | "NOT_REVIEWED" } };
+  };
+
+  const baseWhere: AdminWhere = { packId: input.packId, versionId };
+  if (input.channel) baseWhere.channel = input.channel as ServiceValidationChannel;
   if (input.dateFrom || input.dateTo) {
-    where.createdAt = {};
-    if (input.dateFrom) where.createdAt.gte = new Date(input.dateFrom);
-    if (input.dateTo) where.createdAt.lte = new Date(input.dateTo);
+    baseWhere.createdAt = {};
+    if (input.dateFrom) baseWhere.createdAt.gte = parseAdminHistoryDateBound(input.dateFrom, false);
+    if (input.dateTo) baseWhere.createdAt.lte = parseAdminHistoryDateBound(input.dateTo, true);
   }
+
+  const confFilter = input.providerConfirmationStatus?.trim().toUpperCase() || null;
+  if (confFilter === "NOT_REVIEWED") {
+    baseWhere.confirmation = { is: null };
+  } else if (confFilter === "CONFIRMED" || confFilter === "REJECTED") {
+    baseWhere.confirmation = { is: { status: confFilter } };
+  }
+
+  const systemFilter = input.systemStatus?.trim().toUpperCase() || null;
+  const needsComputedFilter =
+    systemFilter === "STALE" ||
+    systemFilter === "PASS" ||
+    confFilter === "STALE";
 
   const latestByChannel: AdminServiceValidationRunDto[] = [];
   for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
@@ -1374,13 +1504,111 @@ export async function listAdminServiceValidationHistory(input: {
     };
   }
 
-  const totalCount = await prisma.serviceValidationRun.count({ where });
-  const runs = await prisma.serviceValidationRun.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    skip: (page - 1) * pageSize,
-    take: pageSize,
-  });
+  let runs: ServiceValidationRun[] = [];
+  let totalCount = 0;
+
+  if (needsComputedFilter) {
+    const whereForCandidates: AdminWhere = { ...baseWhere };
+    if (systemFilter === "FAIL") {
+      whereForCandidates.status = "FAIL";
+    } else if (systemFilter === "PASS" || systemFilter === "STALE") {
+      whereForCandidates.status = "PASS";
+    }
+
+    const candidates = await prisma.serviceValidationRun.findMany({
+      where: whereForCandidates,
+      orderBy: { createdAt: "desc" },
+      include: {
+        confirmation: true,
+        downloadTest: true,
+        _count: { select: { resultItems: true } },
+      },
+    });
+
+    const sharedGroupIds = [
+      ...new Set(
+        candidates
+          .map((c) => c.confirmation?.sharedConfirmationGroupId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const sharedPeers =
+      sharedGroupIds.length > 0
+        ? await prisma.serviceValidationProviderConfirmation.findMany({
+            where: { sharedConfirmationGroupId: { in: sharedGroupIds } },
+            include: {
+              run: { select: { channel: true, resultFingerprint: true } },
+            },
+          })
+        : [];
+    const peersByGroup = new Map<string, typeof sharedPeers>();
+    for (const peer of sharedPeers) {
+      const gid = peer.sharedConfirmationGroupId;
+      if (!gid) continue;
+      const list = peersByGroup.get(gid) ?? [];
+      list.push(peer);
+      peersByGroup.set(gid, list);
+    }
+
+    const matched = candidates.filter((run) => {
+      let validity = resolveRunCurrentValidity({
+        run,
+        bindingFingerprint: binding?.fingerprint,
+        bindingIndexGenerationId: binding?.indexGenerationId,
+        resultItemCount: run.channel === "DOWNLOAD" ? null : run._count.resultItems,
+      });
+      if (
+        run.confirmation?.sharedConfirmationGroupId &&
+        (run.channel === "API" || run.channel === "MCP")
+      ) {
+        const peers = peersByGroup.get(run.confirmation.sharedConfirmationGroupId) ?? [];
+        const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
+        const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
+        if (
+          isLegacySharedConfirmationMissingFingerprint({
+            sharedConfirmationGroupId: run.confirmation.sharedConfirmationGroupId,
+            apiResultFingerprint: apiPeer?.resultFingerprint,
+            mcpResultFingerprint: mcpPeer?.resultFingerprint,
+          })
+        ) {
+          validity = "STALE";
+        }
+      }
+      const systemStatus =
+        run.status === "PASS" && validity === "STALE" ? "STALE" : run.status;
+      const providerConfirmationStatus = resolveConfirmationStatusDto({
+        confirmationStatus: run.confirmation?.status,
+        runValidity: validity,
+      });
+
+      if (systemFilter === "STALE" && systemStatus !== "STALE") return false;
+      if (systemFilter === "PASS" && !(run.status === "PASS" && validity === "CURRENT")) {
+        return false;
+      }
+      if (systemFilter === "FAIL" && run.status !== "FAIL") return false;
+      if (confFilter === "STALE" && providerConfirmationStatus !== "STALE") return false;
+      if (confFilter === "CONFIRMED" && providerConfirmationStatus !== "CONFIRMED") return false;
+      if (confFilter === "REJECTED" && providerConfirmationStatus !== "REJECTED") return false;
+      if (confFilter === "NOT_REVIEWED" && providerConfirmationStatus !== "NOT_REVIEWED") {
+        return false;
+      }
+      return true;
+    });
+
+    totalCount = matched.length;
+    runs = matched.slice((page - 1) * pageSize, page * pageSize);
+  } else {
+    const where: AdminWhere = { ...baseWhere };
+    if (systemFilter === "FAIL") where.status = "FAIL";
+
+    totalCount = await prisma.serviceValidationRun.count({ where });
+    runs = await prisma.serviceValidationRun.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+  }
 
   const userIds = new Set<string>();
   for (const run of runs) {
@@ -1391,6 +1619,12 @@ export async function listAdminServiceValidationHistory(input: {
     select: { runId: true, confirmedByUserId: true },
   });
   for (const c of confirmations) userIds.add(c.confirmedByUserId);
+  const downloadTests = await prisma.serviceValidationDownloadTest.findMany({
+    where: { runId: { in: runs.map((r) => r.id) } },
+    select: { testedByUserId: true },
+  });
+  for (const d of downloadTests) userIds.add(d.testedByUserId);
+
   const users =
     userIds.size > 0
       ? await prisma.user.findMany({
@@ -1402,15 +1636,7 @@ export async function listAdminServiceValidationHistory(input: {
     users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "사용자"]),
   );
 
-  let history = await Promise.all(runs.map((run) => mapAdminRunDto(run, binding, userNames)));
-  if (input.systemStatus === "STALE") {
-    history = history.filter((h) => h.systemStatus === "STALE" || h.currentValidity === "STALE");
-  }
-  if (input.providerConfirmationStatus) {
-    history = history.filter(
-      (h) => h.providerConfirmationStatus === input.providerConfirmationStatus,
-    );
-  }
+  const history = await Promise.all(runs.map((run) => mapAdminRunDto(run, binding, userNames)));
 
   return {
     latestByChannel: await Promise.all(
@@ -1430,7 +1656,7 @@ export async function listAdminServiceValidationHistory(input: {
       page,
       pageSize,
       totalCount,
-      totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+      totalPages: Math.max(1, Math.ceil(totalCount / pageSize) || 1),
     },
   };
 }
@@ -1461,4 +1687,8 @@ export async function getAdminServiceValidationRun(
 
 export { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 export { adapterPathForChannel };
-export { canShareProviderConfirmation, computeResultFingerprint } from "@/lib/distribution/service-validation-share";
+export {
+  assertSharedConfirmationEvidence,
+  canShareProviderConfirmation,
+  computeResultFingerprint,
+} from "@/lib/distribution/service-validation-share";

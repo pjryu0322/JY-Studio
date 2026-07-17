@@ -5,6 +5,7 @@ import {
   type ServiceValidationRun,
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
 import {
   DOWNLOAD_REJECTION_REASONS,
   RETRIEVAL_REJECTION_REASONS,
@@ -18,6 +19,7 @@ import {
 import { canShareProviderConfirmation } from "@/lib/distribution/service-validation-share";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import type { ObjectStorage } from "@/lib/object-storage/object-storage";
 import { prisma } from "@/lib/prisma";
 
 export {
@@ -331,21 +333,68 @@ export async function requireOwnedRunForPreview(input: {
   return { pack, version, run, item };
 }
 
-export async function recordDownloadTestEvidence(input: {
+export type PreparedProviderDownloadTest = {
+  runId: string;
+  packId: string;
+  versionId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  contentLength: number;
+  stream: import("node:stream").Readable;
+  existingEvidence: boolean;
+};
+
+/**
+ * Validates download-test eligibility and opens the object stream.
+ * Does not write evidence — call recordSuccessfulDownloadTestEvidence after headers/body are ready.
+ */
+export async function prepareProviderDownloadTest(input: {
   userId: string;
   clientId: string;
   packId: string;
   runId: string;
-}): Promise<{ fileId: string; testedAt: string }> {
+}): Promise<PreparedProviderDownloadTest> {
   const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
-  const run = await prisma.serviceValidationRun.findUnique({ where: { id: input.runId } });
+  if (pack.status !== PackStatus.DRAFT) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_NOT_EDITABLE",
+      "검수요청 전 초안 상태에서만 테스트 다운로드를 실행할 수 있습니다.",
+      403,
+    );
+  }
+  const run = await prisma.serviceValidationRun.findUnique({
+    where: { id: input.runId },
+    include: { confirmation: true, downloadTest: true },
+  });
   if (!run || run.packId !== pack.packId || run.versionId !== version.id) {
     throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
+  }
+  if (run.confirmation) {
+    throw new PayloadServiceError(
+      "SERVICE_CONFIRMATION_ALREADY_RECORDED",
+      "품질 확인이 기록된 뒤에는 테스트 다운로드 증적을 변경할 수 없습니다.",
+      403,
+    );
   }
   if (run.channel !== "DOWNLOAD" || run.status !== "PASS") {
     throw new PayloadServiceError(
       "SERVICE_VALIDATION_REQUIRED",
       "다운로드 검증이 완료된 실행에서만 테스트 다운로드할 수 있습니다.",
+      400,
+    );
+  }
+  const { binding } = await loadBinding(pack.packId);
+  const validity = resolveRunCurrentValidity({
+    run,
+    bindingFingerprint: binding?.fingerprint,
+    bindingIndexGenerationId: binding?.indexGenerationId,
+    resultItemCount: null,
+  });
+  if (validity !== "CURRENT") {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "지식 데이터 또는 유통정보가 변경되어 서비스 품질 확인을 다시 진행해야 합니다.",
       400,
     );
   }
@@ -361,20 +410,87 @@ export async function recordDownloadTestEvidence(input: {
       404,
     );
   }
-  const row = await prisma.serviceValidationDownloadTest.upsert({
-    where: { runId: run.id },
-    create: {
-      runId: run.id,
-      fileId,
-      testedByUserId: input.userId,
-      responseReady: true,
+  const file = await prisma.knowledgePackFile.findFirst({
+    where: {
+      id: fileId,
+      packId: pack.packId,
+      versionId: version.id,
+      role: "SOURCE_ORIGINAL",
+      bundle: {
+        isActive: true,
+        deletedAt: null,
+        storageStatus: "ACTIVE",
+      },
     },
-    update: {
-      fileId,
+  });
+  if (!file?.storageKey) {
+    throw new PayloadServiceError(
+      "DOWNLOAD_OBJECT_NOT_FOUND",
+      "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
+      404,
+    );
+  }
+  const storage = getConfiguredPayloadStorage() as ObjectStorage;
+  if (typeof storage.getObjectStream !== "function") {
+    throw new PayloadServiceError(
+      "DOWNLOAD_OBJECT_NOT_FOUND",
+      "Object Storage 스트림을 열 수 없습니다.",
+      503,
+    );
+  }
+  let streamed: Awaited<ReturnType<ObjectStorage["getObjectStream"]>>;
+  try {
+    streamed = await storage.getObjectStream({ objectKey: file.storageKey });
+  } catch {
+    throw new PayloadServiceError(
+      "DOWNLOAD_OBJECT_NOT_FOUND",
+      "원본파일을 Object Storage에서 열지 못했습니다.",
+      404,
+    );
+  }
+  const headLength =
+    typeof streamed.contentLength === "number" && streamed.contentLength > 0
+      ? streamed.contentLength
+      : Number(file.fileSize);
+  return {
+    runId: run.id,
+    packId: pack.packId,
+    versionId: version.id,
+    fileId: file.id,
+    fileName: file.originalFileName,
+    mimeType: file.mimeType || "application/octet-stream",
+    contentLength: Number.isFinite(headLength) ? headLength : 0,
+    stream: streamed.body,
+    existingEvidence: Boolean(run.downloadTest?.responseReady),
+  };
+}
+
+/**
+ * Create-only evidence after stream open + response headers are ready.
+ * Re-download keeps the original testedAt / testedByUserId.
+ */
+export async function recordSuccessfulDownloadTestEvidence(input: {
+  userId: string;
+  runId: string;
+  fileId: string;
+}): Promise<{ fileId: string; testedAt: string; created: boolean }> {
+  const existing = await prisma.serviceValidationDownloadTest.findUnique({
+    where: { runId: input.runId },
+  });
+  if (existing?.responseReady) {
+    return {
+      fileId: existing.fileId,
+      testedAt: existing.testedAt.toISOString(),
+      created: false,
+    };
+  }
+  const row = await prisma.serviceValidationDownloadTest.create({
+    data: {
+      runId: input.runId,
+      fileId: input.fileId,
       testedByUserId: input.userId,
-      testedAt: new Date(),
       responseReady: true,
     },
   });
-  return { fileId: row.fileId, testedAt: row.testedAt.toISOString() };
+  return { fileId: row.fileId, testedAt: row.testedAt.toISOString(), created: true };
 }

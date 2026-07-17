@@ -35,6 +35,10 @@ type AdminRun = {
   confirmedByName: string | null;
   confirmedAt: string | null;
   downloadTestCompleted: boolean;
+  downloadTestedAt: string | null;
+  downloadTestedByName: string | null;
+  downloadTestFileId: string | null;
+  invalidationReason: string | null;
   results: Array<{
     rank: number;
     chunkId: string;
@@ -53,8 +57,13 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
   const [history, setHistory] = useState<AdminRun[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [channel, setChannel] = useState("");
   const [systemStatus, setSystemStatus] = useState("");
+  const [providerConfirmationStatus, setProviderConfirmationStatus] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [dateError, setDateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
@@ -65,10 +74,31 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
     p.set("pageSize", "20");
     if (channel) p.set("channel", channel);
     if (systemStatus) p.set("systemStatus", systemStatus);
+    if (providerConfirmationStatus) {
+      p.set("providerConfirmationStatus", providerConfirmationStatus);
+    }
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo) p.set("dateTo", dateTo);
     return p.toString();
-  }, [page, channel, systemStatus]);
+  }, [page, channel, systemStatus, providerConfirmationStatus, dateFrom, dateTo]);
+
+  const resetFilters = () => {
+    setChannel("");
+    setSystemStatus("");
+    setProviderConfirmationStatus("");
+    setDateFrom("");
+    setDateTo("");
+    setDateError(null);
+    setPage(1);
+  };
 
   const load = useCallback(async () => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setDateError("종료일은 시작일 이후여야 합니다.");
+      setLoading(false);
+      return;
+    }
+    setDateError(null);
     setLoading(true);
     try {
       const res = await fetch(
@@ -82,18 +112,19 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
       const data = (await res.json()) as {
         latestByChannel: AdminRun[];
         history: AdminRun[];
-        pagination: { totalPages: number };
+        pagination: { totalPages: number; totalCount: number };
       };
       setLatestByChannel(data.latestByChannel ?? []);
       setHistory(data.history ?? []);
       setTotalPages(data.pagination?.totalPages ?? 1);
+      setTotalCount(data.pagination?.totalCount ?? 0);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "운영 로그를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [packId, query]);
+  }, [packId, query, dateFrom, dateTo]);
 
   useEffect(() => {
     void load();
@@ -112,6 +143,11 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
           {error}
         </p>
       ) : null}
+      {dateError ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {dateError}
+        </p>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-3">
         {latestByChannel.map((run) => (
@@ -127,7 +163,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <select
           className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm"
           value={channel}
@@ -154,7 +190,54 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
           <option value="FAIL">FAIL</option>
           <option value="STALE">STALE</option>
         </select>
+        <select
+          className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm"
+          value={providerConfirmationStatus}
+          onChange={(e) => {
+            setPage(1);
+            setProviderConfirmationStatus(e.target.value);
+          }}
+        >
+          <option value="">전체 제공자 확인</option>
+          <option value="NOT_REVIEWED">미확인</option>
+          <option value="CONFIRMED">확인 완료</option>
+          <option value="REJECTED">반려</option>
+          <option value="STALE">확인 무효</option>
+        </select>
+        <label className="flex min-h-[40px] flex-col gap-1 text-xs text-store-muted">
+          시작일
+          <input
+            type="date"
+            className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm text-slate-900"
+            value={dateFrom}
+            onChange={(e) => {
+              setPage(1);
+              setDateFrom(e.target.value);
+            }}
+          />
+        </label>
+        <label className="flex min-h-[40px] flex-col gap-1 text-xs text-store-muted">
+          종료일
+          <input
+            type="date"
+            className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm text-slate-900"
+            value={dateTo}
+            onChange={(e) => {
+              setPage(1);
+              setDateTo(e.target.value);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="min-h-[40px] rounded-lg border border-store-border px-3 text-sm font-semibold text-slate-800"
+          onClick={resetFilters}
+        >
+          필터 초기화
+        </button>
       </div>
+
+      <p className="text-xs text-store-muted">총 {totalCount}건</p>
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-xs">
@@ -212,6 +295,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
                           <li>NormalizedDocument ID: {run.normalizedDocumentId ?? "—"}</li>
                           <li>Fingerprint: {run.fingerprint ?? "—"}</li>
                           <li>ResultFingerprint: {run.resultFingerprint ?? "—"}</li>
+                          <li>Invalidation: {run.invalidationReason ?? "—"}</li>
                           <li>Adapter: {run.adapterPath}</li>
                           <li>Tool: {run.toolName ?? "—"}</li>
                           <li>Protocol: {run.mcpProtocolVersion ?? "—"}</li>
@@ -228,7 +312,12 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
                           <li>
                             확인 사용자: {run.confirmedByName ?? run.confirmedByUserId ?? "—"}
                           </li>
-                          <li>다운로드 테스트: {run.downloadTestCompleted ? "완료" : "—"}</li>
+                          <li>
+                            다운로드 테스트:{" "}
+                            {run.downloadTestCompleted
+                              ? `완료 (${run.downloadTestedAt ? new Date(run.downloadTestedAt).toLocaleString("ko-KR") : "—"} / ${run.downloadTestedByName ?? "—"} / fileId=${run.downloadTestFileId ?? "—"})`
+                              : "—"}
+                          </li>
                         </ul>
                       </details>
                       {run.results.length > 0 ? (

@@ -196,21 +196,32 @@ export class S3ObjectStorage implements ObjectStorageBackend {
     return this.getObject(input);
   }
 
-  async getObjectStream(input: { objectKey: string }): Promise<ObjectStorageStreamResult> {
+  async getObjectStream(input: {
+    objectKey: string;
+    range?: { start: number; end?: number };
+  }): Promise<ObjectStorageStreamResult> {
     try {
+      const rangeHeader =
+        input.range != null
+          ? `bytes=${input.range.start}-${input.range.end != null ? input.range.end : ""}`
+          : undefined;
       const result = await this.client.send(
         new GetObjectCommand({
           Bucket: this.config.bucket,
           Key: input.objectKey,
+          ...(rangeHeader ? { Range: rangeHeader } : {}),
         }),
       );
       // Large-object path: never call transformToByteArray.
       const body = asNodeReadable(result.Body);
+      const partial = Boolean(rangeHeader) || result.ContentRange != null;
       return {
         body,
         contentLength: result.ContentLength ?? 0,
         etag: result.ETag ?? null,
         checksumSha256Metadata: result.Metadata?.[META_CHECKSUM] ?? null,
+        contentRange: result.ContentRange ?? null,
+        partial,
       };
     } catch (error) {
       if (isPayloadServiceError(error)) throw error;

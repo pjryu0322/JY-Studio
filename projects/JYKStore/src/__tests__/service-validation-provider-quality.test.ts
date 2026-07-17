@@ -178,8 +178,32 @@ describe("provider service quality + admin ops log", () => {
     assert.ok(reject.includes("rejectServiceValidationRun"));
     assert.ok(preview.includes("objectKey") === false || preview.includes("Never returns"));
     assert.equal(preview.includes("storageKey"), false);
-    assert.ok(admin.includes("rejectUnlessAdmin"));
+    assert.ok(admin.includes("requireAdminSession"));
     assert.ok(admin.includes("listAdminServiceValidationHistory"));
+    const downloadTest = readFileSync(
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/download-test/route.ts",
+      ),
+      "utf8",
+    );
+    assert.ok(downloadTest.includes("prepareProviderDownloadTest"));
+    assert.ok(downloadTest.includes("recordSuccessfulDownloadTestEvidence"));
+    assert.equal(downloadTest.includes("Buffer.from"), false);
+    const inlinePreview = readFileSync(
+      join(root, "src/app/api/v1/provider/packs/[packId]/source-preview/[fileId]/route.ts"),
+      "utf8",
+    );
+    assert.ok(inlinePreview.includes('Content-Disposition'));
+    assert.ok(inlinePreview.includes("inline"));
+    assert.ok(inlinePreview.includes("Accept-Ranges"));
+    const adminUi = readFileSync(
+      join(root, "src/components/AdminServiceValidationOpsPanel.tsx"),
+      "utf8",
+    );
+    assert.ok(adminUi.includes("providerConfirmationStatus"));
+    assert.ok(adminUi.includes("dateFrom"));
+    assert.ok(adminUi.includes("필터 초기화"));
   });
 
   it("extends submit snapshot with confirmation ids", () => {

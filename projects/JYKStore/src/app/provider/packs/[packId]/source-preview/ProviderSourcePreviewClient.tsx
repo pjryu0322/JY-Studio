@@ -11,7 +11,7 @@ export function ProviderSourcePreviewClient({ packId }: { readonly packId: strin
 
   const src = useMemo(() => {
     if (!fileId) return null;
-    const base = `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/files/${encodeURIComponent(fileId)}/download`;
+    const base = `/api/v1/provider/packs/${encodeURIComponent(packId)}/source-preview/${encodeURIComponent(fileId)}`;
     return `${base}#page=${pageSafe}`;
   }, [fileId, pageSafe, packId]);
 

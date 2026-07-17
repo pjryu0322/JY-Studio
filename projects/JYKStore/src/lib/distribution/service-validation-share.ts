@@ -128,19 +128,79 @@ export function canShareProviderConfirmation(input: {
   if (apiResults.length !== mcpResults.length) return false;
   if (!compareShareableResultItems(apiResults, mcpResults)) return false;
 
-  const apiFp =
-    apiRun.resultFingerprint?.trim() ||
-    computeResultFingerprint({
-      query: apiRun.query,
-      indexGenerationId: apiRun.indexGenerationId,
-      items: apiResults,
-    });
-  const mcpFp =
-    mcpRun.resultFingerprint?.trim() ||
-    computeResultFingerprint({
-      query: mcpRun.query,
-      indexGenerationId: mcpRun.indexGenerationId,
-      items: mcpResults,
-    });
+  const apiFp = apiRun.resultFingerprint?.trim() ?? "";
+  const mcpFp = mcpRun.resultFingerprint?.trim() ?? "";
+  if (!apiFp || !mcpFp) return false;
   return apiFp === mcpFp;
+}
+
+export type SharedConfirmationEvidenceFailure = {
+  ok: false;
+  code: "SERVICE_VALIDATION_EVIDENCE_MISMATCH";
+  message: string;
+  reason: "RESULT_FINGERPRINT_MISSING" | "RESULT_FINGERPRINT_MISMATCH" | "RESULT_SNAPSHOT_MISMATCH";
+};
+
+/**
+ * Shared API+MCP confirmation requires stored fingerprints and identical snapshots.
+ * Legacy shared confirmations without fingerprints must not pass submit/admin gates.
+ */
+export function assertSharedConfirmationEvidence(input: {
+  apiRun: Pick<ShareableValidationRun, "resultFingerprint" | "resultCount"> | null | undefined;
+  mcpRun: Pick<ShareableValidationRun, "resultFingerprint" | "resultCount"> | null | undefined;
+  apiResults: ShareableResultItem[];
+  mcpResults: ShareableResultItem[];
+}): { ok: true } | SharedConfirmationEvidenceFailure {
+  const { apiRun, mcpRun, apiResults, mcpResults } = input;
+  if (!apiRun || !mcpRun) {
+    return {
+      ok: false,
+      code: "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      message: "공통 품질 확인 증적이 이전 형식이므로 다시 검증해 주세요.",
+      reason: "RESULT_FINGERPRINT_MISSING",
+    };
+  }
+  const apiFp = apiRun.resultFingerprint?.trim() ?? "";
+  const mcpFp = mcpRun.resultFingerprint?.trim() ?? "";
+  if (!apiFp || !mcpFp) {
+    return {
+      ok: false,
+      code: "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      message: "공통 품질 확인 증적이 이전 형식이므로 다시 검증해 주세요.",
+      reason: "RESULT_FINGERPRINT_MISSING",
+    };
+  }
+  if (apiFp !== mcpFp) {
+    return {
+      ok: false,
+      code: "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      message: "공통 품질 확인 증적의 검색 결과가 일치하지 않습니다. 다시 검증해 주세요.",
+      reason: "RESULT_FINGERPRINT_MISMATCH",
+    };
+  }
+  if (
+    apiResults.length < 1 ||
+    mcpResults.length < 1 ||
+    !compareShareableResultItems(apiResults, mcpResults)
+  ) {
+    return {
+      ok: false,
+      code: "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      message: "공통 품질 확인 증적의 검색 결과가 일치하지 않습니다. 다시 검증해 주세요.",
+      reason: "RESULT_SNAPSHOT_MISMATCH",
+    };
+  }
+  return { ok: true };
+}
+
+/** True when a shared confirmation lacks usable stored result fingerprints. */
+export function isLegacySharedConfirmationMissingFingerprint(input: {
+  sharedConfirmationGroupId?: string | null;
+  apiResultFingerprint?: string | null;
+  mcpResultFingerprint?: string | null;
+}): boolean {
+  if (!input.sharedConfirmationGroupId?.trim()) return false;
+  const apiFp = input.apiResultFingerprint?.trim() ?? "";
+  const mcpFp = input.mcpResultFingerprint?.trim() ?? "";
+  return !apiFp || !mcpFp;
 }

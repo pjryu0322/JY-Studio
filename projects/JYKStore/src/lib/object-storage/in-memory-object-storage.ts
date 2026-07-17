@@ -86,13 +86,43 @@ export class InMemoryObjectStorage implements ObjectStorageBackend {
     return this.getObject(input);
   }
 
-  async getObjectStream(input: { objectKey: string }): Promise<ObjectStorageStreamResult> {
-    const got = await this.getObject(input);
+  async getObjectStream(input: {
+    objectKey: string;
+    range?: { start: number; end?: number };
+  }): Promise<ObjectStorageStreamResult> {
+    const got = await this.getObject({ objectKey: input.objectKey });
+    const total = got.contentLength;
+    if (!input.range) {
+      return {
+        body: Readable.from([Buffer.from(got.bytes)]),
+        contentLength: total,
+        etag: got.etag,
+        checksumSha256Metadata: got.checksumSha256Metadata,
+      };
+    }
+    const start = Math.max(0, input.range.start);
+    const end =
+      input.range.end != null
+        ? Math.min(total - 1, input.range.end)
+        : Math.max(0, total - 1);
+    if (start >= total || start > end) {
+      return {
+        body: Readable.from([]),
+        contentLength: 0,
+        etag: got.etag,
+        checksumSha256Metadata: got.checksumSha256Metadata,
+        contentRange: `bytes */${total}`,
+        partial: true,
+      };
+    }
+    const slice = Buffer.from(got.bytes.subarray(start, end + 1));
     return {
-      body: Readable.from([Buffer.from(got.bytes)]),
-      contentLength: got.contentLength,
+      body: Readable.from([slice]),
+      contentLength: slice.byteLength,
       etag: got.etag,
       checksumSha256Metadata: got.checksumSha256Metadata,
+      contentRange: `bytes ${start}-${end}/${total}`,
+      partial: true,
     };
   }
 
