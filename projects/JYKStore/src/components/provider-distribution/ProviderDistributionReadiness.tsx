@@ -7,6 +7,7 @@ import {
   PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB,
   PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB,
   PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
+  PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB,
 } from "@/lib/role-based-ux-copy";
 
 export type DistributionReadiness = {
@@ -17,10 +18,14 @@ export type DistributionReadiness = {
   hasChecksum: boolean;
   hasNormalizedDocument: boolean;
   hasKnowledgePipeline: boolean;
+  hasServiceValidation: boolean;
   hasSource: boolean;
   hasLicense: boolean;
   ready: boolean;
-  missing: { label: string; tab: "basic" | "payload" | "knowledge" | "distribution" }[];
+  missing: {
+    label: string;
+    tab: "basic" | "payload" | "knowledge" | "serviceValidation" | "distribution";
+  }[];
 };
 
 function hasRequiredFilesWithChecksums(
@@ -40,6 +45,7 @@ export function computeDistributionReadiness(input: {
   distribution: PackDistributionMetadataDto | null;
   doclingBundle?: DoclingImportBundlePublicDto | null;
   knowledgePassed?: boolean;
+  serviceValidationPassed?: boolean;
 }): DistributionReadiness {
   const doclingReady = isDoclingPayloadReady(input.doclingBundle?.status);
   const hasRequiredFiles = hasRequiredFilesWithChecksums(input.doclingBundle);
@@ -48,6 +54,7 @@ export function computeDistributionReadiness(input: {
   const payloadValid = doclingReady && hasRequiredFiles && hasNormalizedDocument;
   const hasChecksum = hasRequiredFiles;
   const hasKnowledgePipeline = Boolean(input.knowledgePassed);
+  const hasServiceValidation = Boolean(input.serviceValidationPassed);
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
@@ -71,7 +78,10 @@ export function computeDistributionReadiness(input: {
   else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·JSON checksum)", tab: "payload" });
   else if (!hasNormalizedDocument) missing.push({ label: "문서 정규화", tab: "payload" });
   if (!hasKnowledgePipeline) {
-    missing.push({ label: "지식 데이터 생성(검색 검증 통과)", tab: "knowledge" });
+    missing.push({ label: "데이터 구조화", tab: "knowledge" });
+  }
+  if (!hasServiceValidation) {
+    missing.push({ label: "검색데이터 생성·검증", tab: "serviceValidation" });
   }
   if (!distributionComplete) {
     missing.push({ label: "유통정보(제공 방식·유통 권한)", tab: "distribution" });
@@ -85,6 +95,7 @@ export function computeDistributionReadiness(input: {
     hasChecksum,
     hasNormalizedDocument,
     hasKnowledgePipeline,
+    hasServiceValidation,
     hasSource,
     hasLicense: hasRights || hasLicense,
     ready:
@@ -95,6 +106,7 @@ export function computeDistributionReadiness(input: {
       hasChecksum &&
       hasNormalizedDocument &&
       hasKnowledgePipeline &&
+      hasServiceValidation &&
       distributionComplete,
     missing,
   };
@@ -105,7 +117,9 @@ export function ProviderDistributionReadiness({
   onGoToTab,
 }: {
   readonly readiness: DistributionReadiness;
-  readonly onGoToTab: (tab: "basic" | "payload" | "knowledge" | "distribution") => void;
+  readonly onGoToTab: (
+    tab: "basic" | "payload" | "knowledge" | "serviceValidation" | "distribution",
+  ) => void;
 }) {
   return (
     <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
@@ -117,7 +131,8 @@ export function ProviderDistributionReadiness({
         <li>파일 무결성: {readiness.hasChecksum ? "있음" : "없음"}</li>
         <li>검증: {readiness.payloadValid ? "REVIEW_READY" : "미충족"}</li>
         <li>문서 정규화: {readiness.hasNormalizedDocument ? "있음" : "없음"}</li>
-        <li>지식 데이터 생성: {readiness.hasKnowledgePipeline ? "통과" : "미통과"}</li>
+        <li>데이터 구조화: {readiness.hasKnowledgePipeline ? "통과" : "미통과"}</li>
+        <li>검색데이터 생성·검증: {readiness.hasServiceValidation ? "통과" : "미통과"}</li>
         <li>출처: {readiness.hasSource ? "있음" : "없음"}</li>
         <li>라이선스: {readiness.hasLicense ? "있음" : "없음"}</li>
       </ul>
@@ -134,9 +149,11 @@ export function ProviderDistributionReadiness({
                 ? PROVIDER_PACK_GO_TO_PAYLOAD_TAB
                 : item.tab === "knowledge"
                   ? PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB
-                  : item.tab === "distribution"
-                    ? PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB
-                    : "기본정보로 이동"}
+                  : item.tab === "serviceValidation"
+                    ? PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB
+                    : item.tab === "distribution"
+                      ? PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB
+                      : "기본정보로 이동"}
             </button>
           ))}
         </div>

@@ -220,7 +220,7 @@ describe("docling figure preview persist / cleanup stability", () => {
     const warnings: string[] = [];
     let cleaned = false;
     let audited = false;
-    let rolledBack = false;
+    const rolledBack = false;
 
     await recordPostCommitNormalizationEffects({
       writeSuccessLog: async () => {

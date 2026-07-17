@@ -188,7 +188,7 @@ export function ProviderKnowledgeGenerationTab({
       await startProviderKnowledgePipelineApi(packId, { forceRestart });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "지식 데이터 생성을 시작하지 못했습니다.");
+      setError(err instanceof Error ? err.message : "데이터 구조화를 시작하지 못했습니다.");
     } finally {
       setStarting(false);
     }
@@ -207,7 +207,7 @@ export function ProviderKnowledgeGenerationTab({
   }
 
   if (loading) {
-    return <p className="text-sm text-store-muted">지식 데이터 생성 상태를 불러오는 중…</p>;
+    return <p className="text-sm text-store-muted">데이터 구조화 상태를 불러오는 중…</p>;
   }
 
   const primary = status?.primaryCta ?? "none";
@@ -217,10 +217,10 @@ export function ProviderKnowledgeGenerationTab({
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
-        <h2 className="text-base font-bold text-slate-900">지식 데이터 생성</h2>
+        <h2 className="text-base font-bold text-slate-900">데이터 구조화</h2>
         <p className="mt-1 text-sm text-store-muted">
-          등록한 문서를 AI가 검색하고 활용할 수 있는 지식 데이터로 변환합니다. 문서 구조, 지식
-          단위, 검색 데이터와 검색 결과를 순서대로 확인합니다.
+          등록한 문서를 NormalizedDocument·Knowledge Unit·Retrieval Chunk로 구조화합니다. 원문·페이지·출처
+          연결을 확인한 뒤 다음 단계에서 검색 경로를 검증합니다.
         </p>
       </div>
 
@@ -233,13 +233,13 @@ export function ProviderKnowledgeGenerationTab({
       {!status?.providerConfirmed ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {status?.lockReason ??
-            "자료 등록에서 대표 샘플 확인을 완료해야 이 단계를 시작할 수 있습니다."}
+            "자료 등록을 먼저 완료해 주세요."}
         </p>
       ) : null}
 
       {running ? (
         <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          지식 데이터 생성이 진행 중입니다. 단계별 상태를 확인해 주세요.
+          데이터 구조화가 진행 중입니다. 단계별 상태를 확인해 주세요.
         </p>
       ) : null}
 
@@ -335,7 +335,7 @@ export function ProviderKnowledgeGenerationTab({
             onClick={() => void handleStart(false)}
             className="rounded-xl bg-store-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
           >
-            {starting ? "시작 중…" : "지식 데이터 생성 시작"}
+            {starting ? "시작 중…" : "데이터 구조화 시작"}
           </button>
         ) : null}
         {editable && (primary === "retry" || primary === "warning_retry") ? (
@@ -358,14 +358,14 @@ export function ProviderKnowledgeGenerationTab({
             onClick={() => onGoToDistribution?.()}
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
-            유통정보 입력
+            검색데이터 생성·검증으로 이동
           </button>
         ) : null}
       </div>
 
       {status?.passed ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          지식 데이터 생성 완료. 유통정보를 입력한 뒤 검수요청을 진행할 수 있습니다.
+          데이터 구조화가 완료되었습니다. 다음 단계에서 검색 경로를 검증하세요.
         </p>
       ) : null}
     </section>

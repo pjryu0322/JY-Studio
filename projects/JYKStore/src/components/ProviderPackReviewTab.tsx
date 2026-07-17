@@ -34,11 +34,13 @@ export function ProviderPackReviewTab({
   sourceDocumentCount,
   distributionMode,
   distributionReadiness,
+  serviceValidationPassed = false,
   onSubmitReview,
   onWithdrawReview,
   onGoToPayloadTab,
   onGoToDistributionTab,
   onGoToKnowledgeTab,
+  onGoToServiceValidationTab,
   onGoToBasicTab,
 }: {
   readonly pack: ProviderPackDetailDto;
@@ -48,11 +50,13 @@ export function ProviderPackReviewTab({
   readonly sourceDocumentCount: number;
   readonly distributionMode: boolean;
   readonly distributionReadiness: DistributionReadiness | null;
+  readonly serviceValidationPassed?: boolean;
   readonly onSubmitReview: () => void;
   readonly onWithdrawReview: () => void;
   readonly onGoToPayloadTab: () => void;
   readonly onGoToDistributionTab: () => void;
   readonly onGoToKnowledgeTab?: () => void;
+  readonly onGoToServiceValidationTab?: () => void;
   readonly onGoToBasicTab: () => void;
 }) {
   const isReviewing = pack.status === "REVIEWING";
@@ -65,7 +69,12 @@ export function ProviderPackReviewTab({
     ? Boolean(distributionReadiness?.ready)
     : sourceDocumentCount > 0;
   const canAttemptSubmit =
-    editable && !isReviewing && !isPublished && distributionReady && !legacyMissingSources;
+    editable &&
+    !isReviewing &&
+    !isPublished &&
+    distributionReady &&
+    serviceValidationPassed &&
+    !legacyMissingSources;
 
   return (
     <section
@@ -136,6 +145,7 @@ export function ProviderPackReviewTab({
             if (tab === "basic") onGoToBasicTab();
             else if (tab === "payload") onGoToPayloadTab();
             else if (tab === "knowledge") onGoToKnowledgeTab?.();
+            else if (tab === "serviceValidation") onGoToServiceValidationTab?.();
             else onGoToDistributionTab();
           }}
         />

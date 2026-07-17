@@ -130,6 +130,9 @@ function fromCompatibilityState(state: LatestDistributionState): LatestPackArtif
     ready: true,
     visibility: state.visibility,
     allowDownload: state.allowDownload,
+    allowApi: state.allowApi ?? true,
+    allowMcp: state.allowMcp ?? true,
+    serviceEndsAt: state.serviceEndsAt ?? null,
     generatorName: state.generatorName ?? null,
     normalizedDocumentReady: true,
   };

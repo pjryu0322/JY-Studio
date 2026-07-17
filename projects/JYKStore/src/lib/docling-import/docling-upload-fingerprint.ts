@@ -155,7 +155,7 @@ export async function sha256HexOfArrayBuffer(
   const view = toUint8Copy(data);
   const subtle = globalThis.crypto?.subtle;
   if (typeof subtle?.digest === "function") {
-    const digest = await subtle.digest("SHA-256", view);
+    const digest = await subtle.digest("SHA-256", view as BufferSource);
     return bytesToHex(digest);
   }
   return sha256HexFallback(view);

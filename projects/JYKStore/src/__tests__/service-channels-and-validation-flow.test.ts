@@ -49,7 +49,7 @@ describe("service-channel-policy", () => {
 });
 
 describe("provider pack tabs service validation flow", () => {
-  it("defaults to serviceValidation after distribution is ready", () => {
+  it("defaults to serviceValidation after knowledge is ready", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
@@ -58,14 +58,14 @@ describe("provider pack tabs service validation flow", () => {
         hasPayload: true,
         providerConfirmed: true,
         knowledgePassed: true,
-        hasDistribution: true,
+        hasDistribution: false,
         serviceValidationPassed: false,
       }),
       "serviceValidation",
     );
   });
 
-  it("locks review until service validation passes", () => {
+  it("locks distributionReview until search validation passes", () => {
     const locks = resolveProviderPackTabLocks({
       providerConfirmed: true,
       knowledgePassed: true,
@@ -73,7 +73,7 @@ describe("provider pack tabs service validation flow", () => {
       serviceValidationPassed: false,
     });
     assert.equal(locks.serviceValidation.locked, false);
-    assert.equal(locks.review.locked, true);
+    assert.equal(locks.distributionReview.locked, true);
   });
 });
 

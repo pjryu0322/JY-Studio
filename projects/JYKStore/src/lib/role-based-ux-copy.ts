@@ -60,7 +60,7 @@ export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
 export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
 export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
 export const PROVIDER_PACK_CREATED_NEXT_TASK =
-  "다음 할 일: 기본정보를 확인한 뒤 자료를 등록하고 유통정보를 입력하세요.";
+  "다음 할 일: 기본정보를 확인한 뒤 자료를 등록하고 데이터 구조화·검색 검증을 진행하세요.";
 export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
@@ -71,16 +71,24 @@ export const PROVIDER_PACK_WIZARD_SOURCE_STEP = PROVIDER_PACK_WIZARD_MATERIALS_S
 export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "기존 자료";
 /** @deprecated Builder freeze */
 export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "검수 요청";
-export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
+export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "유통정보·검수요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "승인·공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
+export const PROVIDER_PACK_TAB_BASIC_SHORT = "기본";
 export const PROVIDER_PACK_TAB_PAYLOAD = "자료 등록";
-export const PROVIDER_PACK_TAB_KNOWLEDGE = "지식 데이터 생성";
-export const PROVIDER_PACK_TAB_DISTRIBUTION = "유통정보";
-export const PROVIDER_PACK_TAB_SERVICE_VALIDATION = "서비스 검증";
+export const PROVIDER_PACK_TAB_PAYLOAD_SHORT = "자료";
+export const PROVIDER_PACK_TAB_KNOWLEDGE = "데이터 구조화";
+export const PROVIDER_PACK_TAB_KNOWLEDGE_SHORT = "구조화";
+export const PROVIDER_PACK_TAB_SERVICE_VALIDATION = "검색데이터 생성·검증";
+export const PROVIDER_PACK_TAB_SERVICE_VALIDATION_SHORT = "검색검증";
+export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW = "유통정보·검수요청";
+export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW_SHORT = "유통·검수";
+/** @deprecated Prefer PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW */
+export const PROVIDER_PACK_TAB_DISTRIBUTION = PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW;
 export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
-export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
+/** @deprecated Prefer PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW */
+export const PROVIDER_PACK_TAB_REVIEW = PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW;
 
 export const PROVIDER_PACK_MATERIALS_TITLE = "기존 자료";
 export const PROVIDER_PACK_MATERIALS_HINT =
@@ -91,11 +99,11 @@ export const PROVIDER_PACK_MATERIALS_EMPTY =
   "현재 버전에 등록된 자료가 없습니다. 자료를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
 
 export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "자료 등록으로 이동";
-export const PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB = "지식 데이터 생성으로 이동";
-export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보로 이동";
-export const PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB = "서비스 검증으로 이동";
+export const PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB = "데이터 구조화로 이동";
+export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보·검수요청으로 이동";
+export const PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB = "검색데이터 생성·검증으로 이동";
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
-export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
+export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "유통정보·검수요청으로 이동";
 /** @deprecated Builder freeze — prefer PROVIDER_PACK_GO_TO_MATERIALS_TAB */
 export const PROVIDER_PACK_GO_TO_SOURCE_TAB = PROVIDER_PACK_GO_TO_MATERIALS_TAB;
 /** @deprecated Builder freeze */
@@ -115,7 +123,7 @@ export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
 
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "기본정보·자료 등록·지식 데이터 생성·유통정보·서비스 검증이 모두 완료되면 검수요청을 제출할 수 있습니다.";
+  "기본정보·자료 등록·데이터 구조화·검색데이터 생성·검증·유통정보가 모두 완료되면 검수요청을 제출할 수 있습니다.";
 
 export const PROVIDER_SUBMIT_CTA = "검수 요청 제출";
 export const PROVIDER_SUBMIT_CONFIRM =

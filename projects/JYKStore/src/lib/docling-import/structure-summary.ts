@@ -110,7 +110,11 @@ export function buildStructureSummary(input: {
     else if (c === "COVER_IMAGE" || c === "LOGO" || c === "DECORATIVE" || c === "PAGE_RENDER") {
       decorativeFigureCount += 1;
     }
-    if (fig.previewObjectKey?.trim()) figurePreviewSuccessCount += 1;
+    const previewKey =
+      "previewObjectKey" in fig && typeof (fig as { previewObjectKey?: unknown }).previewObjectKey === "string"
+        ? (fig as { previewObjectKey?: string }).previewObjectKey
+        : null;
+    if (previewKey?.trim()) figurePreviewSuccessCount += 1;
     else figurePreviewFailCount += 1;
   }
   if (figureCount === 0) {

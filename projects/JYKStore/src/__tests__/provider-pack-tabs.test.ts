@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabFromLocation,
+  resolveProviderPackTabLocks,
+  PROVIDER_PACK_TAB_IDS,
 } from "../lib/provider-pack-tabs.ts";
 
 describe("resolveDefaultProviderPackTab", () => {
@@ -58,7 +60,7 @@ describe("resolveDefaultProviderPackTab", () => {
     );
   });
 
-  it("opens distribution when knowledge passed without distribution metadata", () => {
+  it("opens serviceValidation when knowledge passed without search validation", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
@@ -68,28 +70,13 @@ describe("resolveDefaultProviderPackTab", () => {
         providerConfirmed: true,
         knowledgePassed: true,
         hasDistribution: false,
-      }),
-      "distribution",
-    );
-  });
-
-  it("opens serviceValidation when distribution ready but validation incomplete", () => {
-    assert.equal(
-      resolveDefaultProviderPackTab({
-        created: false,
-        status: "DRAFT",
-        sourceDocumentCount: 2,
-        hasPayload: true,
-        providerConfirmed: true,
-        knowledgePassed: true,
-        hasDistribution: true,
         serviceValidationPassed: false,
       }),
       "serviceValidation",
     );
   });
 
-  it("opens review tab when ready or reviewing", () => {
+  it("opens distributionReview when search validation is complete", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
@@ -101,7 +88,7 @@ describe("resolveDefaultProviderPackTab", () => {
         hasDistribution: true,
         serviceValidationPassed: true,
       }),
-      "review",
+      "distributionReview",
     );
     assert.equal(
       resolveDefaultProviderPackTab({
@@ -109,13 +96,13 @@ describe("resolveDefaultProviderPackTab", () => {
         status: "REVIEWING",
         sourceDocumentCount: 1,
       }),
-      "review",
+      "distributionReview",
     );
   });
 });
 
 describe("resolveProviderPackTabFromLocation", () => {
-  it("maps legacy hash anchors and tabs to distribution tabs", () => {
+  it("maps legacy hash anchors and tabs to the 5-step workflow", () => {
     assert.equal(
       resolveProviderPackTabFromLocation({
         tabParam: null,
@@ -130,7 +117,7 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "#pack-inspection",
         fallback: "basic",
       }),
-      "review",
+      "distributionReview",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -138,7 +125,7 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "#pack-review",
         fallback: "basic",
       }),
-      "review",
+      "distributionReview",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -170,7 +157,39 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "",
         fallback: "basic",
       }),
-      "review",
+      "distributionReview",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "distribution",
+        hash: "",
+        fallback: "basic",
+      }),
+      "distributionReview",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "review",
+        hash: "",
+        fallback: "basic",
+      }),
+      "distributionReview",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "search-validation",
+        hash: "",
+        fallback: "basic",
+      }),
+      "serviceValidation",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "data-structure",
+        hash: "",
+        fallback: "basic",
+      }),
+      "knowledge",
     );
   });
 
@@ -183,5 +202,38 @@ describe("resolveProviderPackTabFromLocation", () => {
       }),
       "payload",
     );
+  });
+});
+
+describe("resolveProviderPackTabLocks", () => {
+  it("unlocks search validation after structure and distribution after search validation", () => {
+    const locked = resolveProviderPackTabLocks({
+      providerConfirmed: true,
+      knowledgePassed: true,
+      distributionReady: false,
+      serviceValidationPassed: false,
+    });
+    assert.equal(locked.serviceValidation.locked, false);
+    assert.equal(locked.distributionReview.locked, true);
+
+    const unlocked = resolveProviderPackTabLocks({
+      providerConfirmed: true,
+      knowledgePassed: true,
+      distributionReady: true,
+      serviceValidationPassed: true,
+    });
+    assert.equal(unlocked.distributionReview.locked, false);
+  });
+});
+
+describe("PROVIDER_PACK_TAB_IDS", () => {
+  it("defines the 5-step registration order", () => {
+    assert.deepEqual([...PROVIDER_PACK_TAB_IDS], [
+      "basic",
+      "payload",
+      "knowledge",
+      "serviceValidation",
+      "distributionReview",
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import {
   PackStatus,
+  Prisma,
   ServiceValidationChannel,
   ServiceValidationStatus,
   type PackDistributionMetadata,
@@ -483,40 +484,31 @@ async function mapRunToProviderChannelDto(input: {
   };
 }
 
+/** Preparation targets for search-validation before final distribution channel selection. */
+export const SEARCH_VALIDATION_PREPARATION_CHANNELS: ServiceChannel[] = [
+  "API",
+  "MCP",
+  "DOWNLOAD",
+];
+
 export async function getServiceValidationStatus(input: {
   userId: string;
   clientId: string;
   packId: string;
 }): Promise<ServiceValidationStatusDto> {
   const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
-  const { dist, binding } = await loadBindingContext(pack.packId, version.id);
-  if (!dist) {
-    throw new PayloadServiceError(
-      "INCOMPLETE",
-      "유통정보를 먼저 저장한 뒤 서비스 검증을 진행해 주세요.",
-      400,
-    );
-  }
+  const { binding } = await loadBindingContext(pack.packId, version.id);
 
-  const selected = new Set(
-    selectedServiceChannels({
-      allowApi: dist.allowApi,
-      allowMcp: dist.allowMcp,
-      allowDownload: dist.allowDownload,
-    }),
-  );
+  // Search-validation prepares all delivery channels before the provider picks publish channels.
+  const selected = new Set(SEARCH_VALIDATION_PREPARATION_CHANNELS);
 
-  const canRunValidation = pack.status === PackStatus.DRAFT;
+  const canRunValidation = pack.status === PackStatus.DRAFT && Boolean(binding);
   const channels: ServiceValidationChannelDto[] = [];
   const confirmerIds = new Set<string>();
 
   // Prefetch runs + confirmation user ids
   const runsByChannel = new Map<ServiceChannel, ServiceValidationRun | null>();
-  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-    if (!selected.has(channel)) {
-      runsByChannel.set(channel, null);
-      continue;
-    }
+  for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
     const run = await findLatestServiceValidationRun({ versionId: version.id, channel });
     runsByChannel.set(channel, run);
     if (run) {
@@ -539,30 +531,7 @@ export async function getServiceValidationStatus(input: {
     users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "제공자"]),
   );
 
-  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-    if (!selected.has(channel)) {
-      channels.push({
-        channel,
-        selected: false,
-        systemStatus: "NOT_SELECTED",
-        providerConfirmationStatus: null,
-        currentValidity: null,
-        runId: null,
-        testedAt: null,
-        query: null,
-        resultCount: null,
-        failureMessage: null,
-        latencyMs: null,
-        results: [],
-        canRun: false,
-        canConfirm: false,
-        canShareConfirmationWithPeer: false,
-        downloadTestCompleted: false,
-        downloadSummary: null,
-        confirmation: null,
-      });
-      continue;
-    }
+  for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
     channels.push(
       await mapRunToProviderChannelDto({
         channel,
@@ -575,9 +544,9 @@ export async function getServiceValidationStatus(input: {
     );
   }
 
-  const selectedChannels = channels.filter((c) => c.selected);
+  const selectedChannels = channels.filter((c) => selected.has(c.channel));
   const allSelectedPassed =
-    selectedChannels.length > 0 &&
+    selectedChannels.length === SEARCH_VALIDATION_PREPARATION_CHANNELS.length &&
     selectedChannels.every(
       (c) =>
         c.systemStatus === "PASS" &&
@@ -682,22 +651,18 @@ export async function runServiceChannelValidation(input: {
   query?: string | null;
 }): Promise<ServiceValidationChannelDto> {
   const { pack, version, profile } = await requireOwnedDraftPackForServiceValidationRun(input);
-  const { dist, latest, binding } = await loadBindingContext(pack.packId, version.id);
-  if (!dist) {
-    throw new PayloadServiceError("INCOMPLETE", "유통정보를 먼저 저장해 주세요.", 400);
-  }
-  const selected = selectedServiceChannels(dist);
-  if (!selected.includes(input.channel)) {
+  const { latest, binding } = await loadBindingContext(pack.packId, version.id);
+  if (!SEARCH_VALIDATION_PREPARATION_CHANNELS.includes(input.channel)) {
     throw new PayloadServiceError(
       "SERVICE_CHANNEL_DISABLED",
-      "유통정보에서 선택하지 않은 제공 방식입니다.",
+      "지원하지 않는 검증 채널입니다.",
       400,
     );
   }
   if (!binding || !latest) {
     throw new PayloadServiceError(
       "INCOMPLETE",
-      "지식 데이터 생성이 완료되어야 서비스 검증을 진행할 수 있습니다.",
+      "데이터 구조화가 완료되어야 검색데이터 검증을 진행할 수 있습니다.",
       400,
     );
   }
@@ -769,6 +734,7 @@ export async function runServiceChannelValidation(input: {
         safeItems = await buildSafeRetrievalItems({
           contexts: retrievalContexts,
           expectedVersionId: version.id,
+          normalizedDocumentId: binding.normalizedDocumentId,
         });
         if (safeItems.length < 1) {
           failureCode = "SERVICE_VALIDATION_RESULT_SNAPSHOT_EMPTY";
@@ -922,16 +888,10 @@ export async function runServiceChannelValidation(input: {
         409,
       );
     }
-    const distributionInTx = await tx.packDistributionMetadata.findUnique({
-      where: { versionId: version.id },
-    });
-    if (
-      !distributionInTx ||
-      !selectedServiceChannels(distributionInTx).includes(input.channel)
-    ) {
+    if (!SEARCH_VALIDATION_PREPARATION_CHANNELS.includes(input.channel)) {
       throw new PayloadServiceError(
         "SERVICE_CHANNEL_DISABLED",
-        "유통정보에서 선택하지 않은 제공 방식입니다.",
+        "지원하지 않는 검증 채널입니다.",
         409,
       );
     }
@@ -1019,7 +979,7 @@ export async function runServiceChannelValidation(input: {
         latencyMs,
         failureCode,
         failureMessage,
-        details,
+        details: details as Prisma.InputJsonValue,
       },
     });
     if (status === "PASS" && (input.channel === "API" || input.channel === "MCP")) {

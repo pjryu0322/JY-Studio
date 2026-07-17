@@ -81,7 +81,11 @@ export type BuildProviderPackProgressInput = {
 
 const STEP_META: Record<
   ProviderPackProgressStepKey,
-  { label: string; description: string; tab: "basic" | "payload" | "distribution" | "review" | null }
+  {
+    label: string;
+    description: string;
+    tab: "basic" | "payload" | "knowledge" | "serviceValidation" | "distributionReview" | null;
+  }
 > = {
   BASIC_INFO: {
     label: "기본정보",
@@ -94,19 +98,19 @@ const STEP_META: Record<
     tab: "payload",
   },
   DISTRIBUTION: {
-    label: "유통정보",
-    description: "제공 방식·유통 권한·공개 범위를 입력합니다.",
-    tab: "distribution",
+    label: "유통정보·검수요청",
+    description: "제공 방식·유통 권한·공개 범위를 입력하고 검수요청을 제출합니다.",
+    tab: "distributionReview",
   },
   REVIEW: {
-    label: "검수 요청",
-    description: "서비스 검증 후 검수 요청을 제출합니다.",
-    tab: "review",
+    label: "유통정보·검수요청",
+    description: "검색 검증 후 유통정보를 확정하고 검수 요청을 제출합니다.",
+    tab: "distributionReview",
   },
   APPROVAL: {
     label: "승인·공개",
     description: "운영자가 승인하면 스토어에 공개됩니다.",
-    tab: "review",
+    tab: "distributionReview",
   },
 };
 
@@ -231,9 +235,9 @@ export function buildProviderPackProgress(
     currentStep = "CHANGES_REQUESTED";
     currentStepLabel = "보완";
     nextActionLabel = "운영자 의견을 확인하고 새 자료 또는 새 Version을 제출하세요.";
-    nextActionHref = detailHref(packId, "review");
+    nextActionHref = detailHref(packId, "distributionReview");
     actions = [
-      { label: "보완 내용 보기", href: detailHref(packId, "review") },
+      { label: "보완 내용 보기", href: detailHref(packId, "distributionReview") },
       { label: "자료 등록", href: detailHref(packId, "payload") },
     ];
     stepStatuses.BASIC_INFO = basicReady ? "COMPLETED" : "CURRENT";
@@ -250,8 +254,8 @@ export function buildProviderPackProgress(
     currentStep = "APPROVAL";
     currentStepLabel = "운영자 검수";
     nextActionLabel = "검수 결과를 기다리세요.";
-    nextActionHref = detailHref(packId, "review");
-    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "review") }];
+    nextActionHref = detailHref(packId, "distributionReview");
+    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "distributionReview") }];
     stepStatuses.BASIC_INFO = "COMPLETED";
     stepStatuses.MATERIAL = "COMPLETED";
     stepStatuses.DISTRIBUTION = "COMPLETED";
@@ -302,14 +306,14 @@ export function buildProviderPackProgress(
       currentStep = "DISTRIBUTION";
       currentStepLabel = "유통정보";
       nextActionLabel = "작업 버전 유통정보를 입력하세요.";
-      nextActionHref = detailHref(packId, "distribution");
-      actions = [{ label: "유통정보 입력", href: detailHref(packId, "distribution") }];
+      nextActionHref = detailHref(packId, "distributionReview");
+      actions = [{ label: "유통정보 입력", href: detailHref(packId, "distributionReview") }];
     } else {
       currentStep = "REVIEW";
       currentStepLabel = "검수 요청";
       nextActionLabel = "작업 버전 검수 요청을 제출하세요.";
-      nextActionHref = detailHref(packId, "review");
-      actions = [{ label: "검수 요청", href: detailHref(packId, "review") }];
+      nextActionHref = detailHref(packId, "distributionReview");
+      actions = [{ label: "검수 요청", href: detailHref(packId, "distributionReview") }];
     }
   } else if (!basicReady) {
     currentStep = "BASIC_INFO";
@@ -336,8 +340,8 @@ export function buildProviderPackProgress(
     currentStep = "DISTRIBUTION";
     currentStepLabel = "유통정보";
     nextActionLabel = "출처·라이선스·공개 범위를 입력하세요.";
-    nextActionHref = detailHref(packId, "distribution");
-    actions = [{ label: "유통정보 입력", href: detailHref(packId, "distribution") }];
+    nextActionHref = detailHref(packId, "distributionReview");
+    actions = [{ label: "유통정보 입력", href: detailHref(packId, "distributionReview") }];
     stepStatuses.BASIC_INFO = "COMPLETED";
     stepStatuses.MATERIAL = "COMPLETED";
     stepStatuses.DISTRIBUTION = "CURRENT";
@@ -345,8 +349,8 @@ export function buildProviderPackProgress(
     currentStep = "REVIEW";
     currentStepLabel = "검수 요청";
     nextActionLabel = "검수 요청을 제출하세요.";
-    nextActionHref = detailHref(packId, "review");
-    actions = [{ label: "검수 요청", href: detailHref(packId, "review") }];
+    nextActionHref = detailHref(packId, "distributionReview");
+    actions = [{ label: "검수 요청", href: detailHref(packId, "distributionReview") }];
     stepStatuses.BASIC_INFO = "COMPLETED";
     stepStatuses.MATERIAL = "COMPLETED";
     stepStatuses.DISTRIBUTION = "COMPLETED";
@@ -355,8 +359,8 @@ export function buildProviderPackProgress(
     currentStep = "APPROVAL";
     currentStepLabel = "승인·공개";
     nextActionLabel = "검수 상태를 확인하세요.";
-    nextActionHref = detailHref(packId, "review");
-    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "review") }];
+    nextActionHref = detailHref(packId, "distributionReview");
+    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "distributionReview") }];
     stepStatuses.BASIC_INFO = "COMPLETED";
     stepStatuses.MATERIAL = "COMPLETED";
     stepStatuses.DISTRIBUTION = "COMPLETED";

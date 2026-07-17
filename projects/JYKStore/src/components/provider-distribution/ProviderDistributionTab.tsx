@@ -132,7 +132,7 @@ export function ProviderDistributionTab({
       });
       applyRow(data.distribution, data.artifactOptions);
       setSavedMessage(
-        "유통정보가 저장되었습니다. 선택한 제공 방식을 서비스 검증에서 확인해 주세요.",
+        "유통정보가 저장되었습니다. 아래에서 제출 전 점검을 확인한 뒤 검수요청을 진행하세요.",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
@@ -156,7 +156,8 @@ export function ProviderDistributionTab({
       <div>
         <h2 className="text-sm font-bold text-slate-900">유통정보</h2>
         <p className="mt-1 text-xs text-store-muted">
-          출처·제공 방식·유통 권한·공개 정책을 입력합니다. 저장 후 서비스 검증이 필요합니다.
+          출처·제공 방식·유통 권한·공개 정책을 입력합니다. 검색 검증을 마친 뒤 실제 공개할 채널을
+          선택하세요.
         </p>
         {artifactOptions.externalImportReady ? (
           <p className="mt-1 text-xs text-store-muted">
@@ -178,7 +179,7 @@ export function ProviderDistributionTab({
             onClick={() => onGoToServiceValidation?.()}
             className="min-h-[44px] rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"
           >
-            서비스 검증으로 이동
+            검수요청 점검으로 이동
           </button>
         </div>
       ) : null}

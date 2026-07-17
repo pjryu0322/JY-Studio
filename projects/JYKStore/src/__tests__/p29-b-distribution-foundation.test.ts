@@ -19,20 +19,21 @@ function readSource(relativePath: string): string {
 }
 
 describe("P29 distribution foundation", () => {
-  it("provider editor uses 5 tabs basic → payload → knowledge → distribution → review", () => {
+  it("provider editor uses 5 tabs basic → payload → knowledge → serviceValidation → distributionReview", () => {
     assert.deepEqual([...PROVIDER_PACK_TAB_IDS], [
       "basic",
       "payload",
       "knowledge",
-      "distribution",
-      "review",
+      "serviceValidation",
+      "distributionReview",
     ]);
     const editor = readSource("src/components/ProviderPackEditor.tsx");
     assert.ok(editor.includes('activeTab === "payload"'));
     assert.ok(editor.includes('activeTab === "knowledge"'));
-    assert.ok(editor.includes('activeTab === "distribution"'));
-    assert.ok(editor.includes('activeTab === "review"'));
+    assert.ok(editor.includes('activeTab === "serviceValidation"'));
+    assert.ok(editor.includes('activeTab === "distributionReview"'));
     assert.ok(!editor.includes('activeTab === "materials"'));
+    assert.ok(!editor.includes('activeTab === "review"'));
   });
 
   it("re-enables create CTA with external payload copy", () => {
@@ -89,6 +90,11 @@ describe("P29 distribution foundation", () => {
         validateDistributionMetadataInput({
           licenseName: "",
           sourceTitle: "x",
+          allowApi: true,
+          allowMcp: false,
+          allowDownload: false,
+          rightsBasis: "PUBLIC_LICENSE",
+          rightsConfirmed: true,
         }),
       (err: unknown) => err instanceof PayloadServiceError && err.code === "LICENSE_REQUIRED",
     );
@@ -96,6 +102,11 @@ describe("P29 distribution foundation", () => {
       () =>
         validateDistributionMetadataInput({
           licenseName: "MIT",
+          allowApi: true,
+          allowMcp: false,
+          allowDownload: false,
+          rightsBasis: "PUBLIC_LICENSE",
+          rightsConfirmed: true,
         }),
       (err: unknown) => err instanceof PayloadServiceError && err.code === "SOURCE_REQUIRED",
     );

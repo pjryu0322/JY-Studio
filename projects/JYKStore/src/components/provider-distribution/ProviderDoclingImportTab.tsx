@@ -509,7 +509,7 @@ export function ProviderDoclingImportTab({
       } catch {
         // Pipeline start is best-effort; user can retry on knowledge tab.
       }
-      setSuccessMessage("확인이 완료되었습니다. 지식 데이터 생성을 진행해 주세요.");
+      setSuccessMessage("확인이 완료되었습니다. 데이터 구조화를 진행해 주세요.");
       setConfirmAck(false);
       onDoclingChanged?.(result.bundle);
       await load({ silent: true });
@@ -695,7 +695,7 @@ export function ProviderDoclingImportTab({
                       onClick={() => void onConfirmNormalized()}
                       className="min-h-[44px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white disabled:opacity-60"
                     >
-                      {confirming ? "확인 중…" : "확인 완료하고 지식 데이터 생성"}
+                      {confirming ? "확인 중…" : "확인 완료하고 데이터 구조화"}
                     </button>
                   </div>
                 </>

@@ -156,8 +156,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         distribution,
         doclingBundle,
         knowledgePassed: Boolean(knowledgeStatus?.passed),
+        serviceValidationPassed: Boolean(serviceValidation?.allSelectedPassed),
       }),
-    [hasBasicInfo, hasLanguage, distribution, doclingBundle, knowledgeStatus?.passed],
+    [
+      hasBasicInfo,
+      hasLanguage,
+      distribution,
+      doclingBundle,
+      knowledgeStatus?.passed,
+      serviceValidation?.allSelectedPassed,
+    ],
   );
 
   const packProgress = useMemo(() => {
@@ -370,7 +378,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     try {
       const data = await submitProviderPackApi(packId);
       setPack(data.pack);
-      selectTab("review");
+      selectTab("distributionReview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 요청에 실패했습니다.");
     } finally {
@@ -386,7 +394,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     try {
       const data = await withdrawProviderPackReviewApi(packId);
       setPack(data.pack);
-      selectTab("review");
+      selectTab("distributionReview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 요청 회수에 실패했습니다.");
     } finally {
@@ -452,6 +460,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       <div id="pack-wizard-main" className="scroll-mt-24">
         {/* Keep tabs mounted (hidden) so Docling file selection / upload result survives tab switches. */}
         <div
+          id="provider-pack-panel-basic"
+          role="tabpanel"
+          aria-labelledby="provider-pack-tab-basic"
           className={activeTab === "basic" ? undefined : "hidden"}
           aria-hidden={activeTab !== "basic"}
         >
@@ -495,6 +506,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
 
         <div
+          id="provider-pack-panel-payload"
+          role="tabpanel"
+          aria-labelledby="provider-pack-tab-payload"
           className={activeTab === "payload" ? undefined : "hidden"}
           aria-hidden={activeTab !== "payload"}
         >
@@ -516,36 +530,24 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
 
         <div
+          id="provider-pack-panel-knowledge"
+          role="tabpanel"
+          aria-labelledby="provider-pack-tab-knowledge"
           className={activeTab === "knowledge" ? undefined : "hidden"}
           aria-hidden={activeTab !== "knowledge"}
         >
           <ProviderKnowledgeGenerationTab
             packId={packId}
             editable={editable}
-            onGoToDistribution={() => selectTab("distribution")}
+            onGoToDistribution={() => selectTab("serviceValidation")}
             onStatusChange={setKnowledgeStatus}
           />
         </div>
 
         <div
-          className={activeTab === "distribution" ? undefined : "hidden"}
-          aria-hidden={activeTab !== "distribution"}
-        >
-          {tabLocks.distribution.locked ? (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              {tabLocks.distribution.reason}
-            </p>
-          ) : (
-            <ProviderDistributionTab
-              packId={packId}
-              editable={editable}
-              onDistributionChanged={setDistribution}
-              onGoToServiceValidation={() => selectTab("serviceValidation")}
-            />
-          )}
-        </div>
-
-        <div
+          id="provider-pack-panel-serviceValidation"
+          role="tabpanel"
+          aria-labelledby="provider-pack-tab-serviceValidation"
           className={activeTab === "serviceValidation" ? undefined : "hidden"}
           aria-hidden={activeTab !== "serviceValidation"}
         >
@@ -557,31 +559,56 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             <ProviderServiceValidationTab
               packId={packId}
               editable={editable}
-              onGoToReview={() => selectTab("review")}
+              onGoToReview={() => selectTab("distributionReview")}
               onStatusChange={setServiceValidation}
             />
           )}
         </div>
 
         <div
-          className={activeTab === "review" ? undefined : "hidden"}
-          aria-hidden={activeTab !== "review"}
+          id="provider-pack-panel-distributionReview"
+          role="tabpanel"
+          aria-labelledby="provider-pack-tab-distributionReview"
+          className={activeTab === "distributionReview" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "distributionReview"}
         >
-          <ProviderPackReviewTab
-            pack={pack}
-            editable={editable}
-            submitting={submitting}
-            withdrawing={withdrawing}
-            sourceDocumentCount={sourceDocumentCount}
-            distributionMode={distributionMode}
-            distributionReadiness={distributionReadiness}
-            onSubmitReview={() => void onSubmitReview()}
-            onWithdrawReview={() => void onWithdrawReview()}
-            onGoToPayloadTab={() => selectTab("payload")}
-            onGoToDistributionTab={() => selectTab("distribution")}
-            onGoToKnowledgeTab={() => selectTab("knowledge")}
-            onGoToBasicTab={() => selectTab("basic")}
-          />
+          {tabLocks.distributionReview.locked ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {tabLocks.distributionReview.reason}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <ProviderDistributionTab
+                packId={packId}
+                editable={editable}
+                onDistributionChanged={setDistribution}
+                onGoToServiceValidation={() => {
+                  const el = document.getElementById("pack-review");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+              <ProviderPackReviewTab
+                pack={pack}
+                editable={editable}
+                submitting={submitting}
+                withdrawing={withdrawing}
+                sourceDocumentCount={sourceDocumentCount}
+                distributionMode={distributionMode}
+                distributionReadiness={distributionReadiness}
+                serviceValidationPassed={serviceValidationPassed}
+                onSubmitReview={() => void onSubmitReview()}
+                onWithdrawReview={() => void onWithdrawReview()}
+                onGoToPayloadTab={() => selectTab("payload")}
+                onGoToDistributionTab={() => {
+                  const el = document.getElementById("pack-distribution");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                onGoToKnowledgeTab={() => selectTab("knowledge")}
+                onGoToServiceValidationTab={() => selectTab("serviceValidation")}
+                onGoToBasicTab={() => selectTab("basic")}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

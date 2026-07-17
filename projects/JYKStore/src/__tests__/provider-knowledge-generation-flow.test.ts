@@ -15,16 +15,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("provider knowledge generation flow", () => {
-  it("orders tabs as basic → payload → knowledge → distribution → serviceValidation → review", () => {
+  it("orders tabs as basic → payload → knowledge → serviceValidation → distributionReview", () => {
     assert.deepEqual([...PROVIDER_PACK_TAB_IDS], [
       "basic",
       "payload",
       "knowledge",
-      "distribution",
       "serviceValidation",
-      "review",
+      "distributionReview",
     ]);
-    assert.equal(PROVIDER_PACK_TAB_KNOWLEDGE, "지식 데이터 생성");
+    assert.equal(PROVIDER_PACK_TAB_KNOWLEDGE, "데이터 구조화");
   });
 
   it("defaults to knowledge after provider confirm before pipeline pass", () => {
@@ -42,7 +41,7 @@ describe("provider knowledge generation flow", () => {
     );
   });
 
-  it("locks distribution until knowledge passed and review until service validation ready", () => {
+  it("locks search validation until structure and distributionReview until search validation", () => {
     const locked = resolveProviderPackTabLocks({
       providerConfirmed: true,
       knowledgePassed: false,
@@ -50,20 +49,18 @@ describe("provider knowledge generation flow", () => {
       serviceValidationPassed: false,
     });
     assert.equal(locked.knowledge.locked, false);
-    assert.equal(locked.distribution.locked, true);
-    assert.ok(locked.distribution.reason?.includes("지식 데이터"));
     assert.equal(locked.serviceValidation.locked, true);
-    assert.equal(locked.review.locked, true);
+    assert.ok(locked.serviceValidation.reason?.includes("데이터 구조화"));
+    assert.equal(locked.distributionReview.locked, true);
 
-    const distributionOk = resolveProviderPackTabLocks({
+    const structureOk = resolveProviderPackTabLocks({
       providerConfirmed: true,
       knowledgePassed: true,
-      distributionReady: true,
+      distributionReady: false,
       serviceValidationPassed: false,
     });
-    assert.equal(distributionOk.distribution.locked, false);
-    assert.equal(distributionOk.serviceValidation.locked, false);
-    assert.equal(distributionOk.review.locked, true);
+    assert.equal(structureOk.serviceValidation.locked, false);
+    assert.equal(structureOk.distributionReview.locked, true);
 
     const unlocked = resolveProviderPackTabLocks({
       providerConfirmed: true,
@@ -71,8 +68,7 @@ describe("provider knowledge generation flow", () => {
       distributionReady: true,
       serviceValidationPassed: true,
     });
-    assert.equal(unlocked.distribution.locked, false);
-    assert.equal(unlocked.review.locked, false);
+    assert.equal(unlocked.distributionReview.locked, false);
   });
 
   it("lists five knowledge stages and pipeline trigger", () => {
@@ -99,8 +95,9 @@ describe("provider knowledge generation flow", () => {
       join(root, "src/components/provider-distribution/ProviderDoclingImportTab.tsx"),
       "utf8",
     );
-    assert.ok(tab.includes("확인 완료하고 지식 데이터 생성"));
+    assert.ok(tab.includes("확인 완료하고 데이터 구조화"));
     assert.ok(!tab.includes("확인 완료하고 유통정보 입력"));
+    assert.ok(!tab.includes("확인 완료하고 지식 데이터 생성"));
     assert.ok(tab.includes("startProviderKnowledgePipelineApi"));
     assert.ok(tab.includes("onGoToKnowledge"));
   });

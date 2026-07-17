@@ -75,7 +75,7 @@ const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   },
   DOWNLOAD: {
     title: "원본문서 다운로드 검증",
-    hint: "등록한 원본문서 다운로드와 무결성을 확인합니다.",
+    hint: "등록한 원본문서 다운로드와 무결성을 확인합니다. (운영용 RAG Export는 이후 단계에서 별도 준비됩니다.)",
   },
 };
 
@@ -284,7 +284,7 @@ function RetrievalConfirmPanel({
             반려 확정
           </button>
           <p className="text-xs text-store-muted">
-            검색 결과 품질을 개선하려면 지식 데이터 생성을 다시 실행하거나 자료 등록 상태를 확인해
+            검색 결과 품질을 개선하려면 데이터 구조화를 다시 실행하거나 자료 등록 상태를 확인해
             주세요.
           </p>
         </div>
@@ -480,7 +480,7 @@ export function ProviderServiceValidationTab({
       if (!query && data.suggestedQuery) setQuery(data.suggestedQuery);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "서비스 검증 상태를 불러오지 못했습니다.");
+      setError(err instanceof Error ? err.message : "검색데이터 검증 상태를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -556,7 +556,7 @@ export function ProviderServiceValidationTab({
   }
 
   if (loading) {
-    return <p className="text-sm text-store-muted">서비스 검증 상태를 불러오는 중…</p>;
+    return <p className="text-sm text-store-muted">검색데이터 검증 상태를 불러오는 중…</p>;
   }
 
   const selected = status?.channels.filter((c) => c.selected) ?? [];
@@ -564,9 +564,14 @@ export function ProviderServiceValidationTab({
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
-        <h2 className="text-base font-bold text-slate-900">서비스 검증</h2>
+        <h2 className="text-base font-bold text-slate-900">검색데이터 생성·검증</h2>
         <p className="mt-1 text-sm text-store-muted">
-          시스템 자동 검증과 제공자 품질 확인을 모두 완료해야 검수요청을 진행할 수 있습니다.
+          API·MCP·원본문서 다운로드 경로를 먼저 준비·검증합니다. 실제 공개 채널은 다음 단계
+          유통정보에서 선택합니다.
+        </p>
+        <p className="mt-1 text-xs text-store-muted">
+          현재 검색은 개발용 Draft 인덱스 기준이며, 운영용 Embedding·RAG Export는 이후 단계에서
+          확장됩니다.
         </p>
       </div>
 
@@ -821,21 +826,22 @@ export function ProviderServiceValidationTab({
 
       {selected.length === 0 ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          유통정보에서 제공 방식을 한 개 이상 선택한 뒤 다시 확인해 주세요.
+          데이터 구조화가 완료되면 API·MCP·원본문서 다운로드 검증을 진행할 수 있습니다.
         </p>
       ) : null}
 
       {status?.allSelectedPassed ? (
         <div className="space-y-2">
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            선택한 모든 제공 방식의 시스템 검증과 제공자 품질 확인이 완료되었습니다.
+            검색 경로 준비 검증과 제공자 품질 확인이 완료되었습니다. 유통정보에서 공개 채널을
+            선택한 뒤 검수요청을 진행하세요.
           </p>
           <button
             type="button"
             onClick={() => onGoToReview?.()}
             className="min-h-[44px] rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
-            검수요청으로 이동
+            유통정보·검수요청으로 이동
           </button>
         </div>
       ) : null}
