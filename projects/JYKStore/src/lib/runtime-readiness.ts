@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
 import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
-import { assertEmbeddingProviderProductionReady } from "@/lib/embedding/embedding-provider-registry";
+import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
+import {
+  assertEmbeddingProviderProductionReady,
+  resolveEmbeddingProviderAdapter,
+} from "@/lib/embedding/embedding-provider-registry";
 import { evaluateRuntimeEnv } from "@/lib/runtime-env";
 import {
   JYKSTORE_SERVICE_NAME,
@@ -107,6 +111,19 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
       provider: embeddingProviderConfig.provider,
       ...(readiness.warning ? { warning: readiness.warning } : {}),
     };
+
+    // L. For local-e5, the web process is only Ready when the worker is reachable,
+    // not in stub mode, and matches the configured model/revision/dimension/normalized/device.
+    if (embeddingProviderConfig.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+      const adapter = resolveEmbeddingProviderAdapter(embeddingProviderConfig);
+      const health = await adapter.healthCheck();
+      embeddingProvider = {
+        ok: health.ok,
+        provider: embeddingProviderConfig.provider,
+        ...(health.ok ? {} : { error: health.message ?? "embedding worker not ready." }),
+        ...(readiness.warning ? { warning: readiness.warning } : {}),
+      };
+    }
   } catch (error) {
     embeddingProvider = {
       ok: false,

@@ -16,6 +16,7 @@ import {
   DEFAULT_E5_EMBEDDING_DIMENSION,
   DEFAULT_E5_MODEL_ID,
   E5_DISTANCE_METRIC,
+  LEGACY_MODEL_REVISION,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "@/lib/embedding/e5-embedding-constants";
 import { assertSearchGenerationEmbeddingProvider } from "@/lib/embedding/embedding-provider-registry";
@@ -41,6 +42,7 @@ export const SEARCH_GENERATION_INACTIVE_STATUSES: readonly SearchIndexGeneration
 export type SearchGenerationEmbeddingDescriptor = {
   embeddingProvider: string;
   embeddingModel: string;
+  embeddingModelRevision: string;
   embeddingDimension: number;
   distanceMetric: string;
 };
@@ -49,6 +51,7 @@ export function defaultLocalEmbeddingDescriptor(): SearchGenerationEmbeddingDesc
   return {
     embeddingProvider: LOCAL_EMBEDDING_PROVIDER,
     embeddingModel: LOCAL_EMBEDDING_MODEL,
+    embeddingModelRevision: LEGACY_MODEL_REVISION,
     embeddingDimension: LOCAL_EMBEDDING_DIMENSION,
     distanceMetric: LOCAL_DISTANCE_METRIC,
   };
@@ -59,6 +62,7 @@ export function defaultE5SearchGenerationDescriptor(): SearchGenerationEmbedding
   return {
     embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
     embeddingModel: DEFAULT_E5_MODEL_ID,
+    embeddingModelRevision: LEGACY_MODEL_REVISION,
     embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
     distanceMetric: E5_DISTANCE_METRIC,
   };
@@ -85,9 +89,17 @@ export function resolveSearchGenerationEmbeddingDescriptor(
       "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
     );
   }
+  const isProduction = env.NODE_ENV === "production";
+  if (isProduction && !config.modelRevision) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_PROVIDER_NOT_CONFIGURED",
+      "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_MODEL_REVISION(고정 commit SHA)이 필요합니다.",
+    );
+  }
   return {
     embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
     embeddingModel: config.model,
+    embeddingModelRevision: config.modelRevision ?? LEGACY_MODEL_REVISION,
     embeddingDimension: config.dimension,
     distanceMetric: E5_DISTANCE_METRIC,
   };

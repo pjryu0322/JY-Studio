@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
+import { isEmbeddingProviderErrorCode } from "@/lib/embedding/embedding-provider-errors";
 import {
   runDoclingRetrievalEvaluation,
 } from "@/lib/docling-knowledge/docling-knowledge-eval";
@@ -1241,17 +1242,29 @@ export async function executeDoclingKnowledgePipeline(input: {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "index build failed";
+    // C. Token-limit is a content problem, not a transient failure — surface a clear,
+    // actionable message and mark the generation FAILED with the specific code.
+    const isTokenLimit = isEmbeddingProviderErrorCode(error, "EMBEDDING_TOKEN_LIMIT_EXCEEDED");
+    const failureCode = isTokenLimit ? "EMBEDDING_TOKEN_LIMIT_EXCEEDED" : "INDEX_BUILD_FAILED";
+    const userMessage = isTokenLimit
+      ? "검색용 데이터가 모델 입력 제한을 초과했습니다. 검색 단위를 다시 생성해 주세요."
+      : "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
     await markStep(
       input.packId,
       input.runId,
       "INDEXING",
       "FAIL",
-      "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-      { code: "INDEX_BUILD_FAILED", message: message.slice(0, 300) },
+      userMessage,
+      { code: failureCode, message: message.slice(0, 300) },
       lockOwner,
     );
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(input.packId, input.runId, message.slice(0, 500), binding, "INDEX_BUILD_FAILED");
+    await failDraftIndexGeneration({
+      versionId,
+      indexGenerationId,
+      failureCode,
+      failureMessage: message.slice(0, 300),
+    }).catch(() => undefined);
+    await failRun(input.packId, input.runId, message.slice(0, 500), binding, failureCode);
     return;
   }
 

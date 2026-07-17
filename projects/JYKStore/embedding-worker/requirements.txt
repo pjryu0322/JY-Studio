@@ -1,7 +1,10 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-pydantic>=2.10.0
-sentence-transformers>=3.3.0
-torch>=2.5.0
-pytest>=8.3.0
-httpx>=0.28.0
+# Runtime dependencies (pinned for reproducible builds). See requirements.lock for
+# the exact set installed in Docker. Dev/test-only deps live in requirements-dev.txt.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+sentence-transformers==3.3.1
+transformers==4.47.1
+torch==2.5.1
+huggingface-hub==0.27.0
+tokenizers==0.21.0

@@ -1,7 +1,7 @@
 import { sha256Hex } from "@/lib/distribution/payload-checksum";
 import { canonicalJsonStringify } from "@/lib/docling-import/normalized-document-fingerprint";
 
-export const SEARCH_GENERATION_FINGERPRINT_VERSION = "search-generation-v1" as const;
+export const SEARCH_GENERATION_FINGERPRINT_VERSION = "search-generation-v2" as const;
 
 export type SearchGenerationFingerprintChunk = {
   /** Retrieval chunk id included in this generation. */
@@ -20,6 +20,8 @@ export type SearchGenerationFingerprintInput = {
   normalizedDocumentFingerprint: string;
   embeddingProvider: string;
   embeddingModel: string;
+  /** Pinned model revision (Hugging Face commit SHA) or "legacy-unknown". */
+  embeddingModelRevision: string;
   embeddingDimension: number;
   distanceMetric: string;
   /** Retrieval chunks; order is normalized deterministically by chunkId. */
@@ -48,6 +50,7 @@ export function computeSearchGenerationFingerprint(
     normalizedDocumentFingerprint: input.normalizedDocumentFingerprint,
     embeddingProvider: input.embeddingProvider,
     embeddingModel: input.embeddingModel,
+    embeddingModelRevision: input.embeddingModelRevision,
     embeddingDimension: input.embeddingDimension,
     distanceMetric: input.distanceMetric,
     chunks: sortedChunks,

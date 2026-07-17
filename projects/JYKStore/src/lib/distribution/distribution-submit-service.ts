@@ -394,6 +394,7 @@ export async function commitDistributionPackForReview(
     chunkGenerationId: searchGenerationRow.chunkGenerationId,
     embeddingProvider: searchGenerationRow.embeddingProvider,
     embeddingModel: searchGenerationRow.embeddingModel,
+    embeddingModelRevision: searchGenerationRow.embeddingModelRevision,
     embeddingDimension: searchGenerationRow.embeddingDimension,
     distanceMetric: searchGenerationRow.distanceMetric,
     retrievalEvaluationStatus: "PASS",

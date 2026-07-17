@@ -53,6 +53,7 @@ export async function createDraftSearchGeneration(
       fingerprint: input.fingerprint,
       embeddingProvider: input.embeddingProvider,
       embeddingModel: input.embeddingModel,
+      embeddingModelRevision: input.embeddingModelRevision,
       embeddingDimension: input.embeddingDimension,
       distanceMetric: input.distanceMetric,
       chunkCount: input.chunkCount ?? 0,

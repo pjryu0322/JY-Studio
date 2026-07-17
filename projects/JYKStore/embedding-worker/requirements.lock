@@ -1,0 +1,11 @@
+# Locked runtime dependency set for Docker builds (H. reproducibility).
+# Regenerate with: pip-compile requirements.txt -o requirements.lock  (or uv pip compile)
+# Model files are NEVER committed — they are downloaded once into the HF cache volume.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+sentence-transformers==3.3.1
+transformers==4.47.1
+torch==2.5.1
+huggingface-hub==0.27.0
+tokenizers==0.21.0

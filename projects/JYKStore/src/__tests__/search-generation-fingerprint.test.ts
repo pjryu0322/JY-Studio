@@ -16,6 +16,7 @@ function baseInput(): SearchGenerationFingerprintInput {
     normalizedDocumentFingerprint: "ndfp-1",
     embeddingProvider: "local-hash",
     embeddingModel: "local-hash-v1",
+    embeddingModelRevision: "legacy-unknown",
     embeddingDimension: 256,
     distanceMetric: "cosine",
     chunks: [
@@ -66,6 +67,12 @@ describe("computeSearchGenerationFingerprint (§37)", () => {
   it("changes when the embedding model changes", () => {
     const a = computeSearchGenerationFingerprint(baseInput());
     const changed = { ...baseInput(), embeddingModel: "text-embedding-3" };
+    assert.notEqual(computeSearchGenerationFingerprint(changed), a);
+  });
+
+  it("changes when the embedding model revision changes", () => {
+    const a = computeSearchGenerationFingerprint(baseInput());
+    const changed = { ...baseInput(), embeddingModelRevision: "rev-xyz" };
     assert.notEqual(computeSearchGenerationFingerprint(changed), a);
   });
 

@@ -874,6 +874,8 @@ export async function activateDraftIndexGeneration(input: {
 export async function failDraftIndexGeneration(input: {
   versionId: string;
   indexGenerationId: string;
+  failureCode?: string;
+  failureMessage?: string | null;
 }): Promise<void> {
   const rows = await prisma.knowledgeChunk.findMany({
     where: {
@@ -906,6 +908,8 @@ export async function failDraftIndexGeneration(input: {
   await syncSearchGenerationFailed({
     versionId: input.versionId,
     indexGenerationId: input.indexGenerationId,
+    ...(input.failureCode ? { failureCode: input.failureCode } : {}),
+    ...(input.failureMessage !== undefined ? { failureMessage: input.failureMessage } : {}),
   });
 }
 

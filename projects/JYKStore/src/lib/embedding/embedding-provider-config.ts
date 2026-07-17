@@ -21,6 +21,7 @@ export type EmbeddingProviderConfig = {
   dimension: number;
   workerUrl?: string;
   modelRevision?: string;
+  workerToken?: string;
   batchSize?: number;
 };
 
@@ -77,6 +78,7 @@ export function readEmbeddingProviderConfig(
 
   const workerUrl = env.JYKSTORE_EMBEDDING_WORKER_URL?.trim();
   const modelRevision = env.JYKSTORE_EMBEDDING_MODEL_REVISION?.trim();
+  const workerToken = env.JYKSTORE_EMBEDDING_WORKER_TOKEN?.trim();
   const batchSizeRaw = env.JYKSTORE_EMBEDDING_BATCH_SIZE?.trim();
   const batchSize = batchSizeRaw ? Number(batchSizeRaw) : undefined;
 
@@ -86,6 +88,7 @@ export function readEmbeddingProviderConfig(
     dimension,
     ...(workerUrl ? { workerUrl } : {}),
     ...(modelRevision ? { modelRevision } : {}),
+    ...(workerToken ? { workerToken } : {}),
     ...(batchSize && Number.isFinite(batchSize) ? { batchSize } : {}),
   };
 }

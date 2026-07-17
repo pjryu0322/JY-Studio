@@ -92,6 +92,7 @@ async function resolveReadyFingerprint(
     normalizedDocumentFingerprint: generation.fingerprint,
     embeddingProvider: generation.embeddingProvider,
     embeddingModel: generation.embeddingModel,
+    embeddingModelRevision: generation.embeddingModelRevision,
     embeddingDimension: generation.embeddingDimension,
     distanceMetric: generation.distanceMetric,
     chunks: chunks.map((c) => ({

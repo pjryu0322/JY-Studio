@@ -1,8 +1,9 @@
 import os
 
-import pytest
-
+os.environ.setdefault("E5_WORKER_ENV", "test")
 os.environ.setdefault("E5_WORKER_STUB", "true")
+
+import pytest
 
 from app import model as embed_model
 

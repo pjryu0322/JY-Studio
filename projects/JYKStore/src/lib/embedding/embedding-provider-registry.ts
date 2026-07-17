@@ -48,6 +48,20 @@ export function assertEmbeddingProviderProductionReady(
         "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
     }
+    if (isProductionMode(env)) {
+      if (!full.modelRevision) {
+        throw new EmbeddingProviderError(
+          "EMBEDDING_PROVIDER_NOT_CONFIGURED",
+          "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_MODEL_REVISION(고정 commit SHA)이 필요합니다.",
+        );
+      }
+      if (!full.workerToken) {
+        throw new EmbeddingProviderError(
+          "EMBEDDING_PROVIDER_NOT_CONFIGURED",
+          "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_WORKER_TOKEN이 필요합니다.",
+        );
+      }
+    }
     return { ok: true, provider: config.provider, warning: LOCAL_E5_PRODUCTION_WARNING };
   }
   return { ok: true, provider: config.provider };
@@ -79,7 +93,10 @@ export function resolveEmbeddingProviderAdapterForDescriptor(
       workerBaseUrl: config.workerUrl,
       model: descriptor.model,
       dimension: descriptor.dimension,
-      modelRevision: config.modelRevision ?? null,
+      // The generation's pinned revision is authoritative; env is a fallback.
+      modelRevision: descriptor.modelRevision ?? config.modelRevision ?? null,
+      token: config.workerToken ?? null,
+      batchSize: config.batchSize,
     });
   }
   return createLocalHashEmbeddingAdapter(descriptor.dimension, descriptor.model);
@@ -100,6 +117,8 @@ export function resolveEmbeddingProviderAdapter(
       model: config.model,
       dimension: config.dimension,
       modelRevision: config.modelRevision ?? null,
+      token: config.workerToken ?? null,
+      batchSize: config.batchSize,
     });
   }
   return createLocalHashEmbeddingAdapter(config.dimension, config.model);

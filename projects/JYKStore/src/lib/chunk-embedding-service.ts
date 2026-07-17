@@ -376,6 +376,11 @@ export async function rebuildPackEmbeddings(input: {
         texts: toEmbed.map((item) => buildEmbeddingText(item.chunk, descriptor.provider)),
       });
     } catch (error) {
+      // Token-limit is a content problem — propagate the typed error so the pipeline can
+      // mark the generation FAILED with EMBEDDING_TOKEN_LIMIT_EXCEEDED (not a transient 502).
+      if (isEmbeddingProviderError(error) && error.code === "EMBEDDING_TOKEN_LIMIT_EXCEEDED") {
+        throw error;
+      }
       if (isEmbeddingProviderError(error)) {
         throw new PayloadServiceError("INCOMPLETE", error.message, 502);
       }

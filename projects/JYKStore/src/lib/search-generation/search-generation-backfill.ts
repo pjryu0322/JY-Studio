@@ -7,6 +7,7 @@ import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowle
 import { DOCLING_RETRIEVAL_CHUNK_TYPE } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { computeChunkContentHash } from "@/lib/chunk-embedding-service";
 import { prisma } from "@/lib/prisma";
+import { LEGACY_MODEL_REVISION } from "@/lib/embedding/e5-embedding-constants";
 import { computeSearchGenerationFingerprint } from "@/lib/search-generation/search-generation-fingerprint";
 import { defaultLocalEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
 
@@ -316,6 +317,8 @@ export async function backfillSearchGenerations(
         ? {
             embeddingProvider: embeddings[0].provider,
             embeddingModel: embeddings[0].model,
+            // Legacy embeddings predate revision pinning — record explicit compatibility value.
+            embeddingModelRevision: LEGACY_MODEL_REVISION,
             embeddingDimension: embeddings[0].dimension,
             distanceMetric: defaultLocalEmbeddingDescriptor().distanceMetric,
           }

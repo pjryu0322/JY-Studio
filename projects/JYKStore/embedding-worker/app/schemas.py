@@ -9,7 +9,20 @@ class EmbedRequest(BaseModel):
     normalize: bool = True
 
 
+class ReadyResponse(BaseModel):
+    ready: bool
+    backend: str
+    stub: bool
+    model: str
+    revision: str
+    dimension: int
+    maxSequenceTokens: int
+    normalized: bool
+    device: str
+
+
 class EmbedResponse(BaseModel):
     model: str
+    revision: str
     dimension: int
     vectors: list[list[float]]

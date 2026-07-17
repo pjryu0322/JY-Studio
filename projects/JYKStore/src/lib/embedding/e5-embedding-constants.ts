@@ -13,3 +13,15 @@ export const E5_DISTANCE_METRIC = "cosine" as const;
 export const E5_QUERY_PREFIX = "query: " as const;
 
 export const E5_PASSAGE_PREFIX = "passage: " as const;
+
+/** Worker backend identifier expected for operational (non-stub) embedding. */
+export const E5_LIVE_BACKEND = "sentence-transformers" as const;
+
+/** All operational vectors are L2-normalized (cosine similarity). */
+export const E5_NORMALIZED = true as const;
+
+/** CPU-only execution. */
+export const E5_DEVICE = "cpu" as const;
+
+/** Explicit compatibility value for legacy generations without a pinned revision. */
+export const LEGACY_MODEL_REVISION = "legacy-unknown" as const;

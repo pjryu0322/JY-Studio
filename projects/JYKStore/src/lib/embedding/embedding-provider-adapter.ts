@@ -8,6 +8,8 @@ export type EmbeddingDescriptor = {
   provider: string;
   model: string;
   dimension: number;
+  /** Pinned model revision (Hugging Face commit SHA) for local-e5; optional for local-hash. */
+  modelRevision?: string | null;
 };
 
 export type EmbeddingRequest = {

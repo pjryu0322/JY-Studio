@@ -140,6 +140,8 @@ export type DoclingBundleReviewSubmitSnapshot = {
   chunkGenerationId?: string | null;
   embeddingProvider?: string | null;
   embeddingModel?: string | null;
+  /** P5 hardening: pinned model revision (commit SHA) or "legacy-unknown". */
+  embeddingModelRevision?: string | null;
   embeddingDimension?: number | null;
   distanceMetric?: string | null;
   retrievalEvaluationStatus?: string | null;
@@ -224,6 +226,7 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   chunkGenerationId?: string | null;
   embeddingProvider?: string | null;
   embeddingModel?: string | null;
+  embeddingModelRevision?: string | null;
   embeddingDimension?: number | null;
   distanceMetric?: string | null;
   retrievalEvaluationStatus?: string | null;
@@ -271,6 +274,7 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     chunkGenerationId: input.chunkGenerationId ?? null,
     embeddingProvider: input.embeddingProvider ?? null,
     embeddingModel: input.embeddingModel ?? null,
+    embeddingModelRevision: input.embeddingModelRevision ?? null,
     embeddingDimension: input.embeddingDimension ?? null,
     distanceMetric: input.distanceMetric ?? null,
     retrievalEvaluationStatus: input.retrievalEvaluationStatus ?? null,
@@ -418,6 +422,8 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     embeddingProvider:
       typeof raw.embeddingProvider === "string" ? raw.embeddingProvider : null,
     embeddingModel: typeof raw.embeddingModel === "string" ? raw.embeddingModel : null,
+    embeddingModelRevision:
+      typeof raw.embeddingModelRevision === "string" ? raw.embeddingModelRevision : null,
     embeddingDimension:
       typeof raw.embeddingDimension === "number" ? raw.embeddingDimension : null,
     distanceMetric: typeof raw.distanceMetric === "string" ? raw.distanceMetric : null,

@@ -12,14 +12,31 @@ if TYPE_CHECKING:
 
 _lock = threading.Lock()
 _model: "SentenceTransformer | None" = None
+_tokenizer = None
 _ready = False
+_device = "cpu"
 
 
 def estimate_token_count(text: str) -> int:
+    """Fast pre-check only (chars/4). Not authoritative — the real tokenizer decides."""
     trimmed = text.strip()
     if not trimmed:
         return 0
     return math.ceil(len(trimmed) / 4)
+
+
+def count_tokens(text: str) -> int:
+    """Authoritative token count. Uses the model tokenizer in live mode."""
+    if settings.stub_mode or _tokenizer is None:
+        return estimate_token_count(text)
+    encoded = _tokenizer(
+        text,
+        truncation=False,
+        add_special_tokens=True,
+        return_attention_mask=False,
+        return_token_type_ids=False,
+    )
+    return len(encoded["input_ids"])
 
 
 def assert_query_prefix(text: str) -> None:
@@ -30,14 +47,6 @@ def assert_query_prefix(text: str) -> None:
 def assert_passage_prefix(text: str) -> None:
     if not text.strip().startswith("passage:"):
         raise ValueError("E5 passage text must start with 'passage:'")
-
-
-def assert_within_token_limit(text: str, context: str) -> None:
-    tokens = estimate_token_count(text)
-    if tokens > settings.max_sequence_tokens:
-        raise ValueError(
-            f"{context}: input exceeds {settings.max_sequence_tokens} token limit (estimate {tokens})"
-        )
 
 
 def _l2_normalize(vector: list[float]) -> list[float]:
@@ -60,13 +69,11 @@ def _stub_vector(text: str) -> list[float]:
             raw = int.from_bytes(chunk, "big", signed=False)
             values.append((raw % 10_000) / 10_000.0 - 0.5)
         digest = hashlib.sha256(digest).digest()
-    if settings.normalize:
-        return _l2_normalize(values)
-    return values
+    return _l2_normalize(values)
 
 
 def _load_model() -> None:
-    global _model, _ready
+    global _model, _tokenizer, _ready
     with _lock:
         if _ready:
             return
@@ -75,12 +82,19 @@ def _load_model() -> None:
             return
         from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(settings.model_id, device="cpu")
+        revision = settings.model_revision or None
+        _model = SentenceTransformer(settings.model_id, revision=revision, device="cpu")
+        # Tokenizer must use the same revision as the model.
+        _tokenizer = _model.tokenizer
         _ready = True
 
 
 def is_ready() -> bool:
     return _ready
+
+
+def device() -> str:
+    return _device
 
 
 def warmup() -> None:
@@ -92,30 +106,43 @@ def warmup() -> None:
         _model.encode(["passage: warmup"], normalize_embeddings=settings.normalize)
 
 
+class TokenLimitError(ValueError):
+    def __init__(self, index: int, token_count: int, max_tokens: int) -> None:
+        self.index = index
+        self.token_count = token_count
+        self.max_tokens = max_tokens
+        super().__init__(
+            f"input[{index}] token count {token_count} exceeds {max_tokens}"
+        )
+
+
 def embed_texts(texts: list[str], *, kind: str, normalize: bool) -> list[list[float]]:
     _load_model()
     if not is_ready():
         raise RuntimeError("model not ready")
+    if not normalize:
+        raise ValueError("normalize=true is required")
 
-    for text in texts:
+    for index, text in enumerate(texts):
         if not text or not text.strip():
-            raise ValueError("empty text is not allowed")
+            raise ValueError(f"input[{index}] empty text is not allowed")
         if kind == "query":
             assert_query_prefix(text)
         else:
             assert_passage_prefix(text)
-        assert_within_token_limit(text, kind)
+        tokens = count_tokens(text)
+        if tokens > settings.max_sequence_tokens:
+            raise TokenLimitError(index, tokens, settings.max_sequence_tokens)
 
     if settings.stub_mode:
-        vectors = [_stub_vector(t) for t in texts]
-        if normalize and not settings.normalize:
-            return vectors
-        if normalize:
-            return [_l2_normalize(v) for v in vectors]
-        return vectors
+        return [_stub_vector(t) for t in texts]
 
     assert _model is not None
-    encoded = _model.encode(texts, normalize_embeddings=normalize, batch_size=min(16, len(texts)))
+    encoded = _model.encode(
+        texts,
+        normalize_embeddings=True,
+        batch_size=min(settings.max_batch_size, len(texts)),
+    )
     vectors: list[list[float]] = []
     for row in encoded:
         vec = [float(x) for x in row]

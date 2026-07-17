@@ -1001,6 +1001,7 @@ model SearchIndexGeneration {
 
   embeddingProvider    String
   embeddingModel       String
+  embeddingModelRevision String @default("legacy-unknown")
   embeddingDimension   Int
   distanceMetric       String
 
