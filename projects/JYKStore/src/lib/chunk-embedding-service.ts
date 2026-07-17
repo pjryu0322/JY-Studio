@@ -7,10 +7,18 @@ import {
   type EmbeddingRebuildResultDto,
   type PackEmbeddingSummaryDto,
 } from "@/lib/embedding-dto";
-import { embedText } from "@/lib/embedding-service";
+import type { EmbeddingDescriptor, EmbeddingProviderAdapter } from "@/lib/embedding/embedding-provider-adapter";
+import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
+import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import {
+  assertEmbeddingProviderProductionReady,
+  resolveEmbeddingProviderAdapter,
+  resolveEmbeddingProviderAdapterForDescriptor,
+} from "@/lib/embedding/embedding-provider-registry";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { prisma } from "@/lib/prisma";
 import { loadSearchGeneration } from "@/lib/search-generation/search-generation-service";
+import { upsertSearchIndexVector } from "@/lib/search-vector/search-vector-store";
 
 const PROVIDER = DEFAULT_EMBEDDING_PROVIDER;
 const MODEL = DEFAULT_EMBEDDING_MODEL;
@@ -161,8 +169,9 @@ export async function rebuildPackEmbeddings(input: {
   const searchIndexGenerationId =
     input.searchIndexGenerationId ?? input.indexGenerationId ?? null;
 
+  let generation: Awaited<ReturnType<typeof loadSearchGeneration>> = null;
   if (searchIndexGenerationId) {
-    const generation = await loadSearchGeneration(searchIndexGenerationId);
+    generation = await loadSearchGeneration(searchIndexGenerationId);
     if (!generation) {
       throw new PayloadServiceError(
         "SEARCH_GENERATION_NOT_FOUND",
@@ -273,12 +282,41 @@ export async function rebuildPackEmbeddings(input: {
     return true;
   });
 
-  for (const chunk of filtered) {
-    result.processedCount += 1;
-    const contentHash = computeChunkContentHash(chunk as KnowledgeChunk);
+  // P5: resolve the async embedding provider adapter. When embedding for a search
+  // generation, the adapter MUST match the generation's declared descriptor
+  // (embeddingProvider/Model/Dimension) — never the ambient env config — so
+  // assertSearchGenerationCounts' descriptor check keeps holding.
+  const config = readEmbeddingProviderConfig();
+  let descriptor: EmbeddingDescriptor;
+  let adapter: EmbeddingProviderAdapter;
+  if (generation) {
+    descriptor = {
+      provider: generation.embeddingProvider,
+      model: generation.embeddingModel,
+      dimension: generation.embeddingDimension,
+    };
+    assertEmbeddingProviderProductionReady({ provider: descriptor.provider });
+    adapter = resolveEmbeddingProviderAdapterForDescriptor(descriptor);
+  } else {
+    assertEmbeddingProviderProductionReady(config);
+    adapter = resolveEmbeddingProviderAdapter(config);
+    descriptor = adapter.resolveDescriptor();
+  }
 
+  type ChunkPlanItem = {
+    chunk: (typeof filtered)[number];
+    contentHash: string;
+    existing: { id: string; contentHash: string; searchIndexGenerationId: string | null } | null;
+    action: "skip-unchanged" | "embed";
+  };
+
+  const plan: ChunkPlanItem[] = [];
+  for (const chunk of filtered) {
+    const contentHash = computeChunkContentHash(chunk as KnowledgeChunk);
     const existing = await prisma.knowledgeChunkEmbedding.findUnique({
-      where: { chunkId_provider_model: { chunkId: chunk.id, provider: PROVIDER, model: MODEL } },
+      where: {
+        chunkId_provider_model: { chunkId: chunk.id, provider: descriptor.provider, model: descriptor.model },
+      },
       select: { id: true, contentHash: true, searchIndexGenerationId: true },
     });
 
@@ -294,8 +332,40 @@ export async function rebuildPackEmbeddings(input: {
       );
     }
 
-    if (existing && existing.contentHash === contentHash && !input.force) {
-      if (searchIndexGenerationId && !existing.searchIndexGenerationId) {
+    const unchanged = existing && existing.contentHash === contentHash && !input.force;
+    plan.push({ chunk, contentHash, existing, action: unchanged ? "skip-unchanged" : "embed" });
+  }
+
+  const toEmbed = plan.filter((item) => item.action === "embed");
+  let batchResult: { vectors: number[][] } = { vectors: [] };
+  if (toEmbed.length > 0) {
+    try {
+      batchResult = await adapter.embedBatch({
+        texts: toEmbed.map((item) => buildEmbeddingText(item.chunk)),
+      });
+    } catch (error) {
+      if (isEmbeddingProviderError(error)) {
+        throw new PayloadServiceError("INCOMPLETE", error.message, 502);
+      }
+      throw error;
+    }
+    if (batchResult.vectors.length !== toEmbed.length) {
+      throw new PayloadServiceError(
+        "INCOMPLETE",
+        "Embedding batch 결과 개수가 요청한 chunk 수와 일치하지 않습니다.",
+        502,
+      );
+    }
+  }
+
+  let vectorSyncWarning: string | undefined;
+  let embedIndex = 0;
+  for (const item of plan) {
+    result.processedCount += 1;
+    const { chunk, contentHash, existing } = item;
+
+    if (item.action === "skip-unchanged") {
+      if (searchIndexGenerationId && existing && !existing.searchIndexGenerationId) {
         await prisma.knowledgeChunkEmbedding.update({
           where: { id: existing.id },
           data: { searchIndexGenerationId },
@@ -306,15 +376,16 @@ export async function rebuildPackEmbeddings(input: {
       continue;
     }
 
-    const embedding = embedText({ text: buildEmbeddingText(chunk), dimension: DIMENSION });
-    const vector = embedding.vector as unknown as Prisma.InputJsonValue;
+    const vector = batchResult.vectors[embedIndex]!;
+    embedIndex += 1;
+    const vectorJson = vector as unknown as Prisma.InputJsonValue;
 
     if (existing) {
       await prisma.knowledgeChunkEmbedding.update({
         where: { id: existing.id },
         data: {
-          dimension: embedding.dimension,
-          vector,
+          dimension: descriptor.dimension,
+          vector: vectorJson,
           contentHash,
           ...(searchIndexGenerationId ? { searchIndexGenerationId } : {}),
         },
@@ -325,18 +396,33 @@ export async function rebuildPackEmbeddings(input: {
         data: {
           chunkId: chunk.id,
           versionId,
-          provider: PROVIDER,
-          model: MODEL,
-          dimension: embedding.dimension,
-          vector,
+          provider: descriptor.provider,
+          model: descriptor.model,
+          dimension: descriptor.dimension,
+          vector: vectorJson,
           contentHash,
           ...(searchIndexGenerationId ? { searchIndexGenerationId } : {}),
         },
       });
       result.createdCount += 1;
     }
+
+    if (searchIndexGenerationId) {
+      const write = await upsertSearchIndexVector({
+        searchIndexGenerationId,
+        chunkId: chunk.id,
+        provider: descriptor.provider,
+        model: descriptor.model,
+        dimension: descriptor.dimension,
+        contentHash,
+        vector,
+      });
+      if (write.skipped) vectorSyncWarning = write.reason;
+    }
+
     await input.onChunkProcessed?.(result.processedCount);
   }
 
+  if (vectorSyncWarning) result.vectorSyncWarning = vectorSyncWarning;
   return result;
 }

@@ -948,6 +948,31 @@ model KnowledgeChunkEmbedding {
   @@index([searchIndexGenerationId])
 }
 
+/// P5: pgvector-backed vector store, dual-written alongside KnowledgeChunkEmbedding.vector (JSON).
+/// `vector` is declared Unsupported("vector") — Prisma cannot type pgvector natively, so all
+/// reads/writes go through raw SQL in src/lib/search-vector/ (search-vector-store.ts /
+/// search-vector-query.ts). ALWAYS filtered by searchIndexGenerationId (never cross-generation).
+/// See prisma/migrations/20260717160000_add_pgvector_search_runtime for the pgvector extension /
+/// HNSW index bootstrap, which degrades gracefully when pgvector is unavailable (dev/test only).
+model SearchIndexVector {
+  id                      String   @id @default(cuid())
+  searchIndexGenerationId String
+  chunkId                 String
+  provider                String
+  model                   String
+  dimension               Int
+  contentHash             String
+  vector                  Unsupported("vector")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  searchIndexGeneration SearchIndexGeneration @relation(fields: [searchIndexGenerationId], references: [id], onDelete: Cascade)
+
+  @@unique([searchIndexGenerationId, chunkId, provider, model])
+  @@index([searchIndexGenerationId])
+  @@index([chunkId])
+}
+
 enum SearchIndexGenerationStatus {
   PENDING
   EMBEDDING
@@ -1004,6 +1029,7 @@ model SearchIndexGeneration {
   normalizedDocument NormalizedDocument   @relation(fields: [normalizedDocumentId], references: [id], onDelete: Restrict)
   embeddings         KnowledgeChunkEmbedding[]
   validationRuns     ServiceValidationRun[]
+  searchIndexVectors SearchIndexVector[]
 
   @@index([packId])
   @@index([versionId])
