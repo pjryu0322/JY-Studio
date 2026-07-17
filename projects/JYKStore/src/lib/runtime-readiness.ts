@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
+import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import { assertEmbeddingProviderProductionReady } from "@/lib/embedding/embedding-provider-registry";
 import { evaluateRuntimeEnv } from "@/lib/runtime-env";
 import {
   JYKSTORE_SERVICE_NAME,
@@ -38,6 +41,13 @@ export type RuntimeReadiness = {
       configured: boolean;
       bucketOk: boolean;
       errors: string[];
+    };
+    /** P5: embedding provider production-safety (blocks local-hash in production). */
+    embeddingProvider: {
+      ok: boolean;
+      provider: string;
+      warning?: string;
+      error?: string;
     };
   };
   configured: {
@@ -88,6 +98,23 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
   const { probePayloadObjectStorage } = await import("@/lib/distribution/s3-payload-storage");
   const payloadStorage = await probePayloadObjectStorage();
 
+  const embeddingProviderConfig = readEmbeddingProviderConfig();
+  let embeddingProvider: RuntimeReadiness["checks"]["embeddingProvider"];
+  try {
+    const readiness = assertEmbeddingProviderProductionReady(embeddingProviderConfig);
+    embeddingProvider = {
+      ok: readiness.ok,
+      provider: embeddingProviderConfig.provider,
+      ...(readiness.warning ? { warning: readiness.warning } : {}),
+    };
+  } catch (error) {
+    embeddingProvider = {
+      ok: false,
+      provider: embeddingProviderConfig.provider,
+      error: isEmbeddingProviderError(error) ? error.message : "embedding provider is not production-ready.",
+    };
+  }
+
   const missingRequired = missingRequiredFromEnv(envCheck);
   const envOk = envCheck.ok;
 
@@ -103,7 +130,7 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
       isTruthy(process.env.JYKSTORE_TRUST_PROXY),
   };
 
-  const ok = envOk && database.ok && payloadStorage.ok;
+  const ok = envOk && database.ok && payloadStorage.ok && embeddingProvider.ok;
 
   return {
     ok,
@@ -123,6 +150,7 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
         bucketOk: payloadStorage.bucketOk,
         errors: payloadStorage.errors,
       },
+      embeddingProvider,
     },
     configured,
   };

@@ -46,4 +46,6 @@ export type EmbeddingRebuildResultDto = {
   createdCount: number;
   updatedCount: number;
   skippedCount: number;
+  /** P5: set when the pgvector dual-write was skipped (dev/test JSON-only fallback). */
+  vectorSyncWarning?: string;
 };
