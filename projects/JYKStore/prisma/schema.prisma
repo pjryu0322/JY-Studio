@@ -282,6 +282,7 @@ model KnowledgePack {
   doclingImportBundles     DoclingImportBundle[]
   knowledgePackFiles        KnowledgePackFile[]
   normalizedDocuments      NormalizedDocument[]
+  searchIndexGenerations   SearchIndexGeneration[]
 
   @@index([status])
   @@index([categoryId])
@@ -353,6 +354,7 @@ model KnowledgePackVersion {
   doclingImportBundles       DoclingImportBundle[]
   knowledgePackFiles          KnowledgePackFile[]
   normalizedDocuments        NormalizedDocument[]
+  searchIndexGenerations     SearchIndexGeneration[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -471,6 +473,8 @@ model ServiceValidationRun {
   status                ServiceValidationStatus  @default(PENDING)
   pipelineRunId         String?
   indexGenerationId     String?
+  /// P4: explicit search index generation FK (dual-write with indexGenerationId).
+  searchIndexGenerationId String?
   normalizedDocumentId  String?
   fingerprint           String?
   /// Stable hash of retrieval snapshot ranks (API/MCP). Null for DOWNLOAD.
@@ -493,6 +497,7 @@ model ServiceValidationRun {
 
   pack           KnowledgePack                          @relation(fields: [packId], references: [packId], onDelete: Cascade)
   version        KnowledgePackVersion                   @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  searchIndexGeneration SearchIndexGeneration?           @relation(fields: [searchIndexGenerationId], references: [id], onDelete: SetNull)
   resultItems    ServiceValidationResultItem[]
   confirmation   ServiceValidationProviderConfirmation?
   downloadTest   ServiceValidationDownloadTest?
@@ -503,6 +508,7 @@ model ServiceValidationRun {
   @@index([packId, channel, status])
   @@index([versionId, status])
   @@index([resultFingerprint])
+  @@index([searchIndexGenerationId])
 }
 
 model ServiceValidationResultItem {
@@ -720,6 +726,7 @@ model NormalizedDocument {
   bundle  DoclingImportBundle @relation(fields: [bundleId], references: [id], onDelete: Restrict)
   pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  searchIndexGenerations SearchIndexGeneration[]
 
   @@index([bundleId, isActive])
   @@index([packId, versionId])
@@ -899,6 +906,8 @@ model KnowledgeChunk {
   section          String?
   tags             String[]
   metadata         Json?
+  /// P4: explicit chunk generation column (dual-write with metadata.indexGenerationId).
+  chunkGenerationId String?
   sortOrder        Int      @default(0)
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
@@ -911,6 +920,7 @@ model KnowledgeChunk {
   @@index([versionId])
   @@index([chunkType])
   @@index([isActive])
+  @@index([chunkGenerationId])
 }
 
 model KnowledgeChunkEmbedding {
@@ -922,16 +932,88 @@ model KnowledgeChunkEmbedding {
   dimension   Int
   vector      Json
   contentHash String
+  /// P4: search index generation this embedding belongs to (nullable in Migration A).
+  searchIndexGenerationId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   chunk   KnowledgeChunk       @relation(fields: [chunkId], references: [id], onDelete: Cascade)
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  searchIndexGeneration SearchIndexGeneration? @relation(fields: [searchIndexGenerationId], references: [id], onDelete: SetNull)
 
   @@unique([chunkId, provider, model])
   @@index([versionId])
   @@index([provider, model])
   @@index([contentHash])
+  @@index([searchIndexGenerationId])
+}
+
+enum SearchIndexGenerationStatus {
+  PENDING
+  EMBEDDING
+  INDEXING
+  READY
+  FAILED
+  STALE
+  PROMOTED
+  RETIRED
+}
+
+enum SearchIndexGenerationScope {
+  DRAFT
+  PRODUCTION
+}
+
+/// P4: first-class search index generation. `id` accepts historical indexGenerationId values.
+model SearchIndexGeneration {
+  id                   String @id @default(cuid())
+  packId               String
+  versionId            String
+  pipelineRunId        String
+  normalizedDocumentId String
+  chunkGenerationId    String
+  fingerprint          String
+
+  embeddingProvider    String
+  embeddingModel       String
+  embeddingDimension   Int
+  distanceMetric       String
+
+  chunkCount           Int    @default(0)
+  embeddedCount        Int    @default(0)
+  failedCount          Int    @default(0)
+
+  status               SearchIndexGenerationStatus
+  scope                SearchIndexGenerationScope  @default(DRAFT)
+
+  generationFingerprint String
+  attempt              Int     @default(0)
+  failureCode          String?
+  failureMessage       String?
+
+  createdAt            DateTime  @default(now())
+  startedAt            DateTime?
+  completedAt          DateTime?
+  promotedAt           DateTime?
+  staleAt              DateTime?
+  retiredAt            DateTime?
+  updatedAt            DateTime  @updatedAt
+
+  pack               KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version            KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  normalizedDocument NormalizedDocument   @relation(fields: [normalizedDocumentId], references: [id], onDelete: Restrict)
+  embeddings         KnowledgeChunkEmbedding[]
+  validationRuns     ServiceValidationRun[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([normalizedDocumentId])
+  @@index([pipelineRunId])
+  @@index([chunkGenerationId])
+  @@index([status])
+  @@index([scope])
+  @@index([generationFingerprint])
+  @@index([versionId, scope, status])
 }
 
 model KnowledgeGraphNode {
