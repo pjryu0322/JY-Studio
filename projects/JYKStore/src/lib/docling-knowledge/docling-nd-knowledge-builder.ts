@@ -777,7 +777,7 @@ export async function activateDraftIndexGeneration(input: {
   versionId: string;
   indexGenerationId: string;
 }): Promise<{ activatedChunkCount: number; retiredDraftCount: number }> {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const priorDrafts = await tx.knowledgeChunk.findMany({
       where: {
         versionId: input.versionId,
@@ -848,6 +848,17 @@ export async function activateDraftIndexGeneration(input: {
       retiredDraftCount: toRetire.length,
     };
   });
+
+  // P4: mirror activation into the SearchIndexGeneration entity (best-effort).
+  const { syncSearchGenerationReady } = await import(
+    "@/lib/search-generation/search-generation-pipeline-sync"
+  );
+  await syncSearchGenerationReady({
+    versionId: input.versionId,
+    indexGenerationId: input.indexGenerationId,
+  });
+
+  return result;
 }
 
 /** Mark a failed building generation without touching other generations. */
@@ -878,6 +889,15 @@ export async function failDraftIndexGeneration(input: {
       },
     });
   }
+
+  // P4: mirror failure into the SearchIndexGeneration entity (best-effort).
+  const { syncSearchGenerationFailed } = await import(
+    "@/lib/search-generation/search-generation-pipeline-sync"
+  );
+  await syncSearchGenerationFailed({
+    versionId: input.versionId,
+    indexGenerationId: input.indexGenerationId,
+  });
 }
 
 /** Promote a specific DRAFT generation to PRODUCTION (admin approve). */
@@ -968,6 +988,17 @@ export async function promoteDraftIndexToProduction(input: {
     });
     if (isRetrieval) n += 1;
   }
+
+  // P4: promote the matching SearchIndexGeneration inside the same transaction (§36).
+  const { syncSearchGenerationPromotion } = await import(
+    "@/lib/search-generation/search-generation-pipeline-sync"
+  );
+  await syncSearchGenerationPromotion({
+    versionId: input.versionId,
+    indexGenerationId: input.indexGenerationId,
+    tx: db as Prisma.TransactionClient,
+  });
+
   return n;
 }
 

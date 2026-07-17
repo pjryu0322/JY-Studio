@@ -298,6 +298,12 @@ export async function commitDistributionPackForReview(
     throw error;
   }
 
+  // §35 Bind the search generation into the snapshot when the entity exists.
+  const searchGenerationRow = await prisma.searchIndexGeneration.findUnique({
+    where: { id: passBinding.indexGenerationId },
+    select: { id: true },
+  });
+
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: version.id,
     doclingBundleId: doclingBundle.id,
@@ -364,6 +370,7 @@ export async function commitDistributionPackForReview(
     language: packLanguage,
     pipelineRunId: passRun.id,
     indexGenerationId: passBinding.indexGenerationId,
+    searchIndexGenerationId: searchGenerationRow?.id ?? null,
     retrievalEvaluationStatus: "PASS",
     normalizedDocumentFingerprint: nd.fingerprint,
   });

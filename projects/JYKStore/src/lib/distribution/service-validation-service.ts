@@ -967,6 +967,12 @@ export async function runServiceChannelValidation(input: {
         );
       }
     }
+    // §34 Dual-write the search generation FK when the entity exists (nullable FK
+    // stays null for legacy packs until backfill/pipeline creates the generation).
+    const generationRow = await tx.searchIndexGeneration.findUnique({
+      where: { id: binding.indexGenerationId },
+      select: { id: true },
+    });
     const created = await tx.serviceValidationRun.create({
       data: {
         packId: pack.packId,
@@ -975,6 +981,7 @@ export async function runServiceChannelValidation(input: {
         status,
         pipelineRunId: latest.id,
         indexGenerationId: binding.indexGenerationId,
+        searchIndexGenerationId: generationRow?.id ?? null,
         normalizedDocumentId: binding.normalizedDocumentId,
         fingerprint: binding.fingerprint,
         resultFingerprint,
