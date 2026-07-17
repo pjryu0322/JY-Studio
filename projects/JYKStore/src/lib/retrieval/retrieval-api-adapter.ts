@@ -1,7 +1,13 @@
 import type { RetrievalFilters, RetrievalMode, RetrievalResponseDto } from "@/lib/retrieval-dto";
 import { loadPublicRetrievalPack } from "@/lib/retrieval/retrieval-pack-store";
 import { assertServiceChannelEnabled } from "@/lib/distribution/service-channel-policy";
+import { isPayloadServiceError } from "@/lib/distribution/payload-errors";
+import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
 import { prisma } from "@/lib/prisma";
+import {
+  resolvePublicRetrievalGenerationScope,
+  resolveProviderValidationGenerationScope,
+} from "@/lib/retrieval/retrieval-generation-scope";
 import { retrieveContextsForVersion } from "@/lib/retrieval-service";
 
 export type RetrievalExecutionMode = "PUBLIC" | "PROVIDER_VALIDATION";
@@ -68,18 +74,28 @@ export async function executeRetrievalApiRequest(input: {
         httpStatus: 409,
       };
     }
-    const data = await retrieveContextsForVersion({
-      packId: packContext.packId,
-      versionId: packContext.versionId,
-      query: input.query,
-      filters,
-      topK: input.topK,
-      includeMetadata,
-      retrievalMode: input.retrievalMode,
-      requestId: input.requestId,
-      excludeDraftScope: true,
-    });
-    return { ok: true, data, latencyMs: Date.now() - started };
+    try {
+      // P5: PUBLIC/MCP traffic is routed to the PRODUCTION + PROMOTED generation
+      // when this pack has adopted the search-generation pipeline; legacy packs
+      // (no SearchIndexGeneration rows) are unaffected.
+      const scope = await resolvePublicRetrievalGenerationScope(packContext.versionId);
+      const data = await retrieveContextsForVersion({
+        packId: packContext.packId,
+        versionId: packContext.versionId,
+        query: input.query,
+        filters,
+        topK: input.topK,
+        includeMetadata,
+        retrievalMode: input.retrievalMode,
+        requestId: input.requestId,
+        excludeDraftScope: true,
+        indexGenerationId: scope.indexGenerationId,
+        searchIndexGenerationId: scope.searchIndexGenerationId,
+      });
+      return { ok: true, data, latencyMs: Date.now() - started };
+    } catch (error) {
+      return mapRetrievalRuntimeError(error);
+    }
   }
 
   // PROVIDER_VALIDATION — Draft generation only
@@ -117,19 +133,47 @@ export async function executeRetrievalApiRequest(input: {
     };
   }
 
-  const data = await retrieveContextsForVersion({
-    packId: input.knowledgePackId,
-    versionId: input.versionId,
-    query: input.query,
-    filters,
-    topK: input.topK,
-    includeMetadata,
-    retrievalMode: input.retrievalMode,
-    requestId: input.requestId,
-    indexGenerationId: input.indexGenerationId,
-    excludeDraftScope: false,
-  });
-  return { ok: true, data, latencyMs: Date.now() - started };
+  try {
+    // P5: PROVIDER_VALIDATION traffic is scoped to the DRAFT + READY generation
+    // matching the caller-resolved binding, when one exists (legacy bindings without
+    // a SearchIndexGeneration row keep the pre-P5 metadata-based filter).
+    const scope = await resolveProviderValidationGenerationScope({
+      versionId: input.versionId,
+      indexGenerationId: input.indexGenerationId,
+    });
+    const data = await retrieveContextsForVersion({
+      packId: input.knowledgePackId,
+      versionId: input.versionId,
+      query: input.query,
+      filters,
+      topK: input.topK,
+      includeMetadata,
+      retrievalMode: input.retrievalMode,
+      requestId: input.requestId,
+      indexGenerationId: scope.indexGenerationId ?? input.indexGenerationId,
+      excludeDraftScope: false,
+      searchIndexGenerationId: scope.searchIndexGenerationId,
+    });
+    return { ok: true, data, latencyMs: Date.now() - started };
+  } catch (error) {
+    return mapRetrievalRuntimeError(error);
+  }
+}
+
+/** Maps generation-resolution / pgvector runtime errors to a safe ExecuteRetrievalApiResult. */
+function mapRetrievalRuntimeError(error: unknown): ExecuteRetrievalApiResult {
+  if (isPayloadServiceError(error)) {
+    return { ok: false, code: error.code, message: error.message, httpStatus: error.httpStatus };
+  }
+  if (isEmbeddingProviderError(error)) {
+    return {
+      ok: false,
+      code: error.code,
+      message: error.message,
+      httpStatus: error.code === "SEARCH_RUNTIME_UNAVAILABLE" ? 503 : 502,
+    };
+  }
+  throw error;
 }
 
 /** Resolve provenance from RetrievalContextDto (references / metadata — not a top-level field). */

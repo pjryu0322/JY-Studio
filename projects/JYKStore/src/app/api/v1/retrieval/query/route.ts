@@ -142,6 +142,15 @@ export async function POST(request: NextRequest) {
             { hint: "Runtime Index가 준비된 후 다시 시도하세요." },
           );
         }
+        if (result.code === "SEARCH_RUNTIME_UNAVAILABLE" || result.code === "SEARCH_GENERATION_NOT_READY") {
+          const httpStatus = result.httpStatus ?? 503;
+          await recordPublicApiUsage(context, {
+            statusCode: httpStatus,
+            query: safeQuery,
+            metadata: { reason: result.code, packId: context.packId },
+          });
+          return apiErrorResponse(requestId, result.code, result.message, httpStatus);
+        }
         await recordPublicApiUsage(context, {
           statusCode: 404,
           query: safeQuery,

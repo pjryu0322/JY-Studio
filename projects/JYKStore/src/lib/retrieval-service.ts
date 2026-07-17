@@ -30,7 +30,8 @@ export type RetrieveContextsResult =
   | { ok: false; code: "PACK_NOT_FOUND" }
   | { ok: false; code: "PACK_RETRIEVAL_NOT_READY" }
   | { ok: false; code: "SERVICE_CHANNEL_DISABLED"; message: string }
-  | { ok: false; code: "SERVICE_ENDED"; message: string };
+  | { ok: false; code: "SERVICE_ENDED"; message: string }
+  | { ok: false; code: "SEARCH_RUNTIME_UNAVAILABLE"; message: string };
 
 export async function retrieveContexts(input: {
   knowledgePackId: string;
@@ -67,6 +68,9 @@ export async function retrieveContexts(input: {
         message: result.message,
       };
     }
+    if (result.code === "SEARCH_RUNTIME_UNAVAILABLE" || result.code === "SEARCH_GENERATION_NOT_READY") {
+      return { ok: false, code: "SEARCH_RUNTIME_UNAVAILABLE", message: result.message };
+    }
     return { ok: false, code: "PACK_NOT_FOUND" };
   }
   return { ok: true, data: result.data };
@@ -83,6 +87,8 @@ export async function retrieveContextsForVersion(input: {
   requestId: string;
   indexGenerationId?: string | null;
   excludeDraftScope?: boolean;
+  /** P5: search generation to scope candidate/vector lookups to, when resolved. */
+  searchIndexGenerationId?: string | null;
 }): Promise<RetrievalResponseDto> {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
@@ -109,7 +115,11 @@ export async function retrieveContextsForVersion(input: {
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
   if (useHybrid) {
-    const hybrid = await applyHybridVectorRanking({ scored, searchQuery });
+    const hybrid = await applyHybridVectorRanking({
+      scored,
+      searchQuery,
+      searchIndexGenerationId: input.searchIndexGenerationId,
+    });
     embeddingProvider = hybrid.embeddingProvider;
     embeddingModel = hybrid.embeddingModel;
   }
