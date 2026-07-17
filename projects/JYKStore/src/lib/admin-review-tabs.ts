@@ -7,6 +7,7 @@ import {
 import {
   ADMIN_REVIEW_TAB_PACKAGE,
   ADMIN_REVIEW_TAB_PROCESSING,
+  ADMIN_REVIEW_TAB_SERVICE_VALIDATION,
   ADMIN_REVIEW_TAB_SOURCES,
   ADMIN_REVIEW_TAB_WARNINGS,
 } from "@/lib/role-based-ux-copy";
@@ -18,6 +19,7 @@ export const ADMIN_REVIEW_EVIDENCE_TAB_IDS = [
   "warnings",
   "documents",
   "processing",
+  "serviceValidation",
 ] as const;
 
 export type AdminReviewEvidenceTabId =
@@ -94,6 +96,8 @@ export function adminReviewEvidenceTabLabel(
       return ADMIN_REVIEW_TAB_SOURCES;
     case "processing":
       return ADMIN_REVIEW_TAB_PROCESSING;
+    case "serviceValidation":
+      return ADMIN_REVIEW_TAB_SERVICE_VALIDATION;
   }
 }
 

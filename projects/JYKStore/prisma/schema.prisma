@@ -468,6 +468,8 @@ model ServiceValidationRun {
   indexGenerationId     String?
   normalizedDocumentId  String?
   fingerprint           String?
+  /// Stable hash of retrieval snapshot ranks (API/MCP). Null for DOWNLOAD.
+  resultFingerprint     String?
   testedAt              DateTime?
   testedByUserId        String?
   query                 String?
@@ -488,12 +490,14 @@ model ServiceValidationRun {
   version        KnowledgePackVersion                   @relation(fields: [versionId], references: [id], onDelete: Cascade)
   resultItems    ServiceValidationResultItem[]
   confirmation   ServiceValidationProviderConfirmation?
+  downloadTest   ServiceValidationDownloadTest?
 
   @@index([versionId, channel, createdAt])
   @@index([versionId, channel, status])
   @@index([packId, createdAt])
   @@index([packId, channel, status])
   @@index([versionId, status])
+  @@index([resultFingerprint])
 }
 
 model ServiceValidationResultItem {
@@ -542,6 +546,20 @@ model ServiceValidationProviderConfirmation {
 
   @@index([sharedConfirmationGroupId])
   @@index([confirmedByUserId])
+}
+
+model ServiceValidationDownloadTest {
+  id             String   @id @default(cuid())
+  runId          String   @unique
+  fileId         String
+  testedByUserId String
+  testedAt       DateTime @default(now())
+  responseReady  Boolean  @default(false)
+
+  run ServiceValidationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([testedByUserId])
+  @@index([fileId])
 }
 
 enum DoclingImportBundleStatus {

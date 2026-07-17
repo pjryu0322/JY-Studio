@@ -349,6 +349,26 @@ export async function fetchProviderServiceValidationSourcePreviewApi(
   };
 }
 
+export function providerServiceValidationDownloadTestUrl(
+  packId: string,
+  runId: string,
+): string {
+  return `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation/${encodeURIComponent(runId)}/download-test`;
+}
+
+export function providerSourcePreviewPageUrl(input: {
+  packId: string;
+  fileId: string;
+  page?: number | null;
+}): string {
+  const q = new URLSearchParams();
+  q.set("fileId", input.fileId);
+  if (input.page != null && Number.isFinite(input.page)) {
+    q.set("page", String(Math.max(1, Math.floor(input.page))));
+  }
+  return `/provider/packs/${encodeURIComponent(input.packId)}/source-preview?${q.toString()}`;
+}
+
 export async function fetchProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;

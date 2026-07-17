@@ -9,6 +9,7 @@ import { AdminReviewProcessingEvidenceTab } from "@/components/AdminReviewProces
 import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
 import { AdminReviewSourceDocumentsTab } from "@/components/AdminReviewSourceDocumentsTab";
 import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
+import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminDoclingImportApi,
@@ -108,6 +109,9 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             detail={detail}
             onDetailUpdated={setDetail}
           />
+        ) : null}
+        {evidenceTab === "serviceValidation" ? (
+          <AdminServiceValidationOpsPanel packId={packId} />
         ) : null}
       </section>
     </div>

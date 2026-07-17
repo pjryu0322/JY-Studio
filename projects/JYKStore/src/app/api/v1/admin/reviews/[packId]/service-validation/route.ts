@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
-import { getAdminServiceValidationForPack } from "@/lib/distribution/service-validation-service";
-import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
-import { prisma } from "@/lib/prisma";
+import { listAdminServiceValidationHistory } from "@/lib/distribution/service-validation-service";
+import { isPayloadServiceError } from "@/lib/distribution/payload-errors";
 import { logSafeRouteError } from "@/lib/safe-logging";
+import type { ServiceChannel } from "@/lib/distribution/service-channel-policy";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
@@ -13,27 +13,34 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const adminDeny = await rejectUnlessAdmin(request, clientId);
   if (adminDeny) return adminDeny;
   const { packId } = await context.params;
+  const url = new URL(request.url);
+  const page = Number(url.searchParams.get("page") ?? "1");
+  const pageSize = Number(url.searchParams.get("pageSize") ?? "20");
+  const channelRaw = (url.searchParams.get("channel") ?? "").toUpperCase();
+  const channel =
+    channelRaw === "API" || channelRaw === "MCP" || channelRaw === "DOWNLOAD"
+      ? (channelRaw as ServiceChannel)
+      : null;
   try {
-    const pack = await prisma.knowledgePack.findUnique({
-      where: { packId: packId?.trim() ?? "" },
-      include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
+    const result = await listAdminServiceValidationHistory({
+      packId: packId?.trim() ?? "",
+      page: Number.isFinite(page) ? page : 1,
+      pageSize: Number.isFinite(pageSize) ? pageSize : 20,
+      channel,
+      systemStatus: url.searchParams.get("systemStatus"),
+      providerConfirmationStatus: url.searchParams.get("providerConfirmationStatus"),
+      dateFrom: url.searchParams.get("dateFrom"),
+      dateTo: url.searchParams.get("dateTo"),
     });
-    if (!pack || !pack.versions[0]) {
+    return jsonWithClientIdCookie({ clientId, packId: packId?.trim() ?? "", ...result }, clientId);
+  } catch (error) {
+    if (isPayloadServiceError(error)) {
       return jsonWithClientIdCookie(
-        { error: "NOT_FOUND", message: "지식팩을 찾을 수 없습니다." },
+        { error: error.code, message: error.message },
         clientId,
-        { status: 404 },
+        { status: error.httpStatus },
       );
     }
-    const runs = await getAdminServiceValidationForPack({
-      packId: pack.packId,
-      versionId: pack.versions[0].id,
-    });
-    return jsonWithClientIdCookie(
-      { clientId, packId: pack.packId, versionId: pack.versions[0].id, runs },
-      clientId,
-    );
-  } catch (error) {
     logSafeRouteError({
       scope: "admin/reviews/service-validation",
       method: "GET",

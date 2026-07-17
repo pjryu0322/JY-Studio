@@ -15,6 +15,7 @@ import {
   resolveRunCurrentValidity,
   loadOwnedPackForServiceValidationRead,
 } from "@/lib/distribution/service-validation-service";
+import { canShareProviderConfirmation } from "@/lib/distribution/service-validation-share";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { prisma } from "@/lib/prisma";
@@ -48,7 +49,7 @@ async function loadBinding(packId: string) {
     where: { packId, triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER, status: "PASS" },
     orderBy: { startedAt: "desc" },
   });
-  return parseKnowledgeRunBinding(latest?.summary);
+  return { binding: parseKnowledgeRunBinding(latest?.summary), pipelineRunId: latest?.id ?? null };
 }
 
 function assertDraftEditable(packStatus: PackStatus) {
@@ -71,7 +72,7 @@ async function requireOwnedRunnableRun(input: {
   assertDraftEditable(pack.status);
   const run = await prisma.serviceValidationRun.findUnique({
     where: { id: input.runId },
-    include: { confirmation: true },
+    include: { confirmation: true, resultItems: { orderBy: { rank: "asc" } }, downloadTest: true },
   });
   if (!run || run.packId !== pack.packId || run.versionId !== version.id) {
     throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
@@ -83,11 +84,12 @@ async function requireOwnedRunnableRun(input: {
       409,
     );
   }
-  const binding = await loadBinding(pack.packId);
+  const { binding } = await loadBinding(pack.packId);
   const validity = resolveRunCurrentValidity({
     run,
     bindingFingerprint: binding?.fingerprint,
     bindingIndexGenerationId: binding?.indexGenerationId,
+    resultItemCount: run.channel === "DOWNLOAD" ? null : run.resultItems.length,
   });
   if (run.status !== "PASS" || validity !== "CURRENT") {
     throw new PayloadServiceError(
@@ -96,7 +98,66 @@ async function requireOwnedRunnableRun(input: {
       400,
     );
   }
+  if (run.channel !== "DOWNLOAD" && run.resultItems.length < 1) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_RESULT_SNAPSHOT_EMPTY",
+      "검색 결과 Snapshot이 없어 품질 확인할 수 없습니다. 다시 검증해 주세요.",
+      400,
+    );
+  }
   return { pack, version, run, binding };
+}
+
+async function resolveShareablePeer(run: ServiceValidationRun & {
+  resultItems: Array<{
+    rank: number;
+    chunkId: string;
+    sourceDocumentId: string;
+    pageStart: number | null;
+    pageEnd: number | null;
+  }>;
+}) {
+  const peerChannel = run.channel === "API" ? "MCP" : run.channel === "MCP" ? "API" : null;
+  if (!peerChannel) return null;
+  const peer = await findLatestServiceValidationRun({
+    versionId: run.versionId,
+    channel: peerChannel,
+  });
+  if (!peer) return null;
+  const peerConfirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+    where: { runId: peer.id },
+  });
+  if (peerConfirmation) return null;
+  const peerItems = await prisma.serviceValidationResultItem.findMany({
+    where: { runId: peer.id },
+    orderBy: { rank: "asc" },
+  });
+  const { binding, pipelineRunId } = await loadBinding(run.packId);
+  const share = canShareProviderConfirmation({
+    apiRun: run.channel === "API" ? run : peer,
+    mcpRun: run.channel === "MCP" ? run : peer,
+    apiResults: (run.channel === "API" ? run.resultItems : peerItems).map((i) => ({
+      rank: i.rank,
+      chunkId: i.chunkId,
+      sourceDocumentId: i.sourceDocumentId,
+      pageStart: i.pageStart,
+      pageEnd: i.pageEnd,
+    })),
+    mcpResults: (run.channel === "MCP" ? run.resultItems : peerItems).map((i) => ({
+      rank: i.rank,
+      chunkId: i.chunkId,
+      sourceDocumentId: i.sourceDocumentId,
+      pageStart: i.pageStart,
+      pageEnd: i.pageEnd,
+    })),
+    binding: {
+      fingerprint: binding?.fingerprint,
+      indexGenerationId: binding?.indexGenerationId,
+      normalizedDocumentId: binding?.normalizedDocumentId,
+      pipelineRunId,
+    },
+  });
+  return share ? peer : null;
 }
 
 export async function confirmServiceValidationRun(input: {
@@ -115,6 +176,24 @@ export async function confirmServiceValidationRun(input: {
       throw new PayloadServiceError(
         "SERVICE_CONFIRMATION_INCOMPLETE",
         "다운로드 확인 항목을 모두 체크해 주세요.",
+        400,
+      );
+    }
+    if (!run.downloadTest?.responseReady) {
+      throw new PayloadServiceError(
+        "SERVICE_DOWNLOAD_TEST_REQUIRED",
+        "테스트 다운로드를 먼저 실행해 주세요.",
+        400,
+      );
+    }
+    const details = run.details && typeof run.details === "object" && !Array.isArray(run.details)
+      ? (run.details as Record<string, unknown>)
+      : null;
+    const expectedFileId = typeof details?.fileId === "string" ? details.fileId : null;
+    if (!expectedFileId || run.downloadTest.fileId !== expectedFileId) {
+      throw new PayloadServiceError(
+        "SERVICE_DOWNLOAD_TEST_REQUIRED",
+        "테스트 다운로드 증적이 검증 결과와 일치하지 않습니다. 다시 검증해 주세요.",
         400,
       );
     }
@@ -145,31 +224,9 @@ export async function confirmServiceValidationRun(input: {
     );
   }
 
-  // Shared API+MCP confirmation when both PASS CURRENT with same query.
-  const peerChannel = run.channel === "API" ? "MCP" : run.channel === "MCP" ? "API" : null;
-  const peer =
-    peerChannel != null
-      ? await findLatestServiceValidationRun({
-          versionId: run.versionId,
-          channel: peerChannel,
-        })
-      : null;
-  const binding = await loadBinding(run.packId);
-  const peerOk =
-    peer &&
-    peer.status === "PASS" &&
-    resolveRunCurrentValidity({
-      run: peer,
-      bindingFingerprint: binding?.fingerprint,
-      bindingIndexGenerationId: binding?.indexGenerationId,
-    }) === "CURRENT" &&
-    (peer.query ?? "") === (run.query ?? "") &&
-    !(await prisma.serviceValidationProviderConfirmation.findUnique({
-      where: { runId: peer.id },
-    }));
-
-  const sharedGroupId = peerOk ? newSharedGroupId() : null;
-  const targets: ServiceValidationRun[] = peerOk && peer ? [run, peer] : [run];
+  const peer = await resolveShareablePeer(run);
+  const sharedGroupId = peer ? newSharedGroupId() : null;
+  const targets: ServiceValidationRun[] = peer ? [run, peer] : [run];
 
   const created = await prisma.$transaction(async (tx) => {
     const rows = [];
@@ -227,30 +284,9 @@ export async function rejectServiceValidationRun(input: {
     );
   }
 
-  const peerChannel = run.channel === "API" ? "MCP" : run.channel === "MCP" ? "API" : null;
-  const peer =
-    peerChannel != null
-      ? await findLatestServiceValidationRun({
-          versionId: run.versionId,
-          channel: peerChannel,
-        })
-      : null;
-  const binding = await loadBinding(run.packId);
-  const peerOk =
-    peer &&
-    peer.status === "PASS" &&
-    resolveRunCurrentValidity({
-      run: peer,
-      bindingFingerprint: binding?.fingerprint,
-      bindingIndexGenerationId: binding?.indexGenerationId,
-    }) === "CURRENT" &&
-    (peer.query ?? "") === (run.query ?? "") &&
-    !(await prisma.serviceValidationProviderConfirmation.findUnique({
-      where: { runId: peer.id },
-    }));
-
-  const sharedGroupId = peerOk ? newSharedGroupId() : null;
-  const targets = peerOk && peer ? [run, peer] : [run];
+  const peer = run.channel === "DOWNLOAD" ? null : await resolveShareablePeer(run);
+  const sharedGroupId = peer ? newSharedGroupId() : null;
+  const targets = peer ? [run, peer] : [run];
 
   const created = await prisma.$transaction(async (tx) => {
     const rows = [];
@@ -274,36 +310,6 @@ export async function rejectServiceValidationRun(input: {
   return { confirmationId: created[0]!.id };
 }
 
-export async function resolveProviderConfirmationStatus(input: {
-  run: ServiceValidationRun;
-  bindingFingerprint?: string | null;
-  bindingIndexGenerationId?: string | null;
-}): Promise<"NOT_REVIEWED" | "CONFIRMED" | "REJECTED" | "STALE"> {
-  const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
-    where: { runId: input.run.id },
-  });
-  if (!confirmation) return "NOT_REVIEWED";
-  const validity = resolveRunCurrentValidity({
-    run: input.run,
-    bindingFingerprint: input.bindingFingerprint,
-    bindingIndexGenerationId: input.bindingIndexGenerationId,
-  });
-  if (validity === "STALE") return "STALE";
-  if (confirmation.status === "CONFIRMED") return "CONFIRMED";
-  if (confirmation.status === "REJECTED") return "REJECTED";
-  return "NOT_REVIEWED";
-}
-
-/** Read helper used when pack is not DRAFT (admin/provider read-only). */
-export async function getConfirmationForRun(runId: string) {
-  return prisma.serviceValidationProviderConfirmation.findUnique({
-    where: { runId },
-    include: {
-      // no user relation — resolve name separately if needed
-    },
-  });
-}
-
 export async function requireOwnedRunForPreview(input: {
   userId: string;
   clientId: string;
@@ -323,4 +329,52 @@ export async function requireOwnedRunForPreview(input: {
     throw new PayloadServiceError("NOT_FOUND", "검색 결과 항목을 찾을 수 없습니다.", 404);
   }
   return { pack, version, run, item };
+}
+
+export async function recordDownloadTestEvidence(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  runId: string;
+}): Promise<{ fileId: string; testedAt: string }> {
+  const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
+  const run = await prisma.serviceValidationRun.findUnique({ where: { id: input.runId } });
+  if (!run || run.packId !== pack.packId || run.versionId !== version.id) {
+    throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
+  }
+  if (run.channel !== "DOWNLOAD" || run.status !== "PASS") {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_REQUIRED",
+      "다운로드 검증이 완료된 실행에서만 테스트 다운로드할 수 있습니다.",
+      400,
+    );
+  }
+  const details =
+    run.details && typeof run.details === "object" && !Array.isArray(run.details)
+      ? (run.details as Record<string, unknown>)
+      : null;
+  const fileId = typeof details?.fileId === "string" ? details.fileId : null;
+  if (!fileId) {
+    throw new PayloadServiceError(
+      "DOWNLOAD_OBJECT_NOT_FOUND",
+      "다운로드 검증에 연결된 원본파일을 찾을 수 없습니다.",
+      404,
+    );
+  }
+  const row = await prisma.serviceValidationDownloadTest.upsert({
+    where: { runId: run.id },
+    create: {
+      runId: run.id,
+      fileId,
+      testedByUserId: input.userId,
+      responseReady: true,
+    },
+    update: {
+      fileId,
+      testedByUserId: input.userId,
+      testedAt: new Date(),
+      responseReady: true,
+    },
+  });
+  return { fileId: row.fileId, testedAt: row.testedAt.toISOString() };
 }

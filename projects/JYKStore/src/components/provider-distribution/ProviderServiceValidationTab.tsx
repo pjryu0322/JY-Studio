@@ -5,6 +5,8 @@ import {
   confirmProviderServiceValidationApi,
   fetchProviderServiceValidationApi,
   fetchProviderServiceValidationSourcePreviewApi,
+  providerServiceValidationDownloadTestUrl,
+  providerSourcePreviewPageUrl,
   rejectProviderServiceValidationApi,
   runProviderServiceValidationApi,
   type ServiceValidationStatusDto,
@@ -124,7 +126,15 @@ function ResultCard({
           >
             원문 위치 확인
           </button>
-        ) : null}
+        ) : (
+          <button
+            type="button"
+            onClick={onPreview}
+            className="min-h-[44px] rounded-lg border border-store-border bg-white px-3 text-xs font-semibold text-slate-700"
+          >
+            원문 위치 정보
+          </button>
+        )}
       </div>
     </article>
   );
@@ -191,11 +201,16 @@ function RetrievalConfirmPanel({
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-3">
       <p className="text-sm font-semibold text-slate-900">제공자 품질 확인</p>
-      {channel.confirmation?.sharedWithChannels?.length ? null : channel.channel === "API" ||
-        channel.channel === "MCP" ? (
-        <p className="text-xs text-store-muted">
-          API와 MCP가 같은 질문·결과이면 한 번 확인으로 함께 완료됩니다.
-        </p>
+      {channel.canConfirm ? (
+        channel.canShareConfirmationWithPeer ? (
+          <p className="text-xs text-store-muted">
+            API와 MCP 검색 결과가 동일하여 한 번의 품질 확인으로 함께 완료됩니다.
+          </p>
+        ) : channel.channel === "API" || channel.channel === "MCP" ? (
+          <p className="text-xs text-store-muted">
+            API와 MCP의 검색 결과가 달라 각각 품질 확인이 필요합니다.
+          </p>
+        ) : null
       ) : null}
       {(
         [
@@ -306,10 +321,36 @@ function DownloadConfirmPanel({
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-3">
       <p className="text-sm font-semibold text-slate-900">다운로드 품질 확인</p>
+      {channel.runId ? (
+        <a
+          href={providerServiceValidationDownloadTestUrl(packId, channel.runId)}
+          className="inline-flex min-h-[44px] items-center rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800"
+          onClick={() => {
+            // After download starts, refresh so downloadTestCompleted becomes true.
+            window.setTimeout(() => {
+              void onDone();
+            }, 800);
+          }}
+        >
+          테스트 다운로드
+        </a>
+      ) : null}
+      {!channel.downloadTestCompleted ? (
+        <p className="text-xs text-amber-800">
+          테스트 다운로드를 실행한 뒤에 아래 확인 항목을 체크할 수 있습니다.
+        </p>
+      ) : (
+        <p className="text-xs text-emerald-800">
+          테스트 다운로드가 시작되고 파일 정보가 정상임을 확인했습니다.
+        </p>
+      )}
       {(
         [
           ["fileNameConfirmed", "파일명이 올바릅니다."],
-          ["downloadOkConfirmed", "테스트 다운로드가 정상입니다."],
+          [
+            "downloadOkConfirmed",
+            "테스트 다운로드가 시작되고 파일 정보가 정상임을 확인했습니다.",
+          ],
           ["fileMatchConfirmed", "원본문서가 등록한 파일과 일치합니다."],
         ] as const
       ).map(([key, label]) => (
@@ -318,7 +359,11 @@ function DownloadConfirmPanel({
             type="checkbox"
             className="mt-1"
             checked={checks[key]}
-            disabled={disabled || busy}
+            disabled={
+              disabled ||
+              busy ||
+              (key === "downloadOkConfirmed" && !channel.downloadTestCompleted)
+            }
             onChange={(e) => setChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
           />
           <span>{label}</span>
@@ -452,9 +497,9 @@ export function ProviderServiceValidationTab({
     const selected = status?.channels.filter((c) => c.selected) ?? [];
     const api = selected.find((c) => c.channel === "API");
     const mcp = selected.find((c) => c.channel === "MCP");
-    // Prefer showing shared confirm UI once on API card when both can confirm.
-    if (api?.canConfirm) return "API";
-    if (mcp?.canConfirm) return "MCP";
+    // Shared confirm UI once on API when both can share; otherwise each channel confirms alone.
+    if (api?.canConfirm && api.canShareConfirmationWithPeer) return "API";
+    if (mcp?.canConfirm && mcp.canShareConfirmationWithPeer) return "MCP";
     return null;
   }, [status]);
 
@@ -484,9 +529,25 @@ export function ProviderServiceValidationTab({
         channel.runId,
         rank,
       );
-      const page = preview.pageLabel ?? (preview.pageStart != null ? `${preview.pageStart}페이지` : "페이지 정보 없음");
+      if (preview.previewFileId) {
+        const url = providerSourcePreviewPageUrl({
+          packId,
+          fileId: preview.previewFileId,
+          page: preview.pageStart,
+        });
+        window.open(url, "_blank", "noopener,noreferrer");
+        setPreviewMsg(
+          preview.pageLabel
+            ? `원문 ${preview.pageLabel.replace("페이지", "")}페이지에서 확인`
+            : `원문: ${preview.sourceDocumentTitle}`,
+        );
+        return;
+      }
+      const page =
+        preview.pageLabel ??
+        (preview.pageStart != null ? `${preview.pageStart}페이지` : "페이지 정보 없음");
       setPreviewMsg(
-        `원문: ${preview.sourceDocumentTitle}${preview.fileName ? ` (${preview.fileName})` : ""} · ${page}`,
+        `원문 위치 정보 · ${preview.sourceDocumentTitle}${preview.fileName ? ` (${preview.fileName})` : ""} · ${page}`,
       );
     } catch (err) {
       setPreviewMsg(err instanceof Error ? err.message : "원문 위치를 확인할 수 없습니다.");
@@ -565,7 +626,8 @@ export function ProviderServiceValidationTab({
             (channel.channel === "API" || channel.channel === "MCP") &&
             retrievalConfirmChannel != null &&
             channel.channel !== retrievalConfirmChannel &&
-            channel.canConfirm;
+            channel.canConfirm &&
+            channel.canShareConfirmationWithPeer;
 
           return (
             <div

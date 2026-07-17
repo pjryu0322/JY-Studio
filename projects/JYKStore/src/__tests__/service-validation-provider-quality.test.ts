@@ -179,7 +179,7 @@ describe("provider service quality + admin ops log", () => {
     assert.ok(preview.includes("objectKey") === false || preview.includes("Never returns"));
     assert.equal(preview.includes("storageKey"), false);
     assert.ok(admin.includes("rejectUnlessAdmin"));
-    assert.ok(admin.includes("getAdminServiceValidationForPack"));
+    assert.ok(admin.includes("listAdminServiceValidationHistory"));
   });
 
   it("extends submit snapshot with confirmation ids", () => {

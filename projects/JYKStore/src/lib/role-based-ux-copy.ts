@@ -158,6 +158,7 @@ export const ADMIN_REVIEW_TAB_SOURCES = "문서";
 export const ADMIN_REVIEW_TAB_PROCESSING = "처리·검증";
 /** @deprecated Use ADMIN_REVIEW_TAB_PROCESSING */
 export const ADMIN_REVIEW_TAB_DOCLING = ADMIN_REVIEW_TAB_PROCESSING;
+export const ADMIN_REVIEW_TAB_SERVICE_VALIDATION = "운영 로그";
 export const ADMIN_REVIEW_TAB_ADVANCED = "고급";
 export const ADMIN_REVIEW_EVIDENCE_SECTION_TITLE = "판단 근거";
 export const ADMIN_REVIEW_RECEIPT_INFO_TITLE = "접수 정보";
