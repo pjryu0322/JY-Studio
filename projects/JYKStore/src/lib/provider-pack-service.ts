@@ -1067,19 +1067,29 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
     ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
     : null;
 
-  await prisma.$transaction([
-    prisma.knowledgePack.update({
-      where: { packId },
-      data: { status: PackStatus.REVIEWING },
-    }),
-    prisma.packReview.create({
-      data: {
-        packId,
-        status: "PENDING",
-        submitSnapshot: snapshot,
-      },
-    }),
-  ]);
+  try {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.knowledgePack.updateMany({
+        where: { packId, status: PackStatus.DRAFT },
+        data: { status: PackStatus.REVIEWING },
+      });
+      if (updated.count !== 1) {
+        throw new Error("NOT_DRAFT");
+      }
+      await tx.packReview.create({
+        data: {
+          packId,
+          status: "PENDING",
+          submitSnapshot: snapshot,
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "NOT_DRAFT") {
+      return { error: "NOT_DRAFT" as const };
+    }
+    throw error;
+  }
 
   await recordSubmitForReviewPipeline(packId, clientId, submitNote);
 

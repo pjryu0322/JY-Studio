@@ -13,10 +13,8 @@ import {
 } from "@/lib/distribution/service-channel-policy";
 import { validateDownloadObjectIntegrity } from "@/lib/distribution/download-object-validation";
 import {
-  DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
-import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { executeMcpValidation } from "@/lib/mcp/mcp-validation-runtime";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
@@ -35,6 +33,12 @@ import {
   type ProviderValidationResultItemDto,
   type InternalValidationResultItem,
 } from "@/lib/distribution/service-validation-result-snapshot";
+import {
+  evidenceIntegrityForRun,
+  resolveCurrentValidationBindingTx,
+  resolvePipelineRunBindingTx,
+  type CurrentValidationBinding,
+} from "@/lib/distribution/service-validation-binding";
 import {
   assertSharedConfirmationEvidence,
   canShareProviderConfirmation,
@@ -223,12 +227,22 @@ export async function requireOwnedDraftPackForServiceValidationRun(input: {
 
 async function loadBindingContext(packId: string, versionId: string) {
   const dist = await prisma.packDistributionMetadata.findUnique({ where: { versionId } });
-  const latest = await prisma.pipelineRun.findFirst({
-    where: { packId, triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER, status: "PASS" },
-    orderBy: { startedAt: "desc" },
-  });
-  const binding = parseKnowledgeRunBinding(latest?.summary);
-  return { dist, latest, binding };
+  try {
+    const binding = await resolveCurrentValidationBindingTx(prisma, { packId, versionId });
+    const latest = await prisma.pipelineRun.findUnique({ where: { id: binding.pipelineRunId } });
+    return {
+      dist,
+      latest,
+      binding: {
+        versionId: binding.versionId,
+        indexGenerationId: binding.indexGenerationId,
+        normalizedDocumentId: binding.normalizedDocumentId,
+        fingerprint: binding.fingerprint,
+      },
+    };
+  } catch {
+    return { dist, latest: null, binding: null };
+  }
 }
 
 export async function findLatestServiceValidationRun(input: {
@@ -606,7 +620,45 @@ async function buildSafeRetrievalItems(input: {
   const allowed = new Set(
     chunks.filter((c) => c.versionId === input.expectedVersionId).map((c) => c.id),
   );
-  return items.filter((i) => allowed.has(i.chunkId));
+  const filtered = items.filter((i) => allowed.has(i.chunkId));
+  if (filtered.length === 0) return [];
+
+  const docs = await prisma.sourceDocument.findMany({
+    where: {
+      id: { in: [...new Set(filtered.map((i) => i.sourceDocumentId))] },
+      versionId: input.expectedVersionId,
+    },
+    select: { id: true, fileName: true },
+  });
+  const files = await prisma.knowledgePackFile.findMany({
+    where: {
+      versionId: input.expectedVersionId,
+      role: "SOURCE_ORIGINAL",
+      bundle: { isActive: true, deletedAt: null, storageStatus: "ACTIVE" },
+    },
+    select: { id: true, originalFileName: true },
+  });
+  const filesByName = new Map<string, string[]>();
+  for (const f of files) {
+    const list = filesByName.get(f.originalFileName) ?? [];
+    list.push(f.id);
+    filesByName.set(f.originalFileName, list);
+  }
+  const fileIdByDoc = new Map<string, string | null>();
+  for (const doc of docs) {
+    const name = doc.fileName?.trim();
+    if (!name) {
+      fileIdByDoc.set(doc.id, null);
+      continue;
+    }
+    const matched = filesByName.get(name) ?? [];
+    fileIdByDoc.set(doc.id, matched.length === 1 ? matched[0]! : null);
+  }
+
+  return filtered.map((item) => ({
+    ...item,
+    sourceFileId: fileIdByDoc.get(item.sourceDocumentId) ?? null,
+  }));
 }
 
 export async function runServiceChannelValidation(input: {
@@ -856,6 +908,7 @@ export async function runServiceChannelValidation(input: {
           score: item.score,
           sourceDocumentId: item.sourceDocumentId,
           sourceDocumentTitle: item.sourceDocumentTitle,
+          sourceFileId: item.sourceFileId,
           pageStart: item.pageStart,
           pageEnd: item.pageEnd,
           sourceLocator: item.sourceLocator,
@@ -1218,9 +1271,11 @@ export type AdminServiceValidationRunDto = {
   channel: string;
   /** Stored historical status (PASS/FAIL/...) — never rewritten. */
   historicalStatus: string;
-  /** Effective status for current binding (may be STALE). */
+  /** Evidence matches the PipelineRun recorded on the run. */
+  evidenceIntegrity: "VALID" | "INVALID";
+  /** Effective status for current version deployment binding (may be STALE). */
   systemStatus: string;
-  currentValidity: "CURRENT" | "STALE" | null;
+  currentValidity: "CURRENT" | "STALE" | "NOT_APPLICABLE" | null;
   invalidatedAt: string | null;
   invalidationReason: string | null;
   providerConfirmationStatus: string | null;
@@ -1284,10 +1339,8 @@ export type AdminServiceValidationListResult = {
 
 async function mapAdminRunDto(
   run: ServiceValidationRun,
-  binding: {
-    fingerprint?: string | null;
-    indexGenerationId?: string | null;
-  } | null,
+  versionCurrentBinding: CurrentValidationBinding | null,
+  runPipelineBinding: CurrentValidationBinding | null,
   userNames: Map<string, string>,
   versionLabelById?: Map<string, string>,
 ): Promise<AdminServiceValidationRunDto> {
@@ -1301,10 +1354,11 @@ async function mapAdminRunDto(
   const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
     where: { runId: run.id },
   });
+  const evidenceIntegrity = evidenceIntegrityForRun(run, runPipelineBinding);
   let validity = resolveRunCurrentValidity({
     run,
-    bindingFingerprint: binding?.fingerprint,
-    bindingIndexGenerationId: binding?.indexGenerationId,
+    bindingFingerprint: versionCurrentBinding?.fingerprint,
+    bindingIndexGenerationId: versionCurrentBinding?.indexGenerationId,
     resultItemCount: run.channel === "DOWNLOAD" ? null : results.length,
   });
   let invalidationReason: string | null = null;
@@ -1329,7 +1383,9 @@ async function mapAdminRunDto(
   const details = asRecord(run.details);
   if (!invalidationReason) {
     if (run.invalidatedAt) invalidationReason = "INVALIDATED_AT";
-    else if (
+    else if (evidenceIntegrity === "INVALID" && run.status === "PASS") {
+      invalidationReason = "PIPELINE_EVIDENCE_MISMATCH";
+    } else if (
       validity === "STALE" &&
       (run.channel === "API" || run.channel === "MCP") &&
       results.length < 1
@@ -1346,6 +1402,7 @@ async function mapAdminRunDto(
     versionLabel: versionLabelById?.get(run.versionId) ?? null,
     channel: run.channel,
     historicalStatus: run.status,
+    evidenceIntegrity,
     systemStatus: run.status === "PASS" && validity === "STALE" ? "STALE" : run.status,
     currentValidity: validity,
     invalidatedAt: run.invalidatedAt?.toISOString() ?? null,
@@ -1421,6 +1478,37 @@ export async function getAdminServiceValidationForPack(input: {
   return listed.latestByChannel;
 }
 
+
+async function loadAdminBindingMaps(input: {
+  packId: string;
+  versionIds: string[];
+  pipelineRunIds: Array<string | null | undefined>;
+}): Promise<{
+  versionCurrentById: Map<string, CurrentValidationBinding | null>;
+  pipelineById: Map<string, CurrentValidationBinding | null>;
+}> {
+  const versionCurrentById = new Map<string, CurrentValidationBinding | null>();
+  for (const versionId of [...new Set(input.versionIds.filter(Boolean))]) {
+    try {
+      versionCurrentById.set(
+        versionId,
+        await resolveCurrentValidationBindingTx(prisma, {
+          packId: input.packId,
+          versionId,
+        }),
+      );
+    } catch {
+      versionCurrentById.set(versionId, null);
+    }
+  }
+  const pipelineById = new Map<string, CurrentValidationBinding | null>();
+  const ids = [...new Set(input.pipelineRunIds.filter((id): id is string => Boolean(id?.trim())))];
+  for (const id of ids) {
+    pipelineById.set(id, await resolvePipelineRunBindingTx(prisma, id));
+  }
+  return { versionCurrentById, pipelineById };
+}
+
 function parseAdminHistoryDateBound(raw: string, endOfDay: boolean): Date {
   const trimmed = raw.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -1487,8 +1575,6 @@ export async function listAdminServiceValidationHistory(input: {
     filterVersionId = null;
   }
 
-  const bindingVersionId = filterVersionId ?? latestVersion.id;
-  const { binding } = await loadBindingContext(input.packId, bindingVersionId);
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 20));
 
@@ -1534,8 +1620,27 @@ export async function listAdminServiceValidationHistory(input: {
   }
 
   const latestRuns = await latestRunsInScope();
+  const scopeVersionIds = filterVersionId
+    ? [filterVersionId]
+    : pack.versions.map((v) => v.id);
+  let { versionCurrentById, pipelineById } = await loadAdminBindingMaps({
+    packId: input.packId,
+    versionIds: [
+      ...scopeVersionIds,
+      ...latestRuns.map((r) => r.versionId),
+    ],
+    pipelineRunIds: latestRuns.map((r) => r.pipelineRunId),
+  });
   const latestByChannel = await Promise.all(
-    latestRuns.map((r) => mapAdminRunDto(r, binding, new Map(), versionLabelById)),
+    latestRuns.map((r) =>
+      mapAdminRunDto(
+        r,
+        versionCurrentById.get(r.versionId) ?? null,
+        r.pipelineRunId ? pipelineById.get(r.pipelineRunId) ?? null : null,
+        new Map(),
+        versionLabelById,
+      ),
+    ),
   );
 
   if (input.latestOnly) {
@@ -1600,11 +1705,21 @@ export async function listAdminServiceValidationHistory(input: {
       peersByGroup.set(gid, list);
     }
 
+    ({ versionCurrentById, pipelineById } = await loadAdminBindingMaps({
+      packId: input.packId,
+      versionIds: [
+        ...scopeVersionIds,
+        ...candidates.map((c) => c.versionId),
+      ],
+      pipelineRunIds: candidates.map((c) => c.pipelineRunId),
+    }));
+
     const matched = candidates.filter((run) => {
+      const versionBinding = versionCurrentById.get(run.versionId) ?? null;
       let validity = resolveRunCurrentValidity({
         run,
-        bindingFingerprint: binding?.fingerprint,
-        bindingIndexGenerationId: binding?.indexGenerationId,
+        bindingFingerprint: versionBinding?.fingerprint,
+        bindingIndexGenerationId: versionBinding?.indexGenerationId,
         resultItemCount: run.channel === "DOWNLOAD" ? null : run._count.resultItems,
       });
       if (
@@ -1681,13 +1796,42 @@ export async function listAdminServiceValidationHistory(input: {
     users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "사용자"]),
   );
 
+  ({ versionCurrentById, pipelineById } = await loadAdminBindingMaps({
+    packId: input.packId,
+    versionIds: [
+      ...scopeVersionIds,
+      ...runs.map((r) => r.versionId),
+      ...latestRuns.map((r) => r.versionId),
+    ],
+    pipelineRunIds: [
+      ...runs.map((r) => r.pipelineRunId),
+      ...latestRuns.map((r) => r.pipelineRunId),
+    ],
+  }));
+
   const history = await Promise.all(
-    runs.map((run) => mapAdminRunDto(run, binding, userNames, versionLabelById)),
+    runs.map((run) =>
+      mapAdminRunDto(
+        run,
+        versionCurrentById.get(run.versionId) ?? null,
+        run.pipelineRunId ? pipelineById.get(run.pipelineRunId) ?? null : null,
+        userNames,
+        versionLabelById,
+      ),
+    ),
   );
 
   return {
     latestByChannel: await Promise.all(
-      latestRuns.map((r) => mapAdminRunDto(r, binding, userNames, versionLabelById)),
+      latestRuns.map((r) =>
+        mapAdminRunDto(
+          r,
+          versionCurrentById.get(r.versionId) ?? null,
+          r.pipelineRunId ? pipelineById.get(r.pipelineRunId) ?? null : null,
+          userNames,
+          versionLabelById,
+        ),
+      ),
     ),
     history,
     versions: versionsDto,
@@ -1707,10 +1851,14 @@ export async function getAdminServiceValidationRun(
 ): Promise<AdminServiceValidationRunDto | null> {
   const run = await prisma.serviceValidationRun.findUnique({ where: { id: runId } });
   if (!run) return null;
-  const { binding } = await loadBindingContext(run.packId, run.versionId);
   const versionRow = await prisma.knowledgePackVersion.findUnique({
     where: { id: run.versionId },
     select: { version: true },
+  });
+  const { versionCurrentById, pipelineById } = await loadAdminBindingMaps({
+    packId: run.packId,
+    versionIds: [run.versionId],
+    pipelineRunIds: [run.pipelineRunId],
   });
   const userIds = [run.testedByUserId].filter(Boolean) as string[];
   const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
@@ -1729,7 +1877,8 @@ export async function getAdminServiceValidationRun(
   );
   return mapAdminRunDto(
     run,
-    binding,
+    versionCurrentById.get(run.versionId) ?? null,
+    run.pipelineRunId ? pipelineById.get(run.pipelineRunId) ?? null : null,
     userNames,
     new Map([[run.versionId, versionRow?.version ?? ""]]),
   );

@@ -221,11 +221,10 @@ describe("service validation share + incomplete evidence", () => {
       "utf8",
     );
     assert.ok(confirmation.includes("prepareProviderDownloadTest"));
-    assert.ok(confirmation.includes("commitSuccessfulDownloadTestEvidence"));
-    assert.ok(confirmation.includes("$transaction"));
-    assert.equal(confirmation.includes(".upsert("), false);
-    assert.ok(confirmation.includes("SERVICE_VALIDATION_NOT_EDITABLE"));
-    assert.ok(confirmation.includes("P2002"));
+    assert.ok(confirmation.includes("createMany"));
+    assert.ok(confirmation.includes("skipDuplicates"));
+    assert.ok(!confirmation.includes("error.code === \"P2002\""));
+    assert.ok(confirmation.includes("resolveCurrentValidationBindingTx"));
     const route = readFileSync(
       join(
         root,
@@ -275,7 +274,7 @@ describe("service validation share + incomplete evidence", () => {
       join(root, "src/app/api/v1/provider/packs/[packId]/source-preview/[fileId]/route.ts"),
       "utf8",
     );
-    assert.ok(legacy.includes("runId"));
-    assert.ok(legacy.includes("versionId: run.versionId"));
+    assert.ok(legacy.includes("410") || legacy.includes("GONE"));
+    assert.ok(legacy.includes("더 이상 지원되지 않습니다"));
   });
 });

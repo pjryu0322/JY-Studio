@@ -515,6 +515,8 @@ model ServiceValidationResultItem {
   score               Float
   sourceDocumentId    String
   sourceDocumentTitle String?
+  /// SOURCE_ORIGINAL KnowledgePackFile.id captured at validation time (nullable for legacy).
+  sourceFileId        String?
   pageStart           Int?
   pageEnd             Int?
   sourceLocator       String?
@@ -526,6 +528,7 @@ model ServiceValidationResultItem {
   @@index([runId])
   @@index([chunkId])
   @@index([sourceDocumentId])
+  @@index([sourceFileId])
 }
 
 model ServiceValidationProviderConfirmation {

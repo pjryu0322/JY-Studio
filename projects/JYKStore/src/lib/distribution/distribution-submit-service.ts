@@ -331,9 +331,11 @@ export async function commitDistributionPackForReview(
         throw new Error("DOCLING_REVIEW_STATE_CONFLICT");
       }
 
-      await tx.knowledgePack.update({
-        where: { packId },
+      await tx.knowledgePack.updateMany({
+        where: { packId, status: PackStatus.DRAFT },
         data: { status: PackStatus.REVIEWING },
+      }).then((result) => {
+        if (result.count !== 1) throw new Error("NOT_DRAFT");
       });
       await tx.packReview.create({
         data: {

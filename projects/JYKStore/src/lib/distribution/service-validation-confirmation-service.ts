@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
   PackStatus,
-  Prisma,
   ServiceValidationProviderConfirmationStatus,
   type ServiceValidationRun,
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
+import { resolveCurrentValidationBindingTx } from "@/lib/distribution/service-validation-binding";
 import {
   DOWNLOAD_REJECTION_REASONS,
   RETRIEVAL_REJECTION_REASONS,
@@ -385,17 +385,21 @@ export async function prepareProviderDownloadTest(input: {
       400,
     );
   }
-  const { binding } = await loadBinding(pack.packId);
+  const binding = await resolveCurrentValidationBindingTx(prisma, {
+    packId: pack.packId,
+    versionId: version.id,
+    expectedPipelineRunId: run.pipelineRunId,
+  });
   const validity = resolveRunCurrentValidity({
     run,
-    bindingFingerprint: binding?.fingerprint,
-    bindingIndexGenerationId: binding?.indexGenerationId,
+    bindingFingerprint: binding.fingerprint,
+    bindingIndexGenerationId: binding.indexGenerationId,
     resultItemCount: null,
   });
   if (validity !== "CURRENT") {
     throw new PayloadServiceError(
       "SERVICE_VALIDATION_STALE",
-      "지식 데이터 또는 유통정보가 변경되어 서비스 품질 확인을 다시 진행해야 합니다.",
+      "지식 데이터가 변경되어 다운로드 검증을 다시 실행해야 합니다.",
       400,
     );
   }
@@ -468,7 +472,8 @@ export async function prepareProviderDownloadTest(input: {
 
 /**
  * Create-only evidence after stream open + response headers are ready.
- * Re-validates Pack/Run/Confirmation/Binding inside a transaction to close race windows.
+ * Re-validates Pack/Run/Confirmation/Binding inside a transaction.
+ * Concurrent creates use createMany(skipDuplicates) — never re-query a failed TX after P2002.
  */
 export async function commitSuccessfulDownloadTestEvidence(input: {
   userId: string;
@@ -477,153 +482,157 @@ export async function commitSuccessfulDownloadTestEvidence(input: {
   runId: string;
   fileId: string;
 }): Promise<{ fileId: string; testedAt: string; created: boolean }> {
-  const { binding } = await loadBinding(input.packId);
+  return prisma.$transaction(async (tx) => {
+    const pack = await tx.knowledgePack.findUnique({
+      where: { packId: input.packId },
+      select: { packId: true, status: true },
+    });
+    if (!pack) {
+      throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+    }
+    if (pack.status !== PackStatus.DRAFT) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_NOT_EDITABLE",
+        "검수요청 전 초안 상태에서만 테스트 다운로드를 실행할 수 있습니다.",
+        403,
+      );
+    }
 
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const pack = await tx.knowledgePack.findUnique({
-        where: { packId: input.packId },
-        select: { packId: true, status: true },
-      });
-      if (!pack) {
-        throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
-      }
-      if (pack.status !== PackStatus.DRAFT) {
-        throw new PayloadServiceError(
-          "SERVICE_VALIDATION_NOT_EDITABLE",
-          "검수요청 전 초안 상태에서만 테스트 다운로드를 실행할 수 있습니다.",
-          403,
-        );
-      }
+    const run = await tx.serviceValidationRun.findUnique({
+      where: { id: input.runId },
+      include: { confirmation: true, downloadTest: true },
+    });
+    if (
+      !run ||
+      run.packId !== input.packId ||
+      run.versionId !== input.versionId ||
+      run.channel !== "DOWNLOAD"
+    ) {
+      throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
+    }
+    if (run.confirmation) {
+      throw new PayloadServiceError(
+        "SERVICE_CONFIRMATION_ALREADY_RECORDED",
+        "품질 확인이 기록된 뒤에는 테스트 다운로드 증적을 변경할 수 없습니다.",
+        403,
+      );
+    }
+    if (run.status !== "PASS" || run.invalidatedAt) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_REQUIRED",
+        "다운로드 검증이 완료된 실행에서만 테스트 다운로드할 수 있습니다.",
+        400,
+      );
+    }
+    if (!run.pipelineRunId) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_STALE",
+        "지식 데이터가 변경되어 다운로드 검증을 다시 실행해야 합니다.",
+        400,
+      );
+    }
 
-      const run = await tx.serviceValidationRun.findUnique({
-        where: { id: input.runId },
-        include: { confirmation: true, downloadTest: true },
-      });
-      if (
-        !run ||
-        run.packId !== input.packId ||
-        run.versionId !== input.versionId ||
-        run.channel !== "DOWNLOAD"
-      ) {
-        throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
-      }
-      if (run.confirmation) {
-        throw new PayloadServiceError(
-          "SERVICE_CONFIRMATION_ALREADY_RECORDED",
-          "품질 확인이 기록된 뒤에는 테스트 다운로드 증적을 변경할 수 없습니다.",
-          403,
-        );
-      }
-      if (run.status !== "PASS" || run.invalidatedAt) {
-        throw new PayloadServiceError(
-          "SERVICE_VALIDATION_REQUIRED",
-          "다운로드 검증이 완료된 실행에서만 테스트 다운로드할 수 있습니다.",
-          400,
-        );
-      }
-      const validity = resolveRunCurrentValidity({
-        run,
-        bindingFingerprint: binding?.fingerprint,
-        bindingIndexGenerationId: binding?.indexGenerationId,
-        resultItemCount: null,
-      });
-      if (validity !== "CURRENT") {
-        throw new PayloadServiceError(
-          "SERVICE_VALIDATION_STALE",
-          "지식 데이터 또는 유통정보가 변경되어 서비스 품질 확인을 다시 진행해야 합니다.",
-          400,
-        );
-      }
-      const details =
-        run.details && typeof run.details === "object" && !Array.isArray(run.details)
-          ? (run.details as Record<string, unknown>)
-          : null;
-      const detailsFileId = typeof details?.fileId === "string" ? details.fileId : null;
-      if (!detailsFileId || detailsFileId !== input.fileId) {
+    const binding = await resolveCurrentValidationBindingTx(tx, {
+      packId: input.packId,
+      versionId: input.versionId,
+      expectedPipelineRunId: run.pipelineRunId,
+    });
+    if (
+      run.indexGenerationId !== binding.indexGenerationId ||
+      run.fingerprint !== binding.fingerprint ||
+      run.normalizedDocumentId !== binding.normalizedDocumentId
+    ) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_STALE",
+        "지식 데이터가 변경되어 다운로드 검증을 다시 실행해야 합니다.",
+        400,
+      );
+    }
+
+    const details =
+      run.details && typeof run.details === "object" && !Array.isArray(run.details)
+        ? (run.details as Record<string, unknown>)
+        : null;
+    const detailsFileId = typeof details?.fileId === "string" ? details.fileId : null;
+    if (!detailsFileId || detailsFileId !== input.fileId) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "다운로드 검증 증적의 원본파일이 일치하지 않습니다. 다시 검증해 주세요.",
+        400,
+      );
+    }
+    const file = await tx.knowledgePackFile.findFirst({
+      where: {
+        id: input.fileId,
+        packId: input.packId,
+        versionId: input.versionId,
+        role: "SOURCE_ORIGINAL",
+        bundle: {
+          isActive: true,
+          deletedAt: null,
+          storageStatus: "ACTIVE",
+        },
+      },
+      select: { id: true },
+    });
+    if (!file) {
+      throw new PayloadServiceError(
+        "DOWNLOAD_OBJECT_NOT_FOUND",
+        "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
+        404,
+      );
+    }
+
+    if (run.downloadTest?.responseReady) {
+      if (run.downloadTest.fileId !== input.fileId) {
         throw new PayloadServiceError(
           "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-          "다운로드 검증 증적의 원본파일이 일치하지 않습니다. 다시 검증해 주세요.",
+          "기존 다운로드 테스트 증적의 원본파일이 일치하지 않습니다.",
           400,
         );
       }
-      const file = await tx.knowledgePackFile.findFirst({
-        where: {
-          id: input.fileId,
-          packId: input.packId,
-          versionId: input.versionId,
-          role: "SOURCE_ORIGINAL",
-          bundle: {
-            isActive: true,
-            deletedAt: null,
-            storageStatus: "ACTIVE",
-          },
+      return {
+        fileId: run.downloadTest.fileId,
+        testedAt: run.downloadTest.testedAt.toISOString(),
+        created: false,
+      };
+    }
+
+    const inserted = await tx.serviceValidationDownloadTest.createMany({
+      data: [
+        {
+          runId: run.id,
+          fileId: input.fileId,
+          testedByUserId: input.userId,
+          responseReady: true,
         },
-        select: { id: true },
-      });
-      if (!file) {
-        throw new PayloadServiceError(
-          "DOWNLOAD_OBJECT_NOT_FOUND",
-          "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
-          404,
-        );
-      }
-
-      if (run.downloadTest?.responseReady) {
-        if (run.downloadTest.fileId !== input.fileId) {
-          throw new PayloadServiceError(
-            "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-            "기존 다운로드 테스트 증적의 원본파일이 일치하지 않습니다.",
-            400,
-          );
-        }
-        return {
-          fileId: run.downloadTest.fileId,
-          testedAt: run.downloadTest.testedAt.toISOString(),
-          created: false,
-        };
-      }
-
-      try {
-        const row = await tx.serviceValidationDownloadTest.create({
-          data: {
-            runId: run.id,
-            fileId: input.fileId,
-            testedByUserId: input.userId,
-            responseReady: true,
-          },
-        });
-        return { fileId: row.fileId, testedAt: row.testedAt.toISOString(), created: true };
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
-          const existing = await tx.serviceValidationDownloadTest.findUnique({
-            where: { runId: run.id },
-          });
-          if (existing?.responseReady && existing.fileId === input.fileId) {
-            return {
-              fileId: existing.fileId,
-              testedAt: existing.testedAt.toISOString(),
-              created: false,
-            };
-          }
-          if (existing && existing.fileId !== input.fileId) {
-            throw new PayloadServiceError(
-              "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-              "기존 다운로드 테스트 증적의 원본파일이 일치하지 않습니다.",
-              400,
-            );
-          }
-        }
-        throw error;
-      }
+      ],
+      skipDuplicates: true,
     });
-  } catch (error) {
-    if (error instanceof PayloadServiceError) throw error;
-    throw error;
-  }
+
+    const evidence = await tx.serviceValidationDownloadTest.findUnique({
+      where: { runId: run.id },
+    });
+    if (!evidence?.responseReady) {
+      throw new PayloadServiceError(
+        "SERVICE_DOWNLOAD_TEST_REQUIRED",
+        "다운로드 테스트 증적을 저장하지 못했습니다. 다시 시도해 주세요.",
+        500,
+      );
+    }
+    if (evidence.fileId !== input.fileId) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "기존 다운로드 테스트 증적의 원본파일이 일치하지 않습니다.",
+        400,
+      );
+    }
+    return {
+      fileId: evidence.fileId,
+      testedAt: evidence.testedAt.toISOString(),
+      created: inserted.count === 1,
+    };
+  });
 }
 
 /** @deprecated Prefer commitSuccessfulDownloadTestEvidence */

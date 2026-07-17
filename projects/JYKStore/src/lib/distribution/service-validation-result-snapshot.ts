@@ -26,6 +26,7 @@ export type InternalValidationResultItem = {
   score: number;
   sourceDocumentId: string;
   sourceDocumentTitle: string;
+  sourceFileId: string | null;
   pageStart: number | null;
   pageEnd: number | null;
   sourceLocator: string | null;
@@ -86,6 +87,7 @@ export function mapContextsToInternalResultItems(
       score: typeof ctx.score === "number" ? ctx.score : 0,
       sourceDocumentId,
       sourceDocumentTitle: sourceTitleById.get(sourceDocumentId) ?? "원문 문서",
+      sourceFileId: null,
       pageStart,
       pageEnd,
       sourceLocator:
@@ -124,6 +126,7 @@ export async function persistServiceValidationResultItems(input: {
       score: item.score,
       sourceDocumentId: item.sourceDocumentId,
       sourceDocumentTitle: item.sourceDocumentTitle,
+      sourceFileId: item.sourceFileId,
       pageStart: item.pageStart,
       pageEnd: item.pageEnd,
       sourceLocator: item.sourceLocator,

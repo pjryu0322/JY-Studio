@@ -41,8 +41,18 @@ export function parseBytesRange(
   return { start, end };
 }
 
+const activeOriginalWhere = {
+  role: "SOURCE_ORIGINAL" as const,
+  bundle: {
+    isActive: true,
+    deletedAt: null,
+    storageStatus: "ACTIVE" as const,
+  },
+};
+
 /**
- * Resolve SOURCE_ORIGINAL bound to a validation result item for the run's version.
+ * Strictly resolve SOURCE_ORIGINAL for a validation ResultItem.
+ * No arbitrary latest-file fallback.
  */
 export async function resolveSourceOriginalForValidationResult(input: {
   packId: string;
@@ -69,60 +79,53 @@ export async function resolveSourceOriginalForValidationResult(input: {
     throw new PayloadServiceError("NOT_FOUND", "검색 결과 항목을 찾을 수 없습니다.", 404);
   }
 
-  const file = await prisma.knowledgePackFile.findFirst({
-    where: {
-      packId: input.packId,
-      versionId: run.versionId,
-      role: "SOURCE_ORIGINAL",
-      bundle: {
-        isActive: true,
-        deletedAt: null,
-        storageStatus: "ACTIVE",
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!file?.storageKey) {
-    throw new PayloadServiceError("NOT_FOUND", "원문 파일을 찾을 수 없습니다.", 404);
-  }
-  if (file.versionId !== run.versionId) {
-    throw new PayloadServiceError(
-      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-      "원문 파일이 검증 실행 버전과 일치하지 않습니다.",
-      404,
-    );
-  }
+  let fileId: string | null = item.sourceFileId?.trim() || null;
 
-  // Prefer file that matches result source document when available.
-  const sourceDoc = await prisma.sourceDocument.findUnique({
-    where: { id: item.sourceDocumentId },
-    select: { id: true, fileName: true },
-  });
-  if (sourceDoc?.fileName && file.originalFileName !== sourceDoc.fileName) {
-    const byName = await prisma.knowledgePackFile.findFirst({
+  if (!fileId) {
+    const sourceDoc = await prisma.sourceDocument.findFirst({
+      where: { id: item.sourceDocumentId, versionId: run.versionId },
+      select: { id: true, fileName: true },
+    });
+    if (!sourceDoc?.fileName?.trim()) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
+        404,
+      );
+    }
+    const matches = await prisma.knowledgePackFile.findMany({
       where: {
         packId: input.packId,
         versionId: run.versionId,
-        role: "SOURCE_ORIGINAL",
         originalFileName: sourceDoc.fileName,
-        bundle: {
-          isActive: true,
-          deletedAt: null,
-          storageStatus: "ACTIVE",
-        },
+        ...activeOriginalWhere,
       },
-      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
-    if (byName?.storageKey) {
-      return {
-        fileId: byName.id,
-        fileName: byName.originalFileName,
-        mimeType: byName.mimeType || "application/pdf",
-        storageKey: byName.storageKey,
-        fileSize: Number(byName.fileSize),
-        versionId: run.versionId,
-      };
+    if (matches.length !== 1) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
+        404,
+      );
     }
+    fileId = matches[0]!.id;
+  }
+
+  const file = await prisma.knowledgePackFile.findFirst({
+    where: {
+      id: fileId,
+      packId: input.packId,
+      versionId: run.versionId,
+      ...activeOriginalWhere,
+    },
+  });
+  if (!file?.storageKey) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
+      404,
+    );
   }
 
   return {
