@@ -78,11 +78,12 @@ import {
   type ProviderSourceDocumentValidationOverlay,
 } from "@/lib/provider-pack-dto";
 import {
+  batchResolveListRegistrationProgressInputs,
+  type ListPackForBatch,
+} from "@/lib/provider-registration-readiness-from-db";
+import {
   buildProviderPackProgress,
   buildProviderPacksStatusSummary,
-  isDistributionReadyForProgress,
-  isMaterialReadyForProgress,
-  isPipelineReadyForProgress,
   type ProviderPacksStatusSummary,
 } from "@/lib/provider-pack-progress";
 
@@ -252,6 +253,44 @@ export async function listProviderPacksForClient(
     },
   });
 
+  const batchInput: ListPackForBatch[] = packs.map((pack) => {
+    const working = pack.versions[0] ?? null;
+    const latestRejectionReason = pack.reviews[0]?.rejectionReason?.trim() || null;
+    const dist = working?.distributionMetadata;
+    return {
+      packId: pack.packId,
+      packStatus: pack.status,
+      name: pack.name,
+      categoryId: pack.categoryId,
+      shortDescription: pack.shortDescription,
+      description: pack.description,
+      language: toPackLanguageCode(working?.language),
+      latestRejectionReason,
+      workingVersion: working
+        ? {
+            id: working.id,
+            version: working.version,
+            sourceDocumentCount: working.sourceDocuments.length,
+            distribution: {
+              sourceTitle: dist?.sourceTitle,
+              sourceUrl: dist?.sourceUrl,
+              licenseName: dist?.licenseName,
+              rightsBasis: dist?.rightsBasis,
+              rightsConfirmedAt: dist?.rightsConfirmedAt,
+              allowApi: dist?.allowApi,
+              allowMcp: dist?.allowMcp,
+              allowDownload: dist?.allowDownload,
+            },
+          }
+        : null,
+      publishedVersion: null,
+    };
+  });
+
+  const workingByPackId = await batchResolveListRegistrationProgressInputs({
+    packs: batchInput,
+  });
+
   const items = packs.map((pack) => {
     const working = pack.versions[0] ?? null;
     const previous = pack.versions[1] ?? null;
@@ -269,34 +308,7 @@ export async function listProviderPacksForClient(
           : { id: working.id, version: working.version }
         : null;
 
-    const pipelineReady = isPipelineReadyForProgress(pack.pipelineStatus);
-    const workingVersion = working
-      ? {
-          id: working.id,
-          version: working.version,
-          sourceDocumentCount: working.sourceDocuments.length,
-          materialReady: isMaterialReadyForProgress({
-            sourceDocumentCount: working.sourceDocuments.length,
-            payloadValidationStatus: null,
-            doclingBundleStatus: working.doclingImportBundles[0]?.status ?? null,
-          }),
-          // List uses coarse pipelineStatus; detail page uses stage-level gates.
-          structureReady: pipelineReady,
-          searchFoundationReady: pipelineReady,
-          searchValidationReady: false,
-          distributionReady: isDistributionReadyForProgress({
-            sourceTitle: working.distributionMetadata?.sourceTitle,
-            sourceUrl: working.distributionMetadata?.sourceUrl,
-            licenseName: working.distributionMetadata?.licenseName,
-            rightsBasis: working.distributionMetadata?.rightsBasis,
-            rightsConfirmedAt: working.distributionMetadata?.rightsConfirmedAt,
-            allowApi: working.distributionMetadata?.allowApi,
-            allowMcp: working.distributionMetadata?.allowMcp,
-            allowDownload: working.distributionMetadata?.allowDownload,
-          }),
-          pipelineCurrent: true,
-        }
-      : null;
+    const workingVersion = working ? (workingByPackId.get(pack.packId) ?? null) : null;
 
     const progress = buildProviderPackProgress({
       packId: pack.packId,

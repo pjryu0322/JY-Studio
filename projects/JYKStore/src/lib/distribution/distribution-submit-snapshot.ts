@@ -77,6 +77,57 @@ export type DoclingBundleReviewSubmitSnapshot = {
       confirmedAt?: string | null;
     };
   } | null;
+  /** Search-validation preparation evidence (API+MCP+DOWNLOAD) at submit time. */
+  preparationValidation?: {
+    API?: {
+      status: string;
+      runId: string;
+      testedAt: string | null;
+      currentValidity?: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+      pipelineRunId?: string | null;
+      normalizedDocumentId?: string | null;
+      indexGenerationId?: string | null;
+      fingerprint?: string | null;
+      resultFingerprint?: string | null;
+      downloadTestId?: string | null;
+    };
+    MCP?: {
+      status: string;
+      runId: string;
+      testedAt: string | null;
+      currentValidity?: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+      pipelineRunId?: string | null;
+      normalizedDocumentId?: string | null;
+      indexGenerationId?: string | null;
+      fingerprint?: string | null;
+      resultFingerprint?: string | null;
+    };
+    DOWNLOAD?: {
+      status: string;
+      runId: string;
+      testedAt: string | null;
+      currentValidity?: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+      pipelineRunId?: string | null;
+      normalizedDocumentId?: string | null;
+      indexGenerationId?: string | null;
+      fingerprint?: string | null;
+      downloadTestId?: string | null;
+    };
+  } | null;
+  distributionChannels?: {
+    allowApi: boolean;
+    allowMcp: boolean;
+    allowDownload: boolean;
+  } | null;
   /** Provider-selected pack language at submit time. Legacy snapshots may omit. */
   language: PackLanguageCode | null;
   /** Knowledge pipeline binding — required for new submits; optional for legacy. */
@@ -146,6 +197,8 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   sourcePublishedAt?: string | null;
   sourceRetrievedAt?: string | null;
   serviceValidation?: DoclingBundleReviewSubmitSnapshot["serviceValidation"];
+  preparationValidation?: DoclingBundleReviewSubmitSnapshot["preparationValidation"];
+  distributionChannels?: DoclingBundleReviewSubmitSnapshot["distributionChannels"];
   language: PackLanguageCode;
   pipelineRunId?: string | null;
   indexGenerationId?: string | null;
@@ -182,6 +235,8 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     sourcePublishedAt: input.sourcePublishedAt ?? null,
     sourceRetrievedAt: input.sourceRetrievedAt ?? null,
     serviceValidation: input.serviceValidation ?? null,
+    preparationValidation: input.preparationValidation ?? null,
+    distributionChannels: input.distributionChannels ?? null,
     language: input.language,
     pipelineRunId: input.pipelineRunId ?? null,
     indexGenerationId: input.indexGenerationId ?? null,

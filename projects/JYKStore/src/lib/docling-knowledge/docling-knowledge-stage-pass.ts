@@ -1,4 +1,3 @@
-import { DOCLING_RETRIEVAL_WARNING_OPENS_DISTRIBUTION } from "@/lib/docling-knowledge/docling-knowledge-eval";
 import type { DoclingKnowledgeStageId } from "@/lib/docling-knowledge/docling-knowledge-stages";
 
 /** Stages that complete the data-structure registration step. */
@@ -39,9 +38,40 @@ function chunkCountFromStep(step: PipelineStepLike | null): number {
   return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
 }
 
+function blockerCountFromDetails(details: Record<string, unknown> | null | undefined): number {
+  if (!details) return 0;
+  if (typeof details.blockerCount === "number" && Number.isFinite(details.blockerCount)) {
+    return details.blockerCount;
+  }
+  if (Array.isArray(details.blockers)) {
+    return details.blockers.length;
+  }
+  return 0;
+}
+
 /**
- * Data-structure completion: STRUCTURE (+ advisory PASS allowed) + KU + Chunk.
- * Does not require SEARCH_INDEX / RETRIEVAL_EVALUATION.
+ * STRUCTURE step counts as pass only for advisory warnings without blockers.
+ * Plain WARNING without advisory does not pass structure readiness.
+ */
+export function isAdvisoryStructurePass(
+  status: string,
+  details?: Record<string, unknown> | null,
+): boolean {
+  if (status === "FAIL" || status === "STALE" || status === "SKIPPED") return false;
+  const blockers = blockerCountFromDetails(details ?? null);
+  if (blockers > 0) return false;
+
+  if (status === "PASS") {
+    return true;
+  }
+  if (status === "WARNING") {
+    return details?.advisory === true;
+  }
+  return false;
+}
+
+/**
+ * Data-structure completion: STRUCTURE (advisory rules) + KU + Chunk.
  */
 export function isStructureStagesPassed(input: StructurePassInput): boolean {
   if (!input.pipelineCurrent) return false;
@@ -50,22 +80,20 @@ export function isStructureStagesPassed(input: StructurePassInput): boolean {
   const knowledge = findStep(input.steps, "KNOWLEDGE_CHECKING");
   const chunk = findStep(input.steps, "CHUNKING");
 
-  if (structure?.status === "FAIL") return false;
-  if (structure?.status !== "PASS" && structure?.status !== "WARNING") return false;
+  if (!isAdvisoryStructurePass(structure?.status ?? "PENDING", structure?.details)) {
+    return false;
+  }
   if (knowledge?.status !== "PASS") return false;
   if (chunk?.status !== "PASS") return false;
 
   const chunkCount = chunkCountFromStep(chunk);
-  // Older runs may omit chunkCount in details; PASS on CHUNKING is still accepted.
   if (chunk.details && "chunkCount" in chunk.details && chunkCount < 1) return false;
 
   return true;
 }
 
-/**
- * Search-foundation completion: Draft index + retrieval evaluation on current binding.
- */
-export function isSearchFoundationStagesPassed(input: StructurePassInput): boolean {
+/** Strict: SEARCH_INDEX + RETRIEVAL_EVALUATION must be PASS (no WARNING). */
+export function isSearchFoundationStagesPassedStrict(input: StructurePassInput): boolean {
   if (!input.pipelineCurrent) return false;
   if (!isStructureStagesPassed(input)) return false;
 
@@ -73,22 +101,22 @@ export function isSearchFoundationStagesPassed(input: StructurePassInput): boole
   const evaluation = findStep(input.steps, "SEARCH_EVALUATING");
 
   if (index?.status !== "PASS") return false;
-  if (evaluation?.status === "PASS") return true;
-  if (
-    DOCLING_RETRIEVAL_WARNING_OPENS_DISTRIBUTION &&
-    evaluation?.status === "WARNING"
-  ) {
-    return true;
-  }
-  return false;
+  return evaluation?.status === "PASS";
 }
 
 /**
- * Full knowledge pipeline gate historically used as `passed`.
- * Equals search-foundation readiness (structure + index + evaluation + ready step).
+ * @deprecated Prefer isSearchFoundationStagesPassedStrict for submit/readiness.
+ * Kept as alias for strict policy.
+ */
+export function isSearchFoundationStagesPassed(input: StructurePassInput): boolean {
+  return isSearchFoundationStagesPassedStrict(input);
+}
+
+/**
+ * Full knowledge pipeline gate (historical `passed`).
  */
 export function isFullKnowledgePipelineStagesPassed(input: StructurePassInput): boolean {
-  if (!isSearchFoundationStagesPassed(input)) return false;
+  if (!isSearchFoundationStagesPassedStrict(input)) return false;
   const ready = findStep(input.steps, "READY_FOR_REVIEW");
   return ready?.status === "PASS";
 }

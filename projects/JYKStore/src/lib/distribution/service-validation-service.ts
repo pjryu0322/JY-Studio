@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
+  assertDistributionChannelsSelected,
   isServiceEnded,
   selectedServiceChannels,
   type ServiceChannel,
@@ -1037,20 +1038,222 @@ export type ServiceValidationSubmitSnapshotEntry = {
   confirmedAt: string | null;
 };
 
+export type PreparationValidationSnapshotEntry = {
+  status: string;
+  runId: string;
+  testedAt: string | null;
+  currentValidity: "CURRENT";
+  providerConfirmationStatus: string;
+  providerConfirmationId: string;
+  confirmedAt: string;
+  pipelineRunId: string | null;
+  normalizedDocumentId: string | null;
+  indexGenerationId: string | null;
+  fingerprint: string | null;
+  resultFingerprint?: string | null;
+  downloadTestId?: string | null;
+};
+
+async function assertPreparationChannelPassed(input: {
+  packId: string;
+  versionId: string;
+  channel: ServiceChannel;
+  bindingFingerprint?: string | null;
+  bindingIndexGenerationId?: string | null;
+  pipelineRunId?: string | null;
+  normalizedDocumentId?: string | null;
+}): Promise<PreparationValidationSnapshotEntry> {
+  const run = await findLatestServiceValidationRun({
+    versionId: input.versionId,
+    channel: input.channel,
+  });
+  const resultItemCount =
+    run && (input.channel === "API" || input.channel === "MCP")
+      ? await prisma.serviceValidationResultItem.count({ where: { runId: run.id } })
+      : null;
+  const validity = run
+    ? resolveRunCurrentValidity({
+        run,
+        bindingFingerprint: input.bindingFingerprint,
+        bindingIndexGenerationId: input.bindingIndexGenerationId,
+        resultItemCount,
+      })
+    : "STALE";
+  if (!run || run.status !== "PASS" || validity !== "CURRENT") {
+    throw new PayloadServiceError(
+      validity === "STALE" || run?.status === "STALE"
+        ? "SERVICE_VALIDATION_STALE"
+        : "SERVICE_VALIDATION_REQUIRED",
+      validity === "STALE"
+        ? "지식 데이터 또는 유통정보가 변경되어 서비스 검증을 다시 진행해야 합니다."
+        : `${input.channel} 제공 방식의 검증이 필요합니다.`,
+      400,
+    );
+  }
+  if (run.packId !== input.packId || run.versionId !== input.versionId) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "지식 데이터 또는 유통정보가 변경되어 서비스 검증을 다시 진행해야 합니다.",
+      400,
+    );
+  }
+  if (input.pipelineRunId && run.pipelineRunId !== input.pipelineRunId) {
+    throw new PayloadServiceError("SERVICE_VALIDATION_STALE", "지식 데이터가 변경되어 서비스 검증을 다시 진행해야 합니다.", 400);
+  }
+  if (input.normalizedDocumentId && run.normalizedDocumentId !== input.normalizedDocumentId) {
+    throw new PayloadServiceError("SERVICE_VALIDATION_STALE", "지식 데이터가 변경되어 서비스 검증을 다시 진행해야 합니다.", 400);
+  }
+  if (input.bindingFingerprint && run.fingerprint !== input.bindingFingerprint) {
+    throw new PayloadServiceError("SERVICE_VALIDATION_STALE", "지식 데이터가 변경되어 서비스 검증을 다시 진행해야 합니다.", 400);
+  }
+  if (
+    input.bindingIndexGenerationId &&
+    run.indexGenerationId !== input.bindingIndexGenerationId
+  ) {
+    throw new PayloadServiceError("SERVICE_VALIDATION_STALE", "지식 데이터가 변경되어 서비스 검증을 다시 진행해야 합니다.", 400);
+  }
+  if ((input.channel === "API" || input.channel === "MCP") && (resultItemCount ?? 0) < 1) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_RESULT_SNAPSHOT_EMPTY",
+      `${input.channel} 제공 방식의 검색 결과 Snapshot이 없습니다. 다시 검증해 주세요.`,
+      400,
+    );
+  }
+  let downloadTestId: string | null = null;
+  if (input.channel === "DOWNLOAD") {
+    const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
+      where: { runId: run.id },
+    });
+    if (!downloadTest?.responseReady) {
+      throw new PayloadServiceError(
+        "SERVICE_DOWNLOAD_TEST_REQUIRED",
+        "다운로드 테스트 증적이 필요합니다. 테스트 다운로드 후 품질 확인해 주세요.",
+        400,
+      );
+    }
+    downloadTestId = downloadTest.id;
+  }
+  const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+    where: { runId: run.id },
+  });
+  const confStatus = resolveConfirmationStatusDto({
+    confirmationStatus: confirmation?.status,
+    runValidity: validity,
+  });
+  if (confStatus !== "CONFIRMED" || !confirmation) {
+    throw new PayloadServiceError(
+      confStatus === "STALE"
+        ? "SERVICE_VALIDATION_STALE"
+        : confStatus === "REJECTED"
+          ? "SERVICE_CONFIRMATION_REJECTED"
+          : "SERVICE_CONFIRMATION_REQUIRED",
+      confStatus === "REJECTED"
+        ? `${input.channel} 제공 방식의 검색 품질이 반려되었습니다. 다시 검증해 주세요.`
+        : confStatus === "STALE"
+          ? "지식 데이터 또는 유통정보가 변경되어 서비스 품질 확인을 다시 진행해야 합니다."
+          : `${input.channel} 제공 방식의 제공자 품질 확인이 필요합니다.`,
+      400,
+    );
+  }
+  return {
+    status: run.status,
+    runId: run.id,
+    testedAt: run.testedAt?.toISOString() ?? null,
+    currentValidity: "CURRENT",
+    providerConfirmationStatus: confStatus,
+    providerConfirmationId: confirmation.id,
+    confirmedAt: confirmation.confirmedAt.toISOString(),
+    pipelineRunId: run.pipelineRunId,
+    normalizedDocumentId: run.normalizedDocumentId,
+    indexGenerationId: run.indexGenerationId,
+    fingerprint: run.fingerprint,
+    resultFingerprint:
+      input.channel === "API" || input.channel === "MCP" ? run.resultFingerprint : undefined,
+    downloadTestId: downloadTestId ?? undefined,
+  };
+}
+
+export async function assertPreparationServiceValidationsPassed(input: {
+  packId: string;
+  versionId: string;
+  bindingFingerprint?: string | null;
+  bindingIndexGenerationId?: string | null;
+  pipelineRunId?: string | null;
+  normalizedDocumentId?: string | null;
+}): Promise<Record<ServiceChannel, PreparationValidationSnapshotEntry>> {
+  const snapshot = {} as Record<ServiceChannel, PreparationValidationSnapshotEntry>;
+  for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
+    snapshot[channel] = await assertPreparationChannelPassed({
+      packId: input.packId,
+      versionId: input.versionId,
+      channel,
+      bindingFingerprint: input.bindingFingerprint,
+      bindingIndexGenerationId: input.bindingIndexGenerationId,
+      pipelineRunId: input.pipelineRunId,
+      normalizedDocumentId: input.normalizedDocumentId,
+    });
+  }
+  if (snapshot.API && snapshot.MCP) {
+    const apiRun = await prisma.serviceValidationRun.findUnique({
+      where: { id: snapshot.API.runId },
+    });
+    const mcpRun = await prisma.serviceValidationRun.findUnique({
+      where: { id: snapshot.MCP.runId },
+    });
+    const apiConf = await prisma.serviceValidationProviderConfirmation.findUnique({
+      where: { id: snapshot.API.providerConfirmationId },
+    });
+    const mcpConf = await prisma.serviceValidationProviderConfirmation.findUnique({
+      where: { id: snapshot.MCP.providerConfirmationId },
+    });
+    if (
+      apiConf?.sharedConfirmationGroupId &&
+      apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId
+    ) {
+      const [apiResults, mcpResults] = await Promise.all([
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: snapshot.API.runId },
+          orderBy: { rank: "asc" },
+        }),
+        prisma.serviceValidationResultItem.findMany({
+          where: { runId: snapshot.MCP.runId },
+          orderBy: { rank: "asc" },
+        }),
+      ]);
+      const asserted = assertSharedConfirmationEvidence({
+        apiRun,
+        mcpRun,
+        apiResults: apiResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+        mcpResults: mcpResults.map((i) => ({
+          rank: i.rank,
+          chunkId: i.chunkId,
+          sourceDocumentId: i.sourceDocumentId,
+          pageStart: i.pageStart,
+          pageEnd: i.pageEnd,
+        })),
+      });
+      if (!asserted.ok) {
+        throw new PayloadServiceError(asserted.code, asserted.message, 400);
+      }
+    }
+  }
+  return snapshot;
+}
+
 export async function assertSelectedServiceValidationsPassed(input: {
   versionId: string;
   distribution: Pick<PackDistributionMetadata, "allowApi" | "allowMcp" | "allowDownload">;
   bindingFingerprint?: string | null;
   bindingIndexGenerationId?: string | null;
 }): Promise<Record<string, ServiceValidationSubmitSnapshotEntry>> {
+  assertDistributionChannelsSelected(input.distribution);
   const selected = selectedServiceChannels(input.distribution);
-  if (selected.length === 0) {
-    throw new PayloadServiceError(
-      "SERVICE_CHANNEL_REQUIRED",
-      "제공 방식을 한 개 이상 선택해 주세요.",
-      400,
-    );
-  }
   const snapshot: Record<string, ServiceValidationSubmitSnapshotEntry> = {};
   for (const channel of selected) {
     const run = await findLatestServiceValidationRun({ versionId: input.versionId, channel });
@@ -1216,6 +1419,27 @@ export async function assertCurrentServiceValidationEvidence(input: {
     );
   }
 
+  if (selectedNow.length < 1) {
+    throw new PayloadServiceError(
+      "SERVICE_CHANNEL_REQUIRED",
+      "제공 방식을 한 개 이상 선택해 주세요.",
+      400,
+    );
+  }
+  const snapChannels = input.snapshot.distributionChannels;
+  if (
+    snapChannels &&
+    (snapChannels.allowApi !== dist.allowApi ||
+      snapChannels.allowMcp !== dist.allowMcp ||
+      snapChannels.allowDownload !== dist.allowDownload)
+  ) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "서비스 검증 증적이 현재 유통 채널과 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+      400,
+    );
+  }
+
   const { binding, latest } = await loadBindingContext(input.packId, input.versionId);
   if (!binding || !latest) {
     throw new PayloadServiceError(
@@ -1225,8 +1449,9 @@ export async function assertCurrentServiceValidationEvidence(input: {
     );
   }
 
-  const snapValidation = input.snapshot.serviceValidation ?? {};
-  for (const channel of selectedNow) {
+  const snapValidation =
+    input.snapshot.preparationValidation ?? input.snapshot.serviceValidation ?? {};
+  for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
     const snap = snapValidation[channel];
     if (!snap?.runId) {
       throw new PayloadServiceError(

@@ -16,7 +16,11 @@ import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
-import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
+import { isDoclingPayloadPresent } from "@/lib/docling-import/docling-import-ui";
+import {
+  doclingBundlePublicToMaterialContext,
+  isDoclingSourceMaterialsReady,
+} from "@/lib/docling-import/docling-source-materials-readiness";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { PackLanguageCode } from "@/lib/pack-language";
 import {
@@ -26,7 +30,6 @@ import {
 import {
   buildProviderPackProgress,
   isDistributionReadyForProgress,
-  isMaterialReadyForProgress,
 } from "@/lib/provider-pack-progress";
 import {
   fetchProviderDoclingImportApi,
@@ -46,6 +49,11 @@ import {
   resolveProviderPackTabLocks,
   type ProviderPackTabId,
 } from "@/lib/provider-pack-tabs";
+import {
+  resolveProviderRegistrationReadiness,
+  tabLocksFromRegistrationReadiness,
+  tabStepStatusesFromRegistrationReadiness,
+} from "@/lib/provider-registration-readiness";
 import { providerPackDetailPath } from "@/lib/routes";
 import {
   PROVIDER_PACK_ID_LABEL,
@@ -177,8 +185,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const structurePassed = Boolean(knowledgeStatus?.structurePassed);
   const searchFoundationPassed = Boolean(knowledgeStatus?.searchFoundationPassed);
-  const pipelineCurrent = knowledgeStatus ? knowledgeStatus.pipelineCurrent : true;
-  const providerConfirmed = isDoclingPayloadReady(doclingBundle?.status);
+  const pipelineCurrent = Boolean(knowledgeStatus?.pipelineCurrent);
+  const sourceMaterialsReady = isDoclingSourceMaterialsReady(
+    doclingBundlePublicToMaterialContext(doclingBundle),
+  );
   const distributionReady = Boolean(
     distribution &&
       isDistributionReadyForServiceValidation({
@@ -195,27 +205,49 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     serviceValidation?.allPreparationChannelsPassed ??
       serviceValidation?.allSelectedPassed,
   );
+  const providerConfirmed = sourceMaterialsReady;
+  const distributionReadyForProgress = isDistributionReadyForProgress({
+    sourceTitle: distribution?.sourceTitle,
+    sourceUrl: distribution?.sourceUrl,
+    licenseName: distribution?.licenseName,
+    rightsBasis: distribution?.rightsBasis,
+    rightsConfirmedAt: distribution?.rightsConfirmedAt,
+    allowApi: distribution?.allowApi,
+    allowMcp: distribution?.allowMcp,
+    allowDownload: distribution?.allowDownload,
+  });
+
+  const registrationReadiness = useMemo(() => {
+    if (!pack) return null;
+    return resolveProviderRegistrationReadiness({
+      packId: pack.packId,
+      packStatus: pack.status,
+      basicInfoReady: hasBasicInfo && hasLanguage,
+      sourceMaterialsReady,
+      structurePassed,
+      searchFoundationPassed,
+      allPreparationChannelsPassed: serviceValidationPassed,
+      distributionMetadataReady: distributionReadyForProgress,
+      pipelineCurrent,
+      structureStale: sourceMaterialsReady && !pipelineCurrent,
+      searchValidationStale: structurePassed && !pipelineCurrent,
+      latestRejectionReason: pack.latestRejectionReason,
+    });
+  }, [
+    pack,
+    hasBasicInfo,
+    hasLanguage,
+    sourceMaterialsReady,
+    structurePassed,
+    searchFoundationPassed,
+    serviceValidationPassed,
+    distributionReadyForProgress,
+    pipelineCurrent,
+  ]);
 
   const packProgress = useMemo(() => {
     if (!pack) return null;
     const working = pack.versions[0] ?? null;
-    const materialReady = isMaterialReadyForProgress({
-      sourceDocumentCount,
-      payloadValidationStatus: null,
-      doclingBundleStatus: isDoclingPayloadReady(doclingBundle?.status)
-        ? "REVIEW_READY"
-        : doclingBundle?.status ?? null,
-    });
-    const distributionReadyForProgress = isDistributionReadyForProgress({
-      sourceTitle: distribution?.sourceTitle,
-      sourceUrl: distribution?.sourceUrl,
-      licenseName: distribution?.licenseName,
-      rightsBasis: distribution?.rightsBasis,
-      rightsConfirmedAt: distribution?.rightsConfirmedAt,
-      allowApi: distribution?.allowApi,
-      allowMcp: distribution?.allowMcp,
-      allowDownload: distribution?.allowDownload,
-    });
 
     return buildProviderPackProgress({
       packId: pack.packId,
@@ -231,7 +263,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             id: working.id,
             version: working.version,
             sourceDocumentCount,
-            materialReady,
+            materialReady: sourceMaterialsReady,
             structureReady: structurePassed,
             searchFoundationReady: searchFoundationPassed,
             searchValidationReady: serviceValidationPassed,
@@ -254,10 +286,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     language,
     sourceDocumentCount,
     distribution,
-    doclingBundle,
+    sourceMaterialsReady,
     structurePassed,
     searchFoundationPassed,
     serviceValidationPassed,
+    distributionReadyForProgress,
     pipelineCurrent,
   ]);
 
@@ -292,19 +325,29 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     fallback: defaultTab,
   });
 
-  const tabLocks = useMemo(
-    () =>
-      resolveProviderPackTabLocks({
-        providerConfirmed,
-        structurePassed,
-        knowledgePassed: structurePassed,
-        distributionReady,
-        serviceValidationPassed,
-      }),
-    [providerConfirmed, structurePassed, distributionReady, serviceValidationPassed],
-  );
+  const tabLocks = useMemo(() => {
+    if (registrationReadiness) {
+      return tabLocksFromRegistrationReadiness(registrationReadiness);
+    }
+    return resolveProviderPackTabLocks({
+      providerConfirmed,
+      structurePassed,
+      knowledgePassed: structurePassed,
+      distributionReady,
+      serviceValidationPassed,
+    });
+  }, [
+    registrationReadiness,
+    providerConfirmed,
+    structurePassed,
+    distributionReady,
+    serviceValidationPassed,
+  ]);
 
   const tabStepStatuses = useMemo(() => {
+    if (registrationReadiness) {
+      return tabStepStatusesFromRegistrationReadiness(registrationReadiness);
+    }
     const byTab: Partial<
       Record<
         ProviderPackTabId,
@@ -337,7 +380,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       byTab[tab] = { status: step.status, statusLabel };
     }
     return byTab;
-  }, [packProgress]);
+  }, [registrationReadiness, packProgress]);
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {

@@ -228,26 +228,26 @@ export async function commitDistributionPackForReview(
     };
   }
 
-  let serviceValidation: Record<
-    string,
-    {
-      status: string;
-      runId: string;
-      testedAt: string | null;
-      providerConfirmationStatus: string;
-      providerConfirmationId: string | null;
-      confirmedAt: string | null;
-    }
+  let preparationValidation: Awaited<
+    ReturnType<
+      typeof import("@/lib/distribution/service-validation-service").assertPreparationServiceValidationsPassed
+    >
   >;
   try {
-    const { assertSelectedServiceValidationsPassed } = await import(
+    const { assertPreparationServiceValidationsPassed } = await import(
       "@/lib/distribution/service-validation-service"
     );
-    serviceValidation = await assertSelectedServiceValidationsPassed({
+    const { assertDistributionChannelsSelected } = await import(
+      "@/lib/distribution/service-channel-policy"
+    );
+    assertDistributionChannelsSelected(meta);
+    preparationValidation = await assertPreparationServiceValidationsPassed({
+      packId,
       versionId: version.id,
-      distribution: meta,
       bindingFingerprint: nd.fingerprint,
       bindingIndexGenerationId: passBinding.indexGenerationId,
+      pipelineRunId: passRun.id,
+      normalizedDocumentId: nd.id,
     });
   } catch (error) {
     const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
@@ -292,7 +292,38 @@ export async function commitDistributionPackForReview(
     sourceDocumentVersion: meta.sourceDocumentVersion,
     sourcePublishedAt: meta.sourcePublishedAt?.toISOString() ?? null,
     sourceRetrievedAt: meta.sourceRetrievedAt?.toISOString() ?? null,
-    serviceValidation,
+    serviceValidation: {
+      API: {
+        status: preparationValidation.API.status,
+        runId: preparationValidation.API.runId,
+        testedAt: preparationValidation.API.testedAt,
+        providerConfirmationStatus: preparationValidation.API.providerConfirmationStatus,
+        providerConfirmationId: preparationValidation.API.providerConfirmationId,
+        confirmedAt: preparationValidation.API.confirmedAt,
+      },
+      MCP: {
+        status: preparationValidation.MCP.status,
+        runId: preparationValidation.MCP.runId,
+        testedAt: preparationValidation.MCP.testedAt,
+        providerConfirmationStatus: preparationValidation.MCP.providerConfirmationStatus,
+        providerConfirmationId: preparationValidation.MCP.providerConfirmationId,
+        confirmedAt: preparationValidation.MCP.confirmedAt,
+      },
+      DOWNLOAD: {
+        status: preparationValidation.DOWNLOAD.status,
+        runId: preparationValidation.DOWNLOAD.runId,
+        testedAt: preparationValidation.DOWNLOAD.testedAt,
+        providerConfirmationStatus: preparationValidation.DOWNLOAD.providerConfirmationStatus,
+        providerConfirmationId: preparationValidation.DOWNLOAD.providerConfirmationId,
+        confirmedAt: preparationValidation.DOWNLOAD.confirmedAt,
+      },
+    },
+    preparationValidation,
+    distributionChannels: {
+      allowApi: meta.allowApi,
+      allowMcp: meta.allowMcp,
+      allowDownload: meta.allowDownload,
+    },
     language: packLanguage,
     pipelineRunId: passRun.id,
     indexGenerationId: passBinding.indexGenerationId,

@@ -1,3 +1,5 @@
+import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+
 export type ServiceChannel = "API" | "MCP" | "DOWNLOAD";
 
 export type ServiceChannelFlags = {
@@ -21,6 +23,17 @@ export function selectedServiceChannels(flags: ServiceChannelFlags): ServiceChan
   if (flags.allowMcp) channels.push("MCP");
   if (flags.allowDownload) channels.push("DOWNLOAD");
   return channels;
+}
+
+/** At least one publish channel must be selected before review submit. */
+export function assertDistributionChannelsSelected(flags: ServiceChannelFlags): void {
+  if (selectedServiceChannels(flags).length === 0) {
+    throw new PayloadServiceError(
+      "SERVICE_CHANNEL_REQUIRED",
+      "제공 방식을 한 개 이상 선택해 주세요.",
+      400,
+    );
+  }
 }
 
 export function assertServiceChannelEnabled(

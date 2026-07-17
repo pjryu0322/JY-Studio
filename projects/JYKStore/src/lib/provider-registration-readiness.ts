@@ -172,9 +172,9 @@ export function resolveProviderRegistrationReadiness(
     input.distributionMetadataReady &&
     input.pipelineCurrent;
 
-  const locks = {
-    BASIC_INFO: { locked: false, reason: null as string | null },
-    SOURCE_MATERIALS: { locked: false, reason: null as string | null },
+  const locks: Record<ProviderRegistrationStepId, { locked: boolean; reason: string | null }> = {
+    BASIC_INFO: { locked: false, reason: null },
+    SOURCE_MATERIALS: { locked: false, reason: null },
     DATA_STRUCTURE: {
       locked: !input.sourceMaterialsReady,
       reason: input.sourceMaterialsReady
@@ -182,13 +182,16 @@ export function resolveProviderRegistrationReadiness(
         : "자료 등록 확인을 완료해 주세요.",
     },
     SEARCH_DATA_VALIDATION: {
-      locked: !input.structurePassed || (structureStale && !input.structurePassed),
+      locked:
+        !input.sourceMaterialsReady ||
+        !input.structurePassed ||
+        !input.pipelineCurrent,
       reason: !input.sourceMaterialsReady
         ? "자료 등록 확인을 완료해 주세요."
         : !input.structurePassed
           ? "Retrieval Chunk 생성이 완료되지 않았습니다."
-          : structureStale
-            ? "검색 평가 결과가 현재 구조화 데이터와 일치하지 않습니다. 데이터 구조화를 다시 실행해 주세요."
+          : !input.pipelineCurrent
+            ? "등록 자료가 변경되어 구조화 결과를 다시 생성해야 합니다."
             : null,
     },
     DISTRIBUTION_REVIEW: {
@@ -203,18 +206,6 @@ export function resolveProviderRegistrationReadiness(
               ? "검색 검증 증적이 현재 자료와 일치하지 않습니다. 다시 검증해 주세요."
               : null,
     },
-  };
-
-  // Fix SEARCH lock: unlock when structure passed and pipeline current (or structure not stale).
-  locks.SEARCH_DATA_VALIDATION = {
-    locked: !input.structurePassed || !input.pipelineCurrent,
-    reason: !input.sourceMaterialsReady
-      ? "자료 등록 확인을 완료해 주세요."
-      : !input.structurePassed
-        ? "Retrieval Chunk 생성이 완료되지 않았습니다."
-        : !input.pipelineCurrent
-          ? "등록 자료가 변경되어 구조화 결과를 다시 생성해야 합니다."
-          : null,
   };
 
   function statusFor(
@@ -344,4 +335,24 @@ export function tabLocksFromRegistrationReadiness(
     serviceValidation: byTab.serviceValidation ?? { locked: false, reason: null },
     distributionReview: byTab.distributionReview ?? { locked: false, reason: null },
   };
+}
+
+export function tabStepStatusesFromRegistrationReadiness(
+  readiness: ProviderRegistrationReadiness,
+): Partial<
+  Record<
+    ProviderPackTabId,
+    { status: ProviderRegistrationStepStatus; statusLabel: string }
+  >
+> {
+  const byTab: Partial<
+    Record<
+      ProviderPackTabId,
+      { status: ProviderRegistrationStepStatus; statusLabel: string }
+    >
+  > = {};
+  for (const step of readiness.steps) {
+    byTab[step.tab] = { status: step.status, statusLabel: step.statusLabel };
+  }
+  return byTab;
 }
