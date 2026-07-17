@@ -133,9 +133,18 @@ export type DoclingBundleReviewSubmitSnapshot = {
   /** Knowledge pipeline binding — required for new submits; optional for legacy. */
   pipelineRunId?: string | null;
   indexGenerationId?: string | null;
+  /** P4: explicit search-index generation binding (Version 2+). */
+  searchIndexGenerationId?: string | null;
   retrievalEvaluationStatus?: string | null;
   normalizedDocumentFingerprint?: string | null;
+  /**
+   * Snapshot schema version. Absent/1 = legacy (serviceValidation only).
+   * 2 = three-channel preparationValidation + distributionChannels required.
+   */
+  snapshotSchemaVersion?: number;
 };
+
+export const REVIEW_SUBMIT_SNAPSHOT_VERSION = 2 as const;
 
 export type ReviewSubmitSnapshot =
   | DistributionReviewSubmitSnapshot
@@ -202,11 +211,14 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   language: PackLanguageCode;
   pipelineRunId?: string | null;
   indexGenerationId?: string | null;
+  searchIndexGenerationId?: string | null;
   retrievalEvaluationStatus?: string | null;
   normalizedDocumentFingerprint?: string | null;
+  snapshotSchemaVersion?: number;
 }): DoclingBundleReviewSubmitSnapshot {
   return {
     mode: "DOCLING_BUNDLE",
+    snapshotSchemaVersion: input.snapshotSchemaVersion ?? REVIEW_SUBMIT_SNAPSHOT_VERSION,
     submittedAt: new Date().toISOString(),
     submittedVersionId: input.submittedVersionId,
     doclingBundleId: input.doclingBundleId,
@@ -240,6 +252,7 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     language: input.language,
     pipelineRunId: input.pipelineRunId ?? null,
     indexGenerationId: input.indexGenerationId ?? null,
+    searchIndexGenerationId: input.searchIndexGenerationId ?? null,
     retrievalEvaluationStatus: input.retrievalEvaluationStatus ?? null,
     normalizedDocumentFingerprint:
       input.normalizedDocumentFingerprint ?? input.fingerprint ?? null,
@@ -362,10 +375,20 @@ export function parseDoclingBundleReviewSubmitSnapshot(
       raw.serviceValidation && typeof raw.serviceValidation === "object"
         ? (raw.serviceValidation as DoclingBundleReviewSubmitSnapshot["serviceValidation"])
         : null,
+    preparationValidation:
+      raw.preparationValidation && typeof raw.preparationValidation === "object"
+        ? (raw.preparationValidation as DoclingBundleReviewSubmitSnapshot["preparationValidation"])
+        : null,
+    distributionChannels:
+      raw.distributionChannels && typeof raw.distributionChannels === "object"
+        ? (raw.distributionChannels as DoclingBundleReviewSubmitSnapshot["distributionChannels"])
+        : null,
     language,
     pipelineRunId: typeof raw.pipelineRunId === "string" ? raw.pipelineRunId : null,
     indexGenerationId:
       typeof raw.indexGenerationId === "string" ? raw.indexGenerationId : null,
+    searchIndexGenerationId:
+      typeof raw.searchIndexGenerationId === "string" ? raw.searchIndexGenerationId : null,
     retrievalEvaluationStatus:
       typeof raw.retrievalEvaluationStatus === "string"
         ? raw.retrievalEvaluationStatus
@@ -376,7 +399,42 @@ export function parseDoclingBundleReviewSubmitSnapshot(
         : typeof raw.fingerprint === "string"
           ? raw.fingerprint
           : null,
+    snapshotSchemaVersion:
+      typeof raw.snapshotSchemaVersion === "number" ? raw.snapshotSchemaVersion : undefined,
   };
+}
+
+/**
+ * True when the snapshot is a Version 2 review snapshot: three-channel
+ * preparationValidation with required binding fields + distributionChannels.
+ */
+export function isReviewSubmitSnapshotV2(
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+): boolean {
+  if ((snapshot.snapshotSchemaVersion ?? 1) < 2) return false;
+  const prep = snapshot.preparationValidation;
+  if (!prep) return false;
+  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+    const entry = prep[channel];
+    if (!entry) return false;
+    if (typeof entry.runId !== "string" || entry.runId.length === 0) return false;
+    if (entry.status !== "PASS") return false;
+    if (entry.currentValidity != null && entry.currentValidity !== "CURRENT") return false;
+    if (entry.providerConfirmationStatus !== "CONFIRMED") return false;
+    if (typeof entry.providerConfirmationId !== "string" || entry.providerConfirmationId.length === 0) {
+      return false;
+    }
+    if (typeof entry.pipelineRunId !== "string" || entry.pipelineRunId.length === 0) return false;
+    if (typeof entry.normalizedDocumentId !== "string" || entry.normalizedDocumentId.length === 0) {
+      return false;
+    }
+    if (typeof entry.fingerprint !== "string" || entry.fingerprint.length === 0) return false;
+    const genId =
+      (entry as { indexGenerationId?: unknown }).indexGenerationId ??
+      (entry as { searchIndexGenerationId?: unknown }).searchIndexGenerationId;
+    if (typeof genId !== "string" || genId.length === 0) return false;
+  }
+  return Boolean(snapshot.distributionChannels);
 }
 
 export function parseReviewSubmitSnapshot(value: unknown): ReviewSubmitSnapshot | null {

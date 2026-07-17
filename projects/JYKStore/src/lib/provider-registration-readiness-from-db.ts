@@ -1,4 +1,4 @@
-import type { PackStatus } from "@prisma/client";
+import { Prisma, type PackStatus } from "@prisma/client";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import {
   isSearchFoundationStagesPassedStrict,
@@ -291,11 +291,22 @@ export async function batchResolveListRegistrationProgressInputs(input: {
     : [];
   const bundleByVersion = new Map(bundles.map((b) => [b.versionId, b]));
 
+  // §12 Latest-only fetch via DISTINCT ON — avoids loading full run history into memory.
   const packIds = [...new Set(input.packs.map((p) => p.packId))];
-  const runs = packIds.length
+  const latestPipelineRunIdRows =
+    packIds.length > 0
+      ? await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT DISTINCT ON ("packId") "id"
+          FROM "PipelineRun"
+          WHERE "packId" IN (${Prisma.join(packIds)})
+            AND "triggerType" = ${DOCLING_KNOWLEDGE_PIPELINE_TRIGGER}
+          ORDER BY "packId", "startedAt" DESC
+        `)
+      : [];
+  const latestPipelineRunIds = latestPipelineRunIdRows.map((r) => r.id);
+  const runs = latestPipelineRunIds.length
     ? await prisma.pipelineRun.findMany({
-        where: { packId: { in: packIds }, triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER },
-        orderBy: { startedAt: "desc" },
+        where: { id: { in: latestPipelineRunIds } },
         include: { steps: { orderBy: { createdAt: "asc" } } },
       })
     : [];
@@ -306,21 +317,26 @@ export async function batchResolveListRegistrationProgressInputs(input: {
     runsByPack.set(run.packId, list);
   }
 
-  const validationRuns = versionIds.length
+  const preparationChannels = [...SEARCH_VALIDATION_PREPARATION_CHANNELS];
+  const latestValidationRunIdRows =
+    versionIds.length > 0
+      ? await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT DISTINCT ON ("versionId", "channel") "id"
+          FROM "ServiceValidationRun"
+          WHERE "versionId" IN (${Prisma.join(versionIds)})
+            AND "channel"::text IN (${Prisma.join(preparationChannels)})
+          ORDER BY "versionId", "channel", "createdAt" DESC
+        `)
+      : [];
+  const latestValidationRunIds = latestValidationRunIdRows.map((r) => r.id);
+  const validationRuns = latestValidationRunIds.length
     ? await prisma.serviceValidationRun.findMany({
-        where: {
-          versionId: { in: versionIds },
-          channel: { in: [...SEARCH_VALIDATION_PREPARATION_CHANNELS] },
-        },
-        orderBy: { createdAt: "desc" },
+        where: { id: { in: latestValidationRunIds } },
       })
     : [];
   const latestRunByVersionChannel = new Map<string, (typeof validationRuns)[number]>();
   for (const run of validationRuns) {
-    const key = `${run.versionId}:${run.channel}`;
-    if (!latestRunByVersionChannel.has(key)) {
-      latestRunByVersionChannel.set(key, run);
-    }
+    latestRunByVersionChannel.set(`${run.versionId}:${run.channel}`, run);
   }
 
   const runIds = [...new Set(validationRuns.map((r) => r.id))];

@@ -173,6 +173,43 @@ export async function commitDistributionPackForReview(
     };
   }
 
+  // §8 Common source-materials readiness (same condition as list/editor readiness).
+  const { isDoclingSourceMaterialsReady } = await import(
+    "@/lib/docling-import/docling-source-materials-readiness"
+  );
+  const sourceMaterialsReady = isDoclingSourceMaterialsReady({
+    id: doclingBundle.id,
+    status: doclingBundle.status,
+    isActive: doclingBundle.isActive,
+    deletedAt: doclingBundle.deletedAt,
+    storageStatus: doclingBundle.storageStatus,
+    packId: doclingBundle.packId,
+    versionId: doclingBundle.versionId,
+    files: doclingBundle.files.map((f) => ({
+      id: f.id,
+      role: f.role,
+      checksumSha256: f.checksumSha256,
+    })),
+    normalizedDocument: {
+      id: nd.id,
+      packId: nd.packId,
+      versionId: nd.versionId,
+      bundleId: nd.bundleId,
+      isActive: nd.isActive,
+      sourceFileId: nd.sourceFileId,
+      jsonPayloadFileId: nd.jsonPayloadFileId,
+      fingerprint: nd.fingerprint,
+    },
+  });
+  if (!sourceMaterialsReady) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "원본문서와 구조화 JSON이 정상 처리되어 REVIEW_READY 상태여야 검수 요청할 수 있습니다.",
+      missingRequirements: ["SOURCE_MATERIALS_NOT_READY"],
+    };
+  }
+
   if (!meta) {
     return {
       error: "INCOMPLETE",
@@ -331,6 +368,10 @@ export async function commitDistributionPackForReview(
     normalizedDocumentFingerprint: nd.fingerprint,
   });
 
+  const { assertReviewSubmitEvidenceInTx, ReviewSubmitEvidenceError } = await import(
+    "@/lib/distribution/review-submit-evidence"
+  );
+
   try {
     await prisma.$transaction(async (tx) => {
       await acquireVersionUploadLock(tx, version.id, packId);
@@ -362,6 +403,14 @@ export async function commitDistributionPackForReview(
         throw new Error("DOCLING_REVIEW_STATE_CONFLICT");
       }
 
+      // §7 Re-validate the full evidence binding inside the transaction against the snapshot.
+      await assertReviewSubmitEvidenceInTx(tx, {
+        packId,
+        versionId: version.id,
+        providerProfileId: profile.id,
+        snapshot,
+      });
+
       await tx.knowledgePack.updateMany({
         where: { packId, status: PackStatus.DRAFT },
         data: { status: PackStatus.REVIEWING },
@@ -377,6 +426,15 @@ export async function commitDistributionPackForReview(
       });
     });
   } catch (error) {
+    if (error instanceof ReviewSubmitEvidenceError) {
+      if (error.code === "NOT_DRAFT") return { error: "NOT_DRAFT" };
+      if (error.code === "NOT_FOUND") return { error: "NOT_FOUND" };
+      return {
+        error: "INCOMPLETE",
+        message: error.message,
+        missingRequirements: [error.code],
+      };
+    }
     const code = error instanceof Error ? error.message : "";
     if (code === "NOT_DRAFT") return { error: "NOT_DRAFT" };
     if (code === "DOCLING_STAGING_BUNDLE_MUST_BE_RESOLVED") {

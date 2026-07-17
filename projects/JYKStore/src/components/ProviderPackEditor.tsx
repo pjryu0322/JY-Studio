@@ -46,7 +46,6 @@ import {
 import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabFromLocation,
-  resolveProviderPackTabLocks,
   type ProviderPackTabId,
 } from "@/lib/provider-pack-tabs";
 import {
@@ -285,7 +284,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     description,
     language,
     sourceDocumentCount,
-    distribution,
     sourceMaterialsReady,
     structurePassed,
     searchFoundationPassed,
@@ -325,62 +323,29 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     fallback: defaultTab,
   });
 
+  // §13 Single readiness source. Before load, keep everything except basic locked.
   const tabLocks = useMemo(() => {
     if (registrationReadiness) {
       return tabLocksFromRegistrationReadiness(registrationReadiness);
     }
-    return resolveProviderPackTabLocks({
-      providerConfirmed,
-      structurePassed,
-      knowledgePassed: structurePassed,
-      distributionReady,
-      serviceValidationPassed,
-    });
-  }, [
-    registrationReadiness,
-    providerConfirmed,
-    structurePassed,
-    distributionReady,
-    serviceValidationPassed,
-  ]);
+    const lockedReason = "지식팩을 불러오는 중입니다.";
+    return {
+      basic: { locked: false, reason: null },
+      payload: { locked: true, reason: lockedReason },
+      knowledge: { locked: true, reason: lockedReason },
+      serviceValidation: { locked: true, reason: lockedReason },
+      distributionReview: { locked: true, reason: lockedReason },
+    } satisfies Record<ProviderPackTabId, { locked: boolean; reason: string | null }>;
+  }, [registrationReadiness]);
 
   const tabStepStatuses = useMemo(() => {
     if (registrationReadiness) {
       return tabStepStatusesFromRegistrationReadiness(registrationReadiness);
     }
-    const byTab: Partial<
-      Record<
-        ProviderPackTabId,
-        { status: string; statusLabel: string }
-      >
-    > = {};
-    for (const step of packProgress?.steps ?? []) {
-      const tab =
-        step.key === "BASIC_INFO"
-          ? "basic"
-          : step.key === "SOURCE_MATERIALS"
-            ? "payload"
-            : step.key === "DATA_STRUCTURE"
-              ? "knowledge"
-              : step.key === "SEARCH_DATA_VALIDATION"
-                ? "serviceValidation"
-                : "distributionReview";
-      const statusLabel =
-        step.status === "COMPLETED"
-          ? "완료"
-          : step.status === "CURRENT"
-            ? "진행 중"
-            : step.status === "STALE"
-              ? "다시 생성 필요"
-              : step.status === "LOCKED"
-                ? "잠김"
-                : step.status === "BLOCKED"
-                  ? "차단"
-                  : "미완료";
-      byTab[tab] = { status: step.status, statusLabel };
-    }
-    return byTab;
-  }, [registrationReadiness, packProgress]);
+    return {} as Partial<
+      Record<ProviderPackTabId, { status: string; statusLabel: string }>
+    >;
+  }, [registrationReadiness]);
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
