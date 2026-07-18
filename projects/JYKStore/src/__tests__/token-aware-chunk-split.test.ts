@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { buildPassageEmbeddingText } from "@/lib/embedding/e5-embedding-text";
 import type { PassageTokenCounter } from "@/lib/embedding/e5-tokenize-client";
 import {
+  assertPrimaryContentCoverage,
   evaluatePassageTokenGate,
   passageTokenGateStatus,
   splitBodyContentByTokens,
   splitTableRowsByTokens,
 } from "@/lib/docling-knowledge/token-aware-chunk-split";
+import {
+  isSearchFoundationStagesPassed,
+  isStructureStagesPassed,
+} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
 
 /** Deterministic fake tokenizer: ~2 chars/token to stress Korean-like density. */
 const denseCounter: PassageTokenCounter = async (texts) =>
@@ -18,6 +26,9 @@ function formatTableChunk(caption: string, headers: string[], rows: string[][]):
   const body = rows.map((r) => r.join(" | ")).join("\n");
   return [`표 캡션: ${caption}`, `컬럼: ${headerLine}`, body].filter(Boolean).join("\n\n");
 }
+
+const here = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(here, "..", "..");
 
 describe("token-aware chunk split", () => {
   it("keeps short body as a single passage under target", async () => {
@@ -60,8 +71,58 @@ describe("token-aware chunk split", () => {
       });
       assert.ok(passage.startsWith("passage:"));
     }
-    // Order preserved: first piece mentions 문단 1, last mentions a later paragraph.
     assert.match(pieces[0]!.content, /문단 1/);
+    const coverage = assertPrimaryContentCoverage({ sourceText: paragraph, pieces });
+    assert.equal(coverage.ok, true);
+  });
+
+  it("preserves English and mixed language primary content", async () => {
+    const english = Array.from({ length: 50 }, (_, i) => `Sentence ${i + 1}. Safety inspection checklist item.`).join(
+      " ",
+    );
+    const mixed = `한글 서론. ${english} 마무리 문장입니다.`;
+    for (const source of [english, mixed]) {
+      const pieces = await splitBodyContentByTokens({
+        content: source,
+        title: "Mixed Doc",
+        countTokens: denseCounter,
+        targetPassageTokens: 448,
+        maxSequenceTokens: 512,
+        overlapTokens: 48,
+      });
+      assert.ok(pieces.length >= 1);
+      const coverage = assertPrimaryContentCoverage({ sourceText: source, pieces });
+      assert.equal(coverage.ok, true, coverage.ok ? "" : coverage.message);
+    }
+  });
+
+  it("records accurate overlap provenance metadata", async () => {
+    const paragraph = Array.from({ length: 60 }, (_, i) => `문단 ${i + 1}. 중첩 검증용 본문입니다.`).join("\n\n");
+    const pieces = await splitBodyContentByTokens({
+      content: paragraph,
+      title: "Overlap",
+      countTokens: denseCounter,
+      targetPassageTokens: 448,
+      maxSequenceTokens: 512,
+      overlapTokens: 48,
+    });
+    assert.ok(pieces.length >= 2);
+    const second = pieces[1]!;
+    assert.ok(second.actualOverlapTokens <= 48);
+    assert.equal(second.configuredOverlapTokens, 48);
+    if (second.hasOverlap) {
+      assert.ok(second.overlapSourceTextStart != null);
+      assert.ok(second.overlapSourceTextEnd != null);
+      assert.ok(second.overlapSourceTextEnd! > second.overlapSourceTextStart!);
+    }
+    for (let i = 1; i < pieces.length; i++) {
+      assert.ok(
+        pieces[i]!.primarySourceTextStart >= pieces[i - 1]!.primarySourceTextEnd,
+        "primary ranges must not overlap",
+      );
+    }
+    const coverage = assertPrimaryContentCoverage({ sourceText: paragraph, pieces });
+    assert.equal(coverage.ok, true);
   });
 
   it("splits tables by token budget with repeated headers", async () => {
@@ -81,6 +142,35 @@ describe("token-aware chunk split", () => {
       assert.ok(piece.tokenCount <= 448);
       assert.match(piece.content, /컬럼:/);
       assert.match(piece.content, /항목/);
+    }
+  });
+
+  it("preserves column structure when a single cell exceeds the budget", async () => {
+    const longCell = Array.from({ length: 200 }, (_, i) => `설명조각${i + 1}`).join(" ");
+    const pieces = await splitTableRowsByTokens({
+      caption: "긴 셀",
+      headers: ["항목", "설명", "기준"],
+      rows: [["A-1", longCell, "적합"]],
+      title: "표",
+      countTokens: denseCounter,
+      formatTableChunk,
+      targetPassageTokens: 448,
+      maxSequenceTokens: 512,
+    });
+    assert.ok(pieces.length >= 2);
+    const joinedCell = pieces
+      .map((p) => String(p.primaryContent ?? ""))
+      .join("")
+      .replace(/\s+/g, "");
+    assert.ok(joinedCell.includes("설명조각1"));
+    assert.ok(joinedCell.includes("설명조각200"));
+    assert.equal(joinedCell, longCell.replace(/\s+/g, ""));
+    for (const piece of pieces) {
+      assert.ok(piece.tokenCount <= 448);
+      assert.match(piece.content, /컬럼: 항목/);
+      assert.match(piece.content, /A-1/);
+      assert.match(piece.content, /적합/);
+      assert.equal((piece.tableMeta?.tableHeaders as string[]).length, 3);
     }
   });
 
@@ -107,6 +197,72 @@ describe("token-aware chunk split", () => {
     assert.equal(passageTokenGateStatus(summary), "FAIL");
     assert.ok(summary.hardLimitExceededCount >= 1);
   });
+
+  it("token gate WARNING when only target exceeded", async () => {
+    const mid = "passage: " + "가".repeat(900);
+    const summary = await evaluatePassageTokenGate({
+      passages: [mid],
+      countTokens: denseCounter,
+      targetPassageTokens: 448,
+      maxSequenceTokens: 512,
+      model: "m",
+      revision: "r",
+    });
+    // denseCounter: 900/2 = 450 → WARNING (between 448 and 512)
+    assert.equal(passageTokenGateStatus(summary), "WARNING");
+  });
+});
+
+describe("structure pass requires Token Gate PASS", () => {
+  it("rejects WARNING tokenGateStatus for structure completion", () => {
+    const steps = [
+      { step: "STRUCTURE_VALIDATING", status: "PASS" },
+      { step: "KNOWLEDGE_CHECKING", status: "PASS" },
+      {
+        step: "CHUNKING",
+        status: "PASS",
+        details: { chunkCount: 2, tokenGateStatus: "WARNING", targetExceededCount: 1 },
+      },
+    ];
+    assert.equal(isStructureStagesPassed({ steps, pipelineCurrent: true }), false);
+  });
+
+  it("accepts PASS tokenGateStatus", () => {
+    const steps = [
+      { step: "STRUCTURE_VALIDATING", status: "PASS" },
+      { step: "KNOWLEDGE_CHECKING", status: "PASS" },
+      {
+        step: "CHUNKING",
+        status: "PASS",
+        details: { chunkCount: 2, tokenGateStatus: "PASS", hardLimitExceededCount: 0 },
+      },
+    ];
+    assert.equal(isStructureStagesPassed({ steps, pipelineCurrent: true }), true);
+    assert.equal(isSearchFoundationStagesPassed({ steps, pipelineCurrent: true }), false);
+  });
+});
+
+describe("pipeline ownership boundary (static)", () => {
+  it("forbids shrunk[0]-only save and structure-side embedding", () => {
+    const builder = readFileSync(
+      join(projectRoot, "src/lib/docling-knowledge/docling-nd-knowledge-builder.ts"),
+      "utf8",
+    );
+    const pipeline = readFileSync(
+      join(projectRoot, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
+      "utf8",
+    );
+    const worker = readFileSync(
+      join(projectRoot, "src/lib/search-data/search-data-generation-service.ts"),
+      "utf8",
+    );
+    assert.ok(!builder.includes("shrunk[0]"));
+    assert.ok(builder.includes("assertPrimaryContentCoverage"));
+    assert.ok(!pipeline.includes("rebuildPackEmbeddings"));
+    assert.ok(!pipeline.includes("runDoclingRetrievalEvaluation"));
+    assert.ok(worker.includes("rebuildPackEmbeddings"));
+    assert.ok(worker.includes("attempt > 0"));
+  });
 });
 
 describe("typed embedding error preservation", () => {
@@ -115,5 +271,20 @@ describe("typed embedding error preservation", () => {
     const g = mapSearchDataFailureCode("EMBEDDING_TOKEN_LIMIT_EXCEEDED");
     assert.equal(g.preferStructure, true);
     assert.match(g.message, /구조화/);
+  });
+});
+
+describe("source-change STALE readiness", () => {
+  it("non-current binding blocks structure and search foundation", () => {
+    const steps = [
+      { step: "STRUCTURE_VALIDATING", status: "PASS" },
+      { step: "KNOWLEDGE_CHECKING", status: "PASS" },
+      { step: "CHUNKING", status: "PASS", details: { chunkCount: 5, tokenGateStatus: "PASS" } },
+      { step: "INDEXING", status: "PASS" },
+      { step: "SEARCH_EVALUATING", status: "PASS" },
+      { step: "READY_FOR_REVIEW", status: "PASS" },
+    ];
+    assert.equal(isStructureStagesPassed({ steps, pipelineCurrent: false }), false);
+    assert.equal(isSearchFoundationStagesPassed({ steps, pipelineCurrent: false }), false);
   });
 });

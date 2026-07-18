@@ -14,26 +14,28 @@ import type { PassageTokenCounter } from "@/lib/embedding/e5-tokenize-client";
 import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 export type TokenAwareSplitPiece = {
+  /** Full passage body stored on the chunk (may include overlap prefix). */
   content: string;
+  /** Primary content newly consumed from the source (overlap excluded). */
+  primaryContent: string;
   tokenCount: number;
   splitIndex: number;
   splitCount: number;
+  /** @deprecated Prefer actualOverlapTokens — kept as configured budget for compat. */
   overlapTokens: number;
+  configuredOverlapTokens: number;
+  actualOverlapTokens: number;
+  hasOverlap: boolean;
   splitSourceId?: string;
-  sourceTextStart?: number;
-  sourceTextEnd?: number;
-};
-
-export type TokenAwareSplitOptions = {
-  title: string;
-  section?: string | null;
-  tags?: string[];
-  countTokens: PassageTokenCounter;
-  targetPassageTokens?: number;
-  maxSequenceTokens?: number;
-  overlapTokens?: number;
-  splitSourceId?: string;
-  sourceTextStart?: number;
+  primarySourceTextStart: number;
+  primarySourceTextEnd: number;
+  overlapSourceTextStart: number | null;
+  overlapSourceTextEnd: number | null;
+  /** Compat aliases = primary range. */
+  sourceTextStart: number;
+  sourceTextEnd: number;
+  /** Table continuation metadata (optional). */
+  tableMeta?: Record<string, unknown>;
 };
 
 function sentenceBoundaries(text: string): number[] {
@@ -74,10 +76,6 @@ async function passageTokens(
   return countOne(counter, buildPassageEmbeddingText({ ...meta, content }));
 }
 
-/**
- * Binary-search the longest UTF-16-safe prefix of `content` whose full passage
- * stays within `budget` tokens.
- */
 async function longestPrefixWithinBudget(
   content: string,
   meta: { title: string; section?: string | null; tags?: string[] },
@@ -109,27 +107,48 @@ async function longestPrefixWithinBudget(
     }
   }
   if (!best) {
-    // Single grapheme may still exceed; return smallest safe slice for progress.
     const tiny = sliceUtf16Safe(content, Math.min(8, content.length));
     return { prefix: tiny, tokenCount: await passageTokens(counter, meta, tiny) };
   }
   return { prefix: best, tokenCount: bestTokens };
 }
 
-async function overlapPrefix(
-  previous: string,
-  meta: { title: string; section?: string | null; tags?: string[] },
-  counter: PassageTokenCounter,
-  overlapTokens: number,
-): Promise<string> {
-  if (!previous || overlapTokens <= 0) return "";
-  // Take a tail window and shrink until overlap budget fits as a passage fragment.
+/**
+ * Select a tail of `previousPrimary` within overlap token budget.
+ * Returns the overlap string and its source offsets within the absolute source timeline.
+ */
+async function selectOverlapTail(input: {
+  previousPrimary: string;
+  previousPrimaryStart: number;
+  previousPrimaryEnd: number;
+  meta: { title: string; section?: string | null; tags?: string[] };
+  counter: PassageTokenCounter;
+  overlapTokens: number;
+}): Promise<{
+  text: string;
+  actualOverlapTokens: number;
+  overlapSourceTextStart: number | null;
+  overlapSourceTextEnd: number | null;
+}> {
+  const { previousPrimary, previousPrimaryStart, previousPrimaryEnd, meta, counter, overlapTokens } =
+    input;
+  if (!previousPrimary || overlapTokens <= 0) {
+    return {
+      text: "",
+      actualOverlapTokens: 0,
+      overlapSourceTextStart: null,
+      overlapSourceTextEnd: null,
+    };
+  }
   let lo = 0;
-  let hi = previous.length;
+  let hi = previousPrimary.length;
   let best = "";
+  let bestTokens = 0;
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
-    const candidate = fixLoneSurrogates(previous.slice(Math.max(0, previous.length - mid)).trim());
+    const candidate = fixLoneSurrogates(
+      previousPrimary.slice(Math.max(0, previousPrimary.length - mid)).trim(),
+    );
     if (!candidate) {
       lo = mid + 1;
       continue;
@@ -137,12 +156,29 @@ async function overlapPrefix(
     const tokens = await passageTokens(counter, meta, candidate);
     if (tokens <= overlapTokens) {
       best = candidate;
+      bestTokens = tokens;
       lo = mid + 1;
     } else {
       hi = mid - 1;
     }
   }
-  return best;
+  if (!best) {
+    return {
+      text: "",
+      actualOverlapTokens: 0,
+      overlapSourceTextStart: null,
+      overlapSourceTextEnd: null,
+    };
+  }
+  const startInPrimary = previousPrimary.lastIndexOf(best);
+  const overlapStart =
+    startInPrimary >= 0 ? previousPrimaryStart + startInPrimary : previousPrimaryEnd - best.length;
+  return {
+    text: best,
+    actualOverlapTokens: bestTokens,
+    overlapSourceTextStart: Math.max(previousPrimaryStart, overlapStart),
+    overlapSourceTextEnd: previousPrimaryEnd,
+  };
 }
 
 function preferCut(text: string, maxLen: number, boundaries: number[]): number {
@@ -152,7 +188,6 @@ function preferCut(text: string, maxLen: number, boundaries: number[]): number {
     if (b > 0 && b <= maxLen) best = b;
   }
   if (best > 0) return best;
-  // punctuation / whitespace fallback inside window
   for (let i = maxLen; i > Math.floor(maxLen * 0.5); i--) {
     const ch = text[i - 1]!;
     if ("。.！!？?;；,，、)）]】 \t".includes(ch)) return i;
@@ -174,7 +209,7 @@ export async function splitBodyContentByTokens(input: {
 }): Promise<TokenAwareSplitPiece[]> {
   const target = input.targetPassageTokens ?? E5_TARGET_PASSAGE_TOKENS;
   const hard = input.maxSequenceTokens ?? E5_MAX_SEQUENCE_TOKENS;
-  const overlapTokens = input.overlapTokens ?? E5_OVERLAP_TOKENS;
+  const configuredOverlap = input.overlapTokens ?? E5_OVERLAP_TOKENS;
   const meta = { title: input.title, section: input.section, tags: input.tags };
   const sourceStart = input.sourceTextStart ?? 0;
   const content = fixLoneSurrogates(input.content);
@@ -185,22 +220,41 @@ export async function splitBodyContentByTokens(input: {
     return [
       {
         content,
+        primaryContent: content,
         tokenCount: fullTokens,
         splitIndex: 0,
         splitCount: 1,
         overlapTokens: 0,
+        configuredOverlapTokens: configuredOverlap,
+        actualOverlapTokens: 0,
+        hasOverlap: false,
         splitSourceId: input.splitSourceId,
+        primarySourceTextStart: sourceStart,
+        primarySourceTextEnd: sourceStart + content.length,
+        overlapSourceTextStart: null,
+        overlapSourceTextEnd: null,
         sourceTextStart: sourceStart,
         sourceTextEnd: sourceStart + content.length,
       },
     ];
   }
 
-  const pieces: Array<{ content: string; tokenCount: number; start: number; end: number; overlap: number }> =
-    [];
+  type Acc = {
+    content: string;
+    primaryContent: string;
+    tokenCount: number;
+    primaryStart: number;
+    primaryEnd: number;
+    actualOverlapTokens: number;
+    hasOverlap: boolean;
+    overlapSourceTextStart: number | null;
+    overlapSourceTextEnd: number | null;
+  };
+  const pieces: Acc[] = [];
   let remaining = content;
   let cursor = 0;
   let guard = 0;
+
   while (remaining.trim().length > 0 && guard < 10_000) {
     guard += 1;
     const boundaries = [
@@ -208,7 +262,7 @@ export async function splitBodyContentByTokens(input: {
       ...listItemBoundaries(remaining),
     ].sort((a, b) => a - b);
 
-    const { prefix: rawPrefix, tokenCount } = await longestPrefixWithinBudget(
+    const { prefix: rawPrefix } = await longestPrefixWithinBudget(
       remaining,
       meta,
       input.countTokens,
@@ -216,68 +270,77 @@ export async function splitBodyContentByTokens(input: {
     );
     let cut = preferCut(remaining, rawPrefix.length || remaining.length, boundaries);
     if (cut <= 0) cut = rawPrefix.length || Math.min(remaining.length, 1);
-    let piece = fixLoneSurrogates(sliceUtf16Safe(remaining, cut).trim());
-    if (!piece) {
-      piece = fixLoneSurrogates(sliceUtf16Safe(remaining, Math.min(remaining.length, 16)).trim());
-      if (!piece) break;
-      cut = piece.length;
+    let primary = fixLoneSurrogates(sliceUtf16Safe(remaining, cut).trim());
+    if (!primary) {
+      primary = fixLoneSurrogates(sliceUtf16Safe(remaining, Math.min(remaining.length, 16)).trim());
+      if (!primary) break;
+      cut = primary.length;
     }
 
-    let tokens = await passageTokens(input.countTokens, meta, piece);
-    if (tokens > target) {
-      const safe = await longestPrefixWithinBudget(piece, meta, input.countTokens, target);
-      piece = safe.prefix;
-      tokens = safe.tokenCount;
-      cut = Math.min(cut, piece.length);
+    let primaryTokens = await passageTokens(input.countTokens, meta, primary);
+    if (primaryTokens > target) {
+      const safe = await longestPrefixWithinBudget(primary, meta, input.countTokens, target);
+      primary = safe.prefix;
+      primaryTokens = safe.tokenCount;
+      cut = Math.min(cut, primary.length);
     }
-    if (tokens > hard) {
-      const safe = await longestPrefixWithinBudget(piece, meta, input.countTokens, target);
-      piece = safe.prefix;
-      tokens = safe.tokenCount;
-      cut = piece.length;
-      if (!piece || tokens > hard) {
-        throw new Error(
-          `TOKEN_SPLIT_FAILED: unable to fit passage under ${hard} tokens (got ${tokens})`,
-        );
-      }
+    if (primaryTokens > hard || !primary) {
+      throw new Error(
+        `TOKEN_SPLIT_FAILED: unable to fit passage under ${hard} tokens (got ${primaryTokens})`,
+      );
     }
 
-    const start = sourceStart + cursor;
-    const end = start + cut;
-    const overlap =
-      pieces.length > 0
-        ? await overlapPrefix(pieces[pieces.length - 1]!.content, meta, input.countTokens, overlapTokens)
-        : "";
-    let finalContent = piece;
-    let finalTokens = tokens;
-    if (overlap && pieces.length > 0) {
-      const withOverlap = fixLoneSurrogates(`${overlap}\n${piece}`.trim());
-      const overlapTokenCount = await passageTokens(input.countTokens, meta, withOverlap);
-      if (overlapTokenCount <= target) {
-        finalContent = withOverlap;
-        finalTokens = overlapTokenCount;
-      }
-    }
-    // Final guard: never emit a piece above target when a shorter prefix fits.
-    if (finalTokens > target) {
-      const safe = await longestPrefixWithinBudget(finalContent, meta, input.countTokens, target);
-      if (safe.prefix && safe.tokenCount <= target) {
-        finalContent = safe.prefix;
-        finalTokens = safe.tokenCount;
-        cut = Math.min(cut, safe.prefix.length);
+    const primaryStart = sourceStart + cursor;
+    // Map cut length in remaining to actual primary length after trim.
+    const consumed = Math.max(primary.length, cut);
+    const primaryEnd = primaryStart + primary.length;
+
+    let overlapText = "";
+    let actualOverlapTokens = 0;
+    let overlapSourceTextStart: number | null = null;
+    let overlapSourceTextEnd: number | null = null;
+    let finalContent = primary;
+    let finalTokens = primaryTokens;
+
+    if (pieces.length > 0 && configuredOverlap > 0) {
+      const prev = pieces[pieces.length - 1]!;
+      const selected = await selectOverlapTail({
+        previousPrimary: prev.primaryContent,
+        previousPrimaryStart: prev.primaryStart,
+        previousPrimaryEnd: prev.primaryEnd,
+        meta,
+        counter: input.countTokens,
+        overlapTokens: configuredOverlap,
+      });
+      if (selected.text) {
+        const withOverlap = fixLoneSurrogates(`${selected.text}\n${primary}`.trim());
+        const withTokens = await passageTokens(input.countTokens, meta, withOverlap);
+        if (withTokens <= target) {
+          overlapText = selected.text;
+          actualOverlapTokens = selected.actualOverlapTokens;
+          overlapSourceTextStart = selected.overlapSourceTextStart;
+          overlapSourceTextEnd = selected.overlapSourceTextEnd;
+          finalContent = withOverlap;
+          finalTokens = withTokens;
+        }
+        // If overlap would exceed target, drop overlap — never discard primary.
       }
     }
 
     pieces.push({
       content: finalContent,
+      primaryContent: primary,
       tokenCount: finalTokens,
-      start,
-      end,
-      overlap: pieces.length > 0 ? overlapTokens : 0,
+      primaryStart,
+      primaryEnd,
+      actualOverlapTokens,
+      hasOverlap: Boolean(overlapText),
+      overlapSourceTextStart,
+      overlapSourceTextEnd,
     });
-    remaining = remaining.slice(cut).trimStart();
-    cursor += cut;
-    // Advance past consumed whitespace that trimStart removed from remaining vs original.
+
+    remaining = remaining.slice(consumed).trimStart();
+    cursor += consumed;
     while (
       cursor < content.length &&
       remaining.length > 0 &&
@@ -286,19 +349,170 @@ export async function splitBodyContentByTokens(input: {
     ) {
       cursor += 1;
     }
-    if (cut === 0) break;
+    if (consumed === 0) break;
   }
 
   const splitCount = pieces.length;
   return pieces.map((p, index) => ({
     content: p.content,
+    primaryContent: p.primaryContent,
     tokenCount: p.tokenCount,
     splitIndex: index,
     splitCount,
-    overlapTokens: p.overlap,
+    overlapTokens: p.actualOverlapTokens,
+    configuredOverlapTokens: configuredOverlap,
+    actualOverlapTokens: p.actualOverlapTokens,
+    hasOverlap: p.hasOverlap,
     splitSourceId: input.splitSourceId,
-    sourceTextStart: p.start,
-    sourceTextEnd: p.end,
+    primarySourceTextStart: p.primaryStart,
+    primarySourceTextEnd: p.primaryEnd,
+    overlapSourceTextStart: p.overlapSourceTextStart,
+    overlapSourceTextEnd: p.overlapSourceTextEnd,
+    sourceTextStart: p.primaryStart,
+    sourceTextEnd: p.primaryEnd,
+  }));
+}
+
+async function splitOversizedCell(input: {
+  cell: string;
+  headers: string[];
+  rowTemplate: string[];
+  columnIndex: number;
+  caption: string;
+  title: string;
+  section?: string | null;
+  tags?: string[];
+  countTokens: PassageTokenCounter;
+  formatTableChunk: (caption: string, headers: string[], rows: string[][]) => string;
+  target: number;
+  hard: number;
+  splitSourceId?: string;
+  sourceRowIndex: number;
+}): Promise<TokenAwareSplitPiece[]> {
+  const meta = { title: input.title, section: input.section, tags: input.tags };
+  const cell = fixLoneSurrogates(input.cell);
+  const out: TokenAwareSplitPiece[] = [];
+  let remaining = cell;
+  let guard = 0;
+
+  const tokensForCellSlice = async (slice: string): Promise<{ content: string; tokenCount: number; row: string[] }> => {
+    const row = [...input.rowTemplate];
+    row[input.columnIndex] = slice;
+    while (row.length < input.headers.length) row.push("");
+    row.length = Math.max(input.headers.length, 1);
+    const content = input.formatTableChunk(input.caption, input.headers, [row]);
+    const tokenCount = await passageTokens(input.countTokens, meta, content);
+    return { content, tokenCount, row };
+  };
+
+  while (remaining.trim().length > 0 && guard < 10_000) {
+    guard += 1;
+    const full = await tokensForCellSlice(remaining);
+    if (full.tokenCount <= input.target) {
+      out.push({
+        content: full.content,
+        primaryContent: remaining,
+        tokenCount: full.tokenCount,
+        splitIndex: 0,
+        splitCount: 1,
+        overlapTokens: 0,
+        configuredOverlapTokens: 0,
+        actualOverlapTokens: 0,
+        hasOverlap: false,
+        splitSourceId: input.splitSourceId,
+        primarySourceTextStart: 0,
+        primarySourceTextEnd: remaining.length,
+        overlapSourceTextStart: null,
+        overlapSourceTextEnd: null,
+        sourceTextStart: 0,
+        sourceTextEnd: remaining.length,
+        tableMeta: {
+          sourceRowIndex: input.sourceRowIndex,
+          sourceColumnIndex: input.columnIndex,
+          tableHeaders: input.headers,
+        },
+      });
+      break;
+    }
+
+    // Binary-search the longest cell prefix that fits the full table passage budget.
+    let lo = 0;
+    let hi = remaining.length;
+    let best = "";
+    let bestContent = "";
+    let bestTokens = 0;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const candidate = sliceUtf16Safe(remaining, mid).trimEnd();
+      if (!candidate) {
+        lo = mid + 1;
+        continue;
+      }
+      const trial = await tokensForCellSlice(candidate);
+      if (trial.tokenCount <= input.target) {
+        best = candidate;
+        bestContent = trial.content;
+        bestTokens = trial.tokenCount;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+
+    if (!best) {
+      // Fall back to a tiny UTF-16-safe slice; must still fit under hard limit.
+      const tiny = sliceUtf16Safe(remaining, Math.min(8, remaining.length));
+      const trial = await tokensForCellSlice(tiny);
+      if (trial.tokenCount > input.hard || !tiny) {
+        throw new Error(
+          `TOKEN_SPLIT_FAILED: table cell continuation exceeds ${input.hard} tokens (got ${trial.tokenCount})`,
+        );
+      }
+      best = tiny;
+      bestContent = trial.content;
+      bestTokens = trial.tokenCount;
+    }
+
+    out.push({
+      content: bestContent,
+      primaryContent: best,
+      tokenCount: bestTokens,
+      splitIndex: 0,
+      splitCount: 1,
+      overlapTokens: 0,
+      configuredOverlapTokens: 0,
+      actualOverlapTokens: 0,
+      hasOverlap: false,
+      splitSourceId: input.splitSourceId,
+      primarySourceTextStart: 0,
+      primarySourceTextEnd: best.length,
+      overlapSourceTextStart: null,
+      overlapSourceTextEnd: null,
+      sourceTextStart: 0,
+      sourceTextEnd: best.length,
+      tableMeta: {
+        sourceRowIndex: input.sourceRowIndex,
+        sourceColumnIndex: input.columnIndex,
+        tableHeaders: input.headers,
+      },
+    });
+
+    remaining = remaining.slice(best.length).trimStart();
+    if (best.length === 0) break;
+  }
+
+  const splitCount = out.length;
+  return out.map((p, index) => ({
+    ...p,
+    splitIndex: index,
+    splitCount,
+    tableMeta: {
+      ...p.tableMeta,
+      rowContinuationIndex: index,
+      rowContinuationCount: splitCount,
+      cellContinuationIndex: index,
+      cellContinuationCount: splitCount,
+    },
   }));
 }
 
@@ -318,87 +532,130 @@ export async function splitTableRowsByTokens(input: {
   const target = input.targetPassageTokens ?? E5_TARGET_PASSAGE_TOKENS;
   const hard = input.maxSequenceTokens ?? E5_MAX_SEQUENCE_TOKENS;
   const meta = { title: input.title, section: input.section, tags: input.tags };
-  const rows = input.rows;
+  const headers = input.headers;
+  const rows = input.rows.map((r) => {
+    const copy = [...r];
+    while (copy.length < headers.length) copy.push("");
+    return copy.slice(0, Math.max(headers.length, 1));
+  });
+
   if (rows.length === 0) {
-    const content = input.formatTableChunk(input.caption, input.headers, [[]]);
+    const content = input.formatTableChunk(input.caption, headers, [[]]);
     const tokenCount = await passageTokens(input.countTokens, meta, content);
     return [
       {
         content,
+        primaryContent: content,
         tokenCount,
         splitIndex: 0,
         splitCount: 1,
         overlapTokens: 0,
+        configuredOverlapTokens: 0,
+        actualOverlapTokens: 0,
+        hasOverlap: false,
         splitSourceId: input.splitSourceId,
+        primarySourceTextStart: 0,
+        primarySourceTextEnd: content.length,
+        overlapSourceTextStart: null,
+        overlapSourceTextEnd: null,
+        sourceTextStart: 0,
+        sourceTextEnd: content.length,
+        tableMeta: { tableHeaders: headers },
       },
     ];
   }
 
-  const groups: string[][][] = [];
+  const flatPieces: TokenAwareSplitPiece[] = [];
   let current: string[][] = [];
 
-  const flush = () => {
-    if (current.length > 0) {
-      groups.push(current);
-      current = [];
-    }
+  const flush = async () => {
+    if (current.length === 0) return;
+    const content = input.formatTableChunk(input.caption, headers, current);
+    const tokenCount = await passageTokens(input.countTokens, meta, content);
+    flatPieces.push({
+      content,
+      primaryContent: content,
+      tokenCount,
+      splitIndex: 0,
+      splitCount: 1,
+      overlapTokens: 0,
+      configuredOverlapTokens: 0,
+      actualOverlapTokens: 0,
+      hasOverlap: false,
+      splitSourceId: input.splitSourceId,
+      primarySourceTextStart: 0,
+      primarySourceTextEnd: content.length,
+      overlapSourceTextStart: null,
+      overlapSourceTextEnd: null,
+      sourceTextStart: 0,
+      sourceTextEnd: content.length,
+      tableMeta: { tableHeaders: headers },
+    });
+    current = [];
   };
 
-  for (const row of rows) {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]!;
     const candidate = [...current, row];
-    const content = input.formatTableChunk(input.caption, input.headers, candidate);
+    const content = input.formatTableChunk(input.caption, headers, candidate);
     const tokens = await passageTokens(input.countTokens, meta, content);
-    if (tokens <= target || current.length === 0) {
-      if (tokens > hard && current.length === 0) {
-        // Single row exceeds hard limit — split row cells into sentence pieces.
-        const rowText = row.join(" | ");
-        const parts = await splitBodyContentByTokens({
-          content: rowText,
-          title: input.title,
-          section: input.section,
-          tags: input.tags,
-          countTokens: input.countTokens,
-          targetPassageTokens: target,
-          maxSequenceTokens: hard,
-          splitSourceId: input.splitSourceId,
-        });
-        for (const part of parts) {
-          groups.push([[part.content]]);
-        }
-        continue;
-      }
-      current = candidate;
-      if (tokens > target && current.length > 1) {
-        current = current.slice(0, -1);
-        flush();
-        current = [row];
-      }
-    } else {
-      flush();
-      current = [row];
-    }
-  }
-  flush();
 
-  const pieces: TokenAwareSplitPiece[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    const content = input.formatTableChunk(input.caption, input.headers, groups[i]!);
-    const tokenCount = await passageTokens(input.countTokens, meta, content);
-    if (tokenCount > hard) {
-      throw new Error(
-        `TOKEN_SPLIT_FAILED: table chunk exceeds ${hard} tokens (got ${tokenCount})`,
-      );
+    if (tokens <= target) {
+      current = candidate;
+      continue;
     }
-    pieces.push({
-      content,
-      tokenCount,
-      splitIndex: i,
-      splitCount: groups.length,
-      overlapTokens: 0,
+
+    if (current.length > 0) {
+      await flush();
+    }
+
+    const singleContent = input.formatTableChunk(input.caption, headers, [row]);
+    const singleTokens = await passageTokens(input.countTokens, meta, singleContent);
+    if (singleTokens <= target) {
+      current = [row];
+      continue;
+    }
+
+    // Oversized row: split the heaviest cell while preserving column count.
+    let heaviestCol = 0;
+    let heaviestLen = -1;
+    for (let c = 0; c < row.length; c++) {
+      if ((row[c] ?? "").length > heaviestLen) {
+        heaviestLen = (row[c] ?? "").length;
+        heaviestCol = c;
+      }
+    }
+    const continuations = await splitOversizedCell({
+      cell: row[heaviestCol] ?? "",
+      headers,
+      rowTemplate: row,
+      columnIndex: heaviestCol,
+      caption: input.caption,
+      title: input.title,
+      section: input.section,
+      tags: input.tags,
+      countTokens: input.countTokens,
+      formatTableChunk: input.formatTableChunk,
+      target,
+      hard,
       splitSourceId: input.splitSourceId,
+      sourceRowIndex: rowIndex,
     });
+    for (const piece of continuations) {
+      if (piece.tokenCount > target) {
+        // Should be rare; still reject > hard above. Soft over-target fails gate later.
+      }
+      flatPieces.push(piece);
+    }
   }
-  return pieces;
+  await flush();
+
+  const splitCount = flatPieces.length;
+  return flatPieces.map((p, index) => ({
+    ...p,
+    splitIndex: index,
+    splitCount,
+  }));
 }
 
 export type PassageTokenGateSummary = {
@@ -454,6 +711,10 @@ export async function evaluatePassageTokenGate(input: {
   };
 }
 
+/**
+ * Operational completion requires PASS (all <= target).
+ * WARNING is not a completable structure state — callers must re-split or FAIL.
+ */
 export function passageTokenGateStatus(
   summary: PassageTokenGateSummary,
 ): "PASS" | "WARNING" | "FAIL" {
@@ -465,4 +726,63 @@ export function passageTokenGateStatus(
     return "WARNING";
   }
   return "PASS";
+}
+
+/**
+ * Verify primary (overlap-stripped) pieces reconstruct the source without gaps.
+ * Whitespace-only differences at piece boundaries are tolerated.
+ */
+export function assertPrimaryContentCoverage(input: {
+  sourceText: string;
+  pieces: Array<{ primaryContent: string; primarySourceTextStart?: number; primarySourceTextEnd?: number }>;
+}): { ok: true } | { ok: false; code: "CHUNK_CONTENT_PRESERVATION_FAILED"; message: string } {
+  const source = fixLoneSurrogates(input.sourceText);
+  if (input.pieces.length === 0) {
+    if (!source.trim()) return { ok: true };
+    return {
+      ok: false,
+      code: "CHUNK_CONTENT_PRESERVATION_FAILED",
+      message: "no primary pieces for non-empty source",
+    };
+  }
+  const joined = input.pieces.map((p) => p.primaryContent).join("");
+  const normSource = source.replace(/\s+/g, " ").trim();
+  const normJoined = joined.replace(/\s+/g, " ").trim();
+  if (normJoined !== normSource) {
+    // Allow join without the whitespace that was trimmed between pieces.
+    const compactSource = source.replace(/\s+/g, "");
+    const compactJoined = joined.replace(/\s+/g, "");
+    if (compactJoined !== compactSource) {
+      return {
+        ok: false,
+        code: "CHUNK_CONTENT_PRESERVATION_FAILED",
+        message: "primary content does not reconstruct source",
+      };
+    }
+  }
+  for (let i = 1; i < input.pieces.length; i++) {
+    const prev = input.pieces[i - 1]!;
+    const cur = input.pieces[i]!;
+    if (
+      typeof prev.primarySourceTextEnd === "number" &&
+      typeof cur.primarySourceTextStart === "number" &&
+      cur.primarySourceTextStart < prev.primarySourceTextEnd
+    ) {
+      return {
+        ok: false,
+        code: "CHUNK_CONTENT_PRESERVATION_FAILED",
+        message: "primary source ranges overlap",
+      };
+    }
+  }
+  for (const p of input.pieces) {
+    if (p.primaryContent !== fixLoneSurrogates(p.primaryContent)) {
+      return {
+        ok: false,
+        code: "CHUNK_CONTENT_PRESERVATION_FAILED",
+        message: "surrogate damage in primary content",
+      };
+    }
+  }
+  return { ok: true };
 }

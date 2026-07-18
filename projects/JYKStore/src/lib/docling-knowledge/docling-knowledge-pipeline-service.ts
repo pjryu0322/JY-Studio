@@ -11,11 +11,6 @@ import {
   type PipelineStepStatus,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
-import { isEmbeddingProviderErrorCode } from "@/lib/embedding/embedding-provider-errors";
-import {
-  runDoclingRetrievalEvaluation,
-} from "@/lib/docling-knowledge/docling-knowledge-eval";
 import {
   createKnowledgeRunBinding,
   humanSummaryFromBinding,
@@ -24,7 +19,6 @@ import {
   type KnowledgeRunBinding,
 } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import {
-  activateDraftIndexGeneration,
   buildKnowledgeFromNormalizedDocument,
   ensureDoclingOriginSourceDocument,
   failDraftIndexGeneration,
@@ -1099,7 +1093,7 @@ export async function executeDoclingKnowledgePipeline(input: {
     return;
   }
 
-  if (!(await heartbeat("검색 데이터 생성 중")) || !(await assertOwned())) {
+  if (!(await heartbeat("검색 단위 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     return;
@@ -1110,30 +1104,38 @@ export async function executeDoclingKnowledgePipeline(input: {
     input.runId,
     "CHUNKING",
     "RUNNING",
-    "검색 데이터를 생성하는 중…",
+    "검색용 Chunk를 생성하는 중…",
     undefined,
     lockOwner,
   );
   if (built.chunkCount === 0) {
+    const failCode =
+      built.failureCode ??
+      (built.tokenGateStatus === "FAIL"
+        ? built.tokenGate.hardLimitExceededCount > 0
+          ? "PASSAGE_TOKEN_LIMIT_EXCEEDED"
+          : "PASSAGE_TARGET_TOKEN_EXCEEDED"
+        : "CHUNK_GENERATION_FAILED");
     await markStep(
       input.packId,
       input.runId,
       "CHUNKING",
       "FAIL",
-      built.tokenGateStatus === "FAIL"
-        ? "일부 검색 단위를 안전한 크기로 분할하지 못했습니다."
-        : "검색용 Chunk를 생성하지 못했습니다. 지식 단위 내용을 확인한 뒤 다시 생성해 주세요.",
+      failCode === "CHUNK_CONTENT_PRESERVATION_FAILED"
+        ? "검색 단위 생성 과정에서 원문 범위를 완전히 보존하지 못했습니다. 관리자에게 문의 바랍니다."
+        : failCode === "PASSAGE_TARGET_TOKEN_EXCEEDED" ||
+            failCode === "PASSAGE_TOKEN_LIMIT_EXCEEDED"
+          ? "검색 단위가 모델 입력 기준에 맞지 않습니다. 데이터 구조화를 다시 실행해 주세요."
+          : "검색용 Chunk를 생성하지 못했습니다. 지식 단위 내용을 확인한 뒤 다시 생성해 주세요.",
       {
         chunkCount: 0,
-        code:
-          built.tokenGateStatus === "FAIL"
-            ? "PASSAGE_TOKEN_LIMIT_EXCEEDED"
-            : "CHUNK_GENERATION_FAILED",
+        code: failCode,
         tokenGate: built.tokenGate,
         tokenGateStatus: built.tokenGateStatus,
         embeddingProfile: built.embeddingProfile,
         maxTokenCount: built.tokenGate.maxTokenCount,
         hardLimitExceededCount: built.tokenGate.hardLimitExceededCount,
+        targetExceededCount: built.tokenGate.targetExceededCount,
       },
       lockOwner,
     );
@@ -1143,7 +1145,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       input.runId,
       built.tokenGateStatus === "FAIL" ? "Passage token gate failed" : "Chunk generation failed",
       binding,
-      built.tokenGateStatus === "FAIL" ? "PASSAGE_TOKEN_LIMIT_EXCEEDED" : "CHUNK_GENERATION_FAILED",
+      failCode,
     );
     return;
   }
@@ -1161,18 +1163,83 @@ export async function executeDoclingKnowledgePipeline(input: {
     lengths.length > 0
       ? Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length)
       : 0;
-  const chunkStepStatus =
-    built.tokenGateStatus === "WARNING" || built.coverage.provenanceMissing > 0
-      ? "WARNING"
-      : "PASS";
+
+  // Structure completion requires Token Gate PASS only (WARNING is not completable).
+  if (built.tokenGateStatus !== "PASS") {
+    await markStep(
+      input.packId,
+      input.runId,
+      "CHUNKING",
+      "FAIL",
+      "검색 단위가 모델 입력 기준에 맞지 않습니다. 데이터 구조화를 다시 실행해 주세요.",
+      {
+        chunkCount: built.chunkCount,
+        code: built.failureCode ?? "PASSAGE_TARGET_TOKEN_EXCEEDED",
+        tokenGate: built.tokenGate,
+        tokenGateStatus: built.tokenGateStatus,
+        embeddingProfile: built.embeddingProfile,
+        maxTokenCount: built.tokenGate.maxTokenCount,
+        hardLimitExceededCount: built.tokenGate.hardLimitExceededCount,
+        targetExceededCount: built.tokenGate.targetExceededCount,
+      },
+      lockOwner,
+    );
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+    await failRun(
+      input.packId,
+      input.runId,
+      "Passage token gate not PASS",
+      binding,
+      built.failureCode ?? "PASSAGE_TARGET_TOKEN_EXCEEDED",
+    );
+    return;
+  }
+
+  const chunkStepStatus = built.coverage.provenanceMissing > 0 ? "WARNING" : "PASS";
+  if (chunkStepStatus !== "PASS") {
+    await markStep(
+      input.packId,
+      input.runId,
+      "CHUNKING",
+      "WARNING",
+      `검색 Chunk ${built.chunkCount}개를 생성했지만 출처 추적이 불완전합니다.`,
+      {
+        chunkCount: built.chunkCount,
+        averageLength: avg,
+        minLength: lengths.length ? Math.min(...lengths) : 0,
+        maxLength: lengths.length ? Math.max(...lengths) : 0,
+        coverage: built.coverage,
+        tokenGate: built.tokenGate,
+        tokenGateStatus: built.tokenGateStatus,
+        embeddingProfile: built.embeddingProfile,
+      },
+      lockOwner,
+    );
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+    await finishPipelineRun({
+      runId: input.runId,
+      status: "WARNING",
+      summary: serializeKnowledgeRunBinding({
+        ...binding,
+        userMessage: `검색 Chunk 출처 보완 필요 (chunks=${built.chunkCount})`,
+        lockOwner: null,
+        lockExpiresAt: null,
+      }),
+    });
+    await updatePackPipelineStatus({
+      packId: input.packId,
+      pipelineStatus: "FAILED",
+      message: "Docling structure pipeline warning — provenance incomplete",
+    });
+    return;
+  }
+
   await markStep(
     input.packId,
     input.runId,
     "CHUNKING",
-    chunkStepStatus,
-    built.tokenGateStatus === "WARNING"
-      ? `검색 Chunk ${built.chunkCount}개를 생성했습니다. 일부 단위가 목표 토큰을 초과합니다.`
-      : `검색 Chunk ${built.chunkCount}개를 생성했습니다.`,
+    "PASS",
+    `검색 Chunk ${built.chunkCount}개를 생성했습니다. Token Gate 통과.`,
     {
       chunkCount: built.chunkCount,
       averageLength: avg,
@@ -1195,257 +1262,20 @@ export async function executeDoclingKnowledgePipeline(input: {
     lockOwner,
   );
 
-  // Publish chunkCount so search-data worker may claim after structure PASS.
-  // Knowledge pipeline INDEXING still embeds; worker requires chunkCount > 0.
+  // Publish chunkCount for later search-data enqueue. Claim requires attempt > 0
+  // (structure creates attempt=0; user "검색데이터 생성" bumps attempt).
   await prisma.searchIndexGeneration.updateMany({
     where: { id: indexGenerationId, status: { in: ["PENDING", "EMBEDDING"] } },
     data: { chunkCount: built.chunkCount },
   });
 
-  if (built.tokenGateStatus === "WARNING" || built.tokenGateStatus === "FAIL") {
-    // Token Gate must be PASS before search validation unlock / embedding claim.
-    // WARNING keeps structure incomplete (chunk step not PASS).
-  }
-
-  if (!(await heartbeat("검색 인덱스 생성 중")) || !(await assertOwned())) {
-    await cancelledExit("취소되어 중단되었습니다.");
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    return;
-  }
-
-  await markStep(
-    input.packId,
-    input.runId,
-    "INDEXING",
-    "RUNNING",
-    "검색 인덱스를 생성하는 중…",
-    undefined,
-    lockOwner,
-  );
-  try {
-    const { markSearchGenerationEmbedding, markSearchGenerationIndexing } = await import(
-      "@/lib/search-generation/search-generation-service"
-    );
-    await markSearchGenerationEmbedding(indexGenerationId);
-    const embeddings = await rebuildPackEmbeddings({
-      packId: input.packId,
-      versionId,
-      force: true,
-      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-      indexGenerationId,
-      searchIndexGenerationId: indexGenerationId,
-      pipelineRunId: input.runId,
-      fingerprint: nd.fingerprint ?? undefined,
-      normalizedDocumentId: nd.id,
-      chunkGenerationId: indexGenerationId,
-      includeInactiveForGeneration: true,
-      onChunkProcessed: async () => {
-        await heartbeat("검색 인덱스 생성 중…");
-      },
-    });
-    if (!embeddings) {
-      await markStep(
-        input.packId,
-        input.runId,
-        "INDEXING",
-        "FAIL",
-        "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-        { code: "INDEX_BUILD_FAILED" },
-        lockOwner,
-      );
-      await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-      await failRun(input.packId, input.runId, "Index build failed", binding, "INDEX_BUILD_FAILED");
-      return;
-    }
-    await markSearchGenerationIndexing(indexGenerationId, {
-      embeddedCount: embeddings.createdCount + embeddings.updatedCount + embeddings.skippedCount,
-      chunkCount: embeddings.processedCount,
-      failedCount: 0,
-    });
-    if (!(await assertOwned())) {
-      await cancelledExit("취소되어 중단되었습니다.");
-      await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-      return;
-    }
-    await markStep(
-      input.packId,
-      input.runId,
-      "INDEXING",
-      "PASS",
-      `Draft 검색 Index를 생성했습니다. (처리 ${embeddings.processedCount}건)`,
-      {
-        draft: true,
-        indexGenerationId,
-        searchIndexGenerationId: indexGenerationId,
-        indexScope: "DRAFT",
-        indexStatus: "BUILDING",
-        embeddingProvider: "local-e5",
-        ...embeddings,
-      },
-      lockOwner,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "index build failed";
-    // C. Token-limit is a content problem, not a transient failure — surface a clear,
-    // actionable message and mark the generation FAILED with the specific code.
-    const isTokenLimit = isEmbeddingProviderErrorCode(error, "EMBEDDING_TOKEN_LIMIT_EXCEEDED");
-    const failureCode = isTokenLimit ? "EMBEDDING_TOKEN_LIMIT_EXCEEDED" : "INDEX_BUILD_FAILED";
-    const userMessage = isTokenLimit
-      ? "검색용 데이터가 모델 입력 제한을 초과했습니다. 검색 단위를 다시 생성해 주세요."
-      : "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
-    await markStep(
-      input.packId,
-      input.runId,
-      "INDEXING",
-      "FAIL",
-      userMessage,
-      { code: failureCode, message: message.slice(0, 300) },
-      lockOwner,
-    );
-    await failDraftIndexGeneration({
-      versionId,
-      indexGenerationId,
-      failureCode,
-      failureMessage: message.slice(0, 300),
-    }).catch(() => undefined);
-    await failRun(input.packId, input.runId, message.slice(0, 500), binding, failureCode);
-    return;
-  }
-
-  if (!(await heartbeat("검색 결과 검증 중")) || !(await assertOwned())) {
-    await cancelledExit("취소되어 중단되었습니다.");
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    return;
-  }
-
-  await markStep(
-    input.packId,
-    input.runId,
-    "SEARCH_EVALUATING",
-    "RUNNING",
-    "검색 결과를 검증하는 중…",
-    undefined,
-    lockOwner,
-  );
-  const evaluation = await runDoclingRetrievalEvaluation({
-    packId: input.packId,
-    versionId,
-    indexGenerationId,
-    onBatchHeartbeat: async () => {
-      await heartbeat("검색 결과 검증 중…");
-    },
-  });
-  if (!(await assertOwned())) {
-    await cancelledExit("취소되어 중단되었습니다.");
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    return;
-  }
-  if (evaluation.status === "FAIL") {
-    await markStep(
-      input.packId,
-      input.runId,
-      "SEARCH_EVALUATING",
-      "FAIL",
-      "검색 결과가 기준을 충족하지 못했습니다. 미통과 질문을 확인한 후 검색 데이터를 다시 생성해 주세요.",
-      evaluation as unknown as Record<string, unknown>,
-      lockOwner,
-    );
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(
-      input.packId,
-      input.runId,
-      "Retrieval evaluation below threshold",
-      binding,
-      evaluation.failureCode ?? "RETRIEVAL_EVALUATION_FAILED",
-    );
-    return;
-  }
-  if (evaluation.status === "WARNING") {
-    await markStep(
-      input.packId,
-      input.runId,
-      "SEARCH_EVALUATING",
-      "WARNING",
-      "검색 검증에 보완이 필요합니다. 유통정보로 진행하려면 재검증 후 PASS가 필요합니다.",
-      evaluation as unknown as Record<string, unknown>,
-      lockOwner,
-    );
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await finishPipelineRun({
-      runId: input.runId,
-      status: "WARNING",
-      summary: serializeKnowledgeRunBinding({
-        ...binding,
-        userMessage: `검색 검증 보완 필요 (units=${built.unitCount}, chunks=${built.chunkCount})`,
-        lockOwner: null,
-        lockExpiresAt: null,
-      }),
-    });
-    await updatePackPipelineStatus({
-      packId: input.packId,
-      pipelineStatus: "FAILED",
-      message: "Docling knowledge pipeline warning — needs re-eval",
-    });
-    return;
-  }
-
-  // PASS only: atomically activate new draft and retire previous drafts.
-  let activated: { activatedChunkCount: number; retiredDraftCount: number };
-  try {
-    activated = await activateDraftIndexGeneration({
-      versionId,
-      indexGenerationId,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "draft activation failed";
-    await markStep(
-      input.packId,
-      input.runId,
-      "SEARCH_EVALUATING",
-      "FAIL",
-      "검색 세대 READY 전환에 실패했습니다. 다시 생성해 주세요.",
-      { code: "SEARCH_GENERATION_NOT_READY", message: message.slice(0, 300) },
-      lockOwner,
-    );
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(input.packId, input.runId, message.slice(0, 500), binding, "SEARCH_GENERATION_NOT_READY");
-    return;
-  }
-
-  await markStep(
-    input.packId,
-    input.runId,
-    "SEARCH_EVALUATING",
-    "PASS",
-    "검색 결과 검증을 통과했습니다.",
-    { ...evaluation, activatedChunkCount: activated.activatedChunkCount } as unknown as Record<
-      string,
-      unknown
-    >,
-    lockOwner,
-  );
-
-  await markStep(
-    input.packId,
-    input.runId,
-    "READY_FOR_REVIEW",
-    "PASS",
-    "지식 데이터 생성 완료",
-    {
-      fingerprint: nd.fingerprint,
-      versionId,
-      normalizedDocumentId: nd.id,
-      bundleId: binding.bundleId,
-      indexGenerationId,
-    },
-    lockOwner,
-  );
+  // Structure pipeline ends here — embedding / eval / DRAFT READY belong to search-data worker.
   await finishPipelineRun({
     runId: input.runId,
     status: "PASS",
     summary: serializeKnowledgeRunBinding({
       ...binding,
-      userMessage: `지식 데이터 생성 완료 (units=${built.unitCount}, chunks=${built.chunkCount})`,
+      userMessage: `데이터 구조화 완료 · 검색데이터 생성 대기 (units=${built.unitCount}, chunks=${built.chunkCount})`,
       lockOwner: null,
       lockExpiresAt: null,
     }),
@@ -1456,8 +1286,8 @@ export async function executeDoclingKnowledgePipeline(input: {
   await markServiceValidationsStaleForVersion(versionId);
   await updatePackPipelineStatus({
     packId: input.packId,
-    pipelineStatus: "READY_FOR_REVIEW",
-    message: "Docling knowledge pipeline passed",
+    pipelineStatus: "CHUNKING",
+    message: "Docling structure pipeline passed — awaiting search data",
   });
 }
 

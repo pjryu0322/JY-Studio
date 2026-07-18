@@ -389,8 +389,8 @@ export function ProviderKnowledgeGenerationTab({
 
       {structureComplete ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          데이터 구조화가 완료되었습니다. 다음 단계에서 검색데이터를 생성하고 검색 품질·API·MCP를
-          확인하세요.
+          데이터 구조화가 완료되었습니다. 다음 단계에서 검색데이터를 생성하고 검색 품질을
+          검증하세요.
         </p>
       ) : null}
     </section>

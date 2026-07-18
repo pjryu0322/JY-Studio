@@ -17,11 +17,13 @@ import {
   type ExclusionReasonMap,
 } from "@/lib/docling-knowledge/docling-knowledge-unit-plan";
 import {
+  assertPrimaryContentCoverage,
   evaluatePassageTokenGate,
   passageTokenGateStatus,
   splitBodyContentByTokens,
   splitTableRowsByTokens,
   type PassageTokenGateSummary,
+  type TokenAwareSplitPiece,
 } from "@/lib/docling-knowledge/token-aware-chunk-split";
 import { prisma } from "@/lib/prisma";
 import { buildChunkGenerationDualWrite } from "@/lib/search-generation/search-generation-binding";
@@ -29,6 +31,26 @@ import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 const MAX_UNIT_CHARS = 6000;
 const MIN_CHUNK_CHARS = 40;
+
+function pieceProvenanceMeta(piece: TokenAwareSplitPiece): Record<string, unknown> {
+  return {
+    splitSourceId: piece.splitSourceId,
+    splitIndex: piece.splitIndex,
+    splitCount: piece.splitCount,
+    overlapTokens: piece.actualOverlapTokens,
+    configuredOverlapTokens: piece.configuredOverlapTokens,
+    actualOverlapTokens: piece.actualOverlapTokens,
+    hasOverlap: piece.hasOverlap,
+    primarySourceTextStart: piece.primarySourceTextStart,
+    primarySourceTextEnd: piece.primarySourceTextEnd,
+    overlapSourceTextStart: piece.overlapSourceTextStart,
+    overlapSourceTextEnd: piece.overlapSourceTextEnd,
+    sourceTextStart: piece.sourceTextStart,
+    sourceTextEnd: piece.sourceTextEnd,
+    tokenCount: piece.tokenCount,
+    ...(piece.tableMeta ?? {}),
+  };
+}
 
 export {
   DOCLING_KU_PASS_THRESHOLDS,
@@ -103,6 +125,7 @@ export type DoclingKnowledgeBuildResult = {
   tokenGate: PassageTokenGateSummary;
   tokenGateStatus: "PASS" | "WARNING" | "FAIL";
   embeddingProfile: ReturnType<typeof buildLocalE5EmbeddingProfile>;
+  failureCode?: string;
 };
 
 function asSections(value: unknown): NdSection[] {
@@ -660,16 +683,12 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
             indexScope: "DRAFT",
             indexStatus: "BUILDING",
             pipelineRunId: input.pipelineRunId,
-            splitSourceId: piece.splitSourceId ?? unit.id,
-            splitIndex: piece.splitIndex,
-            splitCount: piece.splitCount,
-            overlapTokens: piece.overlapTokens,
+            ...pieceProvenanceMeta(piece),
             embeddingProvider: embeddingProfile.provider,
             embeddingModel: embeddingProfile.model,
             embeddingModelRevision: embeddingProfile.revision,
             embeddingDimension: embeddingProfile.dimension,
             distanceMetric: embeddingProfile.distanceMetric,
-            tokenCount: piece.tokenCount,
             targetPassageTokens: embeddingProfile.targetPassageTokens,
             maxSequenceTokens: embeddingProfile.maxSequenceTokens,
             tokenizerValidatedAt: new Date().toISOString(),
@@ -694,9 +713,11 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
 
     const unitStart =
       typeof unitMeta.sourceTextStart === "number" ? unitMeta.sourceTextStart : 0;
+    // Budget with the worst-case multi-part title so suffix never pushes past target later.
+    const provisionalTitle = clampTitle(`${unit.title} (99)`, 120);
     const bodyPieces = await splitBodyContentByTokens({
       content: unit.content,
-      title: unit.title,
+      title: provisionalTitle,
       section: unit.section,
       tags: unit.tags,
       countTokens,
@@ -706,6 +727,66 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       splitSourceId: unit.id,
       sourceTextStart: unitStart,
     });
+    const coverage = assertPrimaryContentCoverage({
+      sourceText: unit.content,
+      pieces: bodyPieces,
+    });
+    if (!coverage.ok) {
+      warnings.push(`내용 보존 검증 실패: ${coverage.message}`);
+      return {
+        unitCount: generationUnits.length,
+        chunkCount: 0,
+        excludedCount,
+        mergedCount,
+        shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
+        shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
+        // Units themselves are fine — surface as chunk/token failure, not KU coverage FAIL.
+        stepStatus: "PASS",
+        warnings,
+        byType,
+        indexGenerationId,
+        coverage: {
+          sourceChars: 0,
+          unitChars: 0,
+          chunkChars: 0,
+          excludedChars,
+          rawBodyChars: bodyPlan.metrics.rawBodyChars,
+          eligibleBodyChars: bodyPlan.metrics.eligibleBodyChars,
+          unitBodyChars: 0,
+          normalExcludedBodyChars: bodyPlan.metrics.normalExcludedBodyChars,
+          criticalExcludedBodyChars: bodyPlan.metrics.criticalExcludedBodyChars,
+          rawBodyCoverage: 0,
+          eligibleBodyCoverage: 0,
+          bodyCoverage: 0,
+          tableCoverage: 0,
+          figureCoverage: 0,
+          provenanceMissing,
+          exclusionReasons,
+        },
+        sampleUnits: generationUnits.slice(0, 3).map((u) => ({
+          title: u.title,
+          unitType: String((u.metadata as Record<string, unknown> | null)?.unitType ?? ""),
+          preview: clampTitle(u.content, 160),
+        })),
+        sampleChunks: [],
+        tokenGate: {
+          totalChunks: 0,
+          validatedChunks: 0,
+          maxTokenCount: 0,
+          averageTokenCount: 0,
+          withinTargetCount: 0,
+          targetExceededCount: 0,
+          hardLimitExceededCount: 0,
+          targetPassageTokens: embeddingProfile.targetPassageTokens,
+          maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+          model: embeddingProfile.model,
+          revision: embeddingProfile.revision,
+        },
+        tokenGateStatus: "FAIL",
+        embeddingProfile,
+        failureCode: "CHUNK_CONTENT_PRESERVATION_FAILED",
+      };
+    }
     if (bodyPieces.length > 1) mergedCount += bodyPieces.length - 1;
     bodyPieces.forEach((piece, index) => {
       if (piece.content.trim().length < MIN_CHUNK_CHARS) {
@@ -729,18 +810,12 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           indexScope: "DRAFT",
           indexStatus: "BUILDING",
           pipelineRunId: input.pipelineRunId,
-          sourceTextStart: piece.sourceTextStart ?? unitStart,
-          sourceTextEnd: piece.sourceTextEnd ?? unitStart + piece.content.length,
-          splitSourceId: piece.splitSourceId ?? unit.id,
-          splitIndex: piece.splitIndex,
-          splitCount: piece.splitCount,
-          overlapTokens: piece.overlapTokens,
+          ...pieceProvenanceMeta(piece),
           embeddingProvider: embeddingProfile.provider,
           embeddingModel: embeddingProfile.model,
           embeddingModelRevision: embeddingProfile.revision,
           embeddingDimension: embeddingProfile.dimension,
           distanceMetric: embeddingProfile.distanceMetric,
-          tokenCount: piece.tokenCount,
           targetPassageTokens: embeddingProfile.targetPassageTokens,
           maxSequenceTokens: embeddingProfile.maxSequenceTokens,
           tokenizerValidatedAt: new Date().toISOString(),
@@ -773,19 +848,27 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     }),
   );
 
-  // If multi-part title suffixes pushed any passage over target, shrink content to fit.
+  // If any passage still exceeds target, re-split into ALL pieces (never keep only [0]).
   {
     const recount = await countTokens(passages);
+    const expanded: typeof chunkCreates = [];
     for (let i = 0; i < chunkCreates.length; i++) {
       const n = recount[i] ?? 0;
-      if (n <= embeddingProfile.targetPassageTokens) continue;
       const created = chunkCreates[i]!;
+      if (n <= embeddingProfile.targetPassageTokens) {
+        expanded.push(created);
+        continue;
+      }
       const meta = {
         title: String(created.title),
         section: typeof created.section === "string" ? created.section : null,
         tags: Array.isArray(created.tags) ? (created.tags as string[]) : [],
       };
-      const shrunk = await splitBodyContentByTokens({
+      const baseMd =
+        created.metadata && typeof created.metadata === "object"
+          ? { ...(created.metadata as Record<string, unknown>) }
+          : {};
+      const resplit = await splitBodyContentByTokens({
         content: String(created.content),
         title: meta.title,
         section: meta.section,
@@ -794,17 +877,33 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         targetPassageTokens: embeddingProfile.targetPassageTokens,
         maxSequenceTokens: embeddingProfile.maxSequenceTokens,
         overlapTokens: 0,
-        splitSourceId: String((created.metadata as Record<string, unknown> | undefined)?.knowledgeUnitId ?? ""),
+        splitSourceId: String(baseMd.knowledgeUnitId ?? baseMd.splitSourceId ?? ""),
       });
-      if (shrunk[0]?.content) {
-        created.content = shrunk[0].content;
-        const md =
-          created.metadata && typeof created.metadata === "object"
-            ? { ...(created.metadata as Record<string, unknown>) }
-            : {};
-        md.tokenCount = shrunk[0].tokenCount;
-        created.metadata = md as Prisma.InputJsonValue;
+      if (resplit.length === 0) {
+        expanded.push(created);
+        continue;
       }
+      for (let pi = 0; pi < resplit.length; pi++) {
+        const piece = resplit[pi]!;
+        // Keep the already-final title (budgeted during resplit); avoid a second suffix bump.
+        const dual = buildChunkGenerationDualWrite(indexGenerationId, {
+          ...baseMd,
+          ...pieceProvenanceMeta(piece),
+          tokenizerValidatedAt: new Date().toISOString(),
+        });
+        expanded.push({
+          ...created,
+          content: piece.content,
+          sortOrder: expanded.length,
+          chunkGenerationId: dual.chunkGenerationId,
+          metadata: dual.metadata as Prisma.InputJsonValue,
+        });
+      }
+    }
+    chunkCreates.length = 0;
+    chunkCreates.push(...expanded);
+    for (let i = 0; i < chunkCreates.length; i++) {
+      chunkCreates[i]!.sortOrder = i;
     }
     passages = chunkCreates.map((c) =>
       buildPassageEmbeddingText({
@@ -845,18 +944,22 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         : "토큰 검증 실패",
     );
   }
-  const tokenStatus = passageTokenGateStatus(tokenGate);
-  if (tokenStatus === "FAIL") {
+  let tokenStatus = passageTokenGateStatus(tokenGate);
+  // Operational policy: WARNING is not completable — treat as FAIL after auto-resplit.
+  if (tokenStatus === "WARNING") {
     warnings.push(
-      `검색 단위 토큰 한도 초과: max=${tokenGate.maxTokenCount}/${tokenGate.maxSequenceTokens}, hardExceeded=${tokenGate.hardLimitExceededCount}`,
+      `검색 단위가 목표 토큰(${tokenGate.targetPassageTokens})을 초과합니다 (max=${tokenGate.maxTokenCount}).`,
     );
-  } else if (tokenStatus === "WARNING") {
+    tokenStatus = "FAIL";
+  } else if (tokenStatus === "FAIL") {
     warnings.push(
-      `일부 검색 단위가 목표(${tokenGate.targetPassageTokens})를 초과했습니다 (max=${tokenGate.maxTokenCount}).`,
+      tokenGate.hardLimitExceededCount > 0
+        ? `검색 단위 토큰 한도 초과: max=${tokenGate.maxTokenCount}/${tokenGate.maxSequenceTokens}`
+        : `토큰 검증이 완료되지 않았습니다.`,
     );
   }
 
-  if (tokenStatus !== "FAIL" && chunkCreates.length > 0) {
+  if (tokenStatus === "PASS" && chunkCreates.length > 0) {
     await prisma.knowledgeChunk.createMany({ data: chunkCreates });
   }
 
@@ -937,6 +1040,14 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     tokenGate,
     tokenGateStatus: tokenStatus,
     embeddingProfile,
+    failureCode:
+      tokenStatus === "FAIL"
+        ? tokenGate.validatedChunks !== tokenGate.totalChunks
+          ? "TOKEN_GATE_VALIDATION_INCOMPLETE"
+          : tokenGate.hardLimitExceededCount > 0
+            ? "PASSAGE_TOKEN_LIMIT_EXCEEDED"
+            : "PASSAGE_TARGET_TOKEN_EXCEEDED"
+        : undefined,
   };
 }
 

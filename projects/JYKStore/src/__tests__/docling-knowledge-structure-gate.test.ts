@@ -163,7 +163,7 @@ describe("docling knowledge stage nextAction", () => {
         running: false,
         priorFailed: true,
       }),
-      "지식 단위 생성이 완료되어야 검색 데이터 생성이 진행됩니다.",
+      "지식 단위 생성이 완료되어야 Retrieval Chunk 생성이 진행됩니다.",
     );
   });
 
@@ -224,7 +224,7 @@ describe("docling knowledge pipeline structure stage wiring", () => {
     assert.ok(service.includes("선행 단계 실패로 대기 중입니다.") || service.includes("문서 구조 확인을 통과해야"));
     assert.ok(service.includes('advisory: quality.warnings.length > 0'));
     assert.ok(service.includes("KNOWLEDGE_COVERAGE_WARNING") || service.includes("built.stepStatus"));
-    assert.ok(service.includes('knowledgeStep?.status !== "PASS"'));
+    assert.ok(service.includes("검색데이터 생성 대기") || service.includes("awaiting search data"));
   });
 
   it("knowledge tab keeps ops JSON collapsed by default and shows advisory badge copy", () => {

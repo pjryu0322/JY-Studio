@@ -29,7 +29,7 @@ import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-dis
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
-import { completePipelineStep } from "@/lib/pipeline-service";
+import { completePipelineStep, updatePackPipelineStatus } from "@/lib/pipeline-service";
 import { createSearchGenerationForPipeline } from "@/lib/search-generation/search-generation-pipeline-sync";
 import {
   markSearchGenerationFailed,
@@ -751,6 +751,7 @@ export async function claimNextSearchDataGeneration(): Promise<ClaimedSearchData
         AND j."scope" = 'DRAFT'::"SearchIndexGenerationScope"
         AND j."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
         AND j."chunkCount" > 0
+        AND j.attempt > 0
       ORDER BY j."createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -804,7 +805,7 @@ export async function processSearchDataGenerationJob(
     select: { status: true },
   });
   if (pipelineRun && (pipelineRun.status === "RUNNING" || pipelineRun.status === "PENDING")) {
-    // Knowledge pipeline still owns INDEXING — avoid racing the search-data worker.
+    // Structure pipeline still running — release claim until structure finishes.
     await prisma.searchIndexGeneration.updateMany({
       where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
       data: { status: "PENDING", startedAt: null },
@@ -1153,6 +1154,25 @@ export async function validateSearchData(input: {
       status: "PASS",
       message: "검색 품질 검증이 완료되었습니다.",
       details: evaluation as unknown as Record<string, unknown>,
+    });
+
+    await completePipelineStep({
+      runId: latest.id,
+      step: "READY_FOR_REVIEW",
+      status: "PASS",
+      message: "검색데이터 생성·검증 완료",
+      details: {
+        searchIndexGenerationId: indexGenerationId,
+        fingerprint: binding.fingerprint,
+        versionId: version.id,
+        normalizedDocumentId: binding.normalizedDocumentId,
+      },
+    });
+
+    await updatePackPipelineStatus({
+      packId: input.packId,
+      pipelineStatus: "READY_FOR_REVIEW",
+      message: "Search data validation passed",
     });
 
     await recordProviderAudit({

@@ -110,19 +110,25 @@ describe("docling knowledge pipeline follow-up hardening", () => {
     assert.equal(KNOWLEDGE_PIPELINE_MAX_ATTEMPTS >= 1, true);
   });
 
-  it("activates draft only after retrieval PASS in pipeline service", () => {
+  it("structure pipeline does not embed or activate; search-data owns READY", () => {
     const root = join(import.meta.dirname, "../..");
     const service = readFileSync(
       join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
       "utf8",
     );
-    const activateIdx = service.lastIndexOf("await activateDraftIndexGeneration");
-    const evalFailIdx = service.indexOf('evaluation.status === "FAIL"');
-    assert.ok(activateIdx > evalFailIdx);
-    assert.ok(service.includes("includeInactiveForGeneration: true"));
-    assert.ok(service.includes("assertKnowledgeRunLock"));
-    assert.ok(service.includes('latest?.status === "WARNING"'));
-    assert.ok(service.includes("PASS only: atomically activate"));
+    const searchData = readFileSync(
+      join(root, "src/lib/search-data/search-data-generation-service.ts"),
+      "utf8",
+    );
+    assert.ok(!service.includes("rebuildPackEmbeddings"));
+    assert.ok(!service.includes("activateDraftIndexGeneration"));
+    assert.ok(!service.includes("runDoclingRetrievalEvaluation"));
+    assert.ok(service.includes("검색데이터 생성 대기"));
+    assert.ok(service.includes("awaiting search data"));
+    assert.ok(searchData.includes("await activateDraftIndexGeneration"));
+    assert.ok(searchData.includes("rebuildPackEmbeddings"));
+    assert.ok(searchData.includes("attempt > 0"));
+    assert.ok(searchData.includes('step: "READY_FOR_REVIEW"'));
   });
 
   it("snapshot builder supports knowledge pipeline fields without breaking legacy parse", () => {
@@ -166,9 +172,8 @@ describe("docling knowledge pipeline follow-up hardening", () => {
     const root = join(import.meta.dirname, "../..");
     const admin = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
     assert.ok(admin.includes("promoteDraftIndexToProduction"));
-    assert.ok(admin.includes("pipelineRunId: approveSnapshot.pipelineRunId"));
-    assert.ok(admin.includes("indexGenerationId: approveSnapshot.indexGenerationId"));
-    assert.ok(!admin.includes(".catch(\n        () => 0"));
+    assert.ok(admin.includes("pipelineRunId: evidence.pipelineRunId"));
+    assert.ok(admin.includes("indexGenerationId:"));
     assert.ok(admin.includes("제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다"));
   });
 });

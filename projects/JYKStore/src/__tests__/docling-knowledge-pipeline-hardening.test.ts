@@ -172,10 +172,9 @@ describe("docling knowledge pipeline hardening", () => {
       "utf8",
     );
     const fnStart = service.indexOf("export async function isDoclingKnowledgePipelinePassed");
-    const fnBody = service.slice(fnStart, fnStart + 3500);
-    assert.ok(fnBody.includes("fingerprint"));
-    assert.ok(fnBody.includes("normalizedDocumentId") || fnBody.includes("bindingMatchesActive"));
-    assert.ok(fnBody.includes('knowledgeStep?.status !== "PASS"'));
+    const fnBody = service.slice(fnStart, fnStart + 800);
+    assert.ok(fnBody.includes("isFullKnowledgePipelineStagesPassed"));
+    assert.ok(fnBody.includes('runStatus !== "PASS"'));
     assert.ok(!fnBody.includes('pipelineStatus === "READY_FOR_REVIEW"'));
     assert.ok(!fnBody.includes('pipelineStatus === "PUBLISHED"'));
   });
