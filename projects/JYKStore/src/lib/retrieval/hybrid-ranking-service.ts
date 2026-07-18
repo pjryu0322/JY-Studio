@@ -1,20 +1,25 @@
+import type { SearchIndexGeneration } from "@prisma/client";
 import {
   DEFAULT_EMBEDDING_MODEL,
   DEFAULT_EMBEDDING_PROVIDER,
 } from "@/lib/embedding-dto";
+import type {
+  EmbeddingDescriptor,
+  EmbeddingProviderAdapter,
+} from "@/lib/embedding/embedding-provider-adapter";
 import { resolveEmbeddingProviderAdapterForDescriptor } from "@/lib/embedding/embedding-provider-registry";
 import { embedText } from "@/lib/embedding-service";
 import { prisma } from "@/lib/prisma";
 import type { RetrievalFilters } from "@/lib/retrieval-dto";
 import { matchesAllMetadataFilters, scoreRetrievalChunk } from "@/lib/retrieval-ranking";
 import { resolveChunkGenerationId } from "@/lib/search-generation/search-generation-binding";
-import { loadSearchGeneration } from "@/lib/search-generation/search-generation-service";
 import {
   loadSearchIndexVectorsByChunkIds,
   querySearchIndexVectorsByGeneration,
   type SearchVectorQueryResult,
 } from "@/lib/search-vector/search-vector-query";
 import { clampedCosineSimilarity, isValidVector } from "@/lib/vector-similarity";
+import { requireSearchGeneration } from "./hybrid-generation-guard";
 import {
   HYBRID_WEIGHTS,
   MAX_HYBRID_CANDIDATES,
@@ -39,6 +44,15 @@ export type ApplyHybridVectorRankingInput = {
   excludeDraftScope?: boolean;
   /** Optional tokenize tokens for keyword scoring of hydrated vector-only chunks. */
   tokens?: string[];
+  /**
+   * Test injection: override Generation lookup (default: requireSearchGeneration).
+   * Production callers must not pass this.
+   */
+  requireGeneration?: (id: string) => Promise<SearchIndexGeneration>;
+  /**
+   * Test injection: override adapter resolution so embed() can be spied without a live worker.
+   */
+  resolveAdapter?: (descriptor: EmbeddingDescriptor) => EmbeddingProviderAdapter;
 };
 
 export type ApplyHybridVectorRankingResult = {
@@ -50,14 +64,16 @@ export type ApplyHybridVectorRankingResult = {
 /**
  * hybrid vector ranking: query가 있을 때만 호출된다.
  *
- * P5.2.1 generation path:
+ * P5.2.2 generation path:
+ *  - searchIndexGenerationId set → Generation must resolve (fail-closed); never legacy
  *  1) Query Embedding 1회
  *  2) pgvector Cosine Top-K (Keyword 후보와 독립)
  *  3) Keyword ∪ Vector candidate union + vector-only hydration
  *  4) Metadata filter on vector-only rows
  *  5) Same query vector로 재점수화 (추가 embed 금지)
  *
- * Legacy / no-generation path is unchanged (local-hash JSON embeddings only).
+ * Legacy/no-generation pack only when searchIndexGenerationId is null from the start.
+ * Generation lookup failure is not legacy.
  */
 export async function applyHybridVectorRanking(
   input: ApplyHybridVectorRankingInput,
@@ -66,84 +82,88 @@ export async function applyHybridVectorRanking(
   if (scored.length === 0 && !searchIndexGenerationId) return { scored };
 
   if (searchIndexGenerationId) {
-    const generation = await loadSearchGeneration(searchIndexGenerationId);
-    if (generation) {
-      const descriptor = {
-        provider: generation.embeddingProvider,
-        model: generation.embeddingModel,
-        modelRevision: generation.embeddingModelRevision,
-        dimension: generation.embeddingDimension,
-      };
-      const adapter = resolveEmbeddingProviderAdapterForDescriptor(descriptor);
-      const queryEmbedding = await adapter.embed({ text: searchQuery });
-      const queryVector = queryEmbedding.vector;
-      const topK = input.topK ?? 10;
-      const vectorTopK = resolveVectorCandidateTopK(topK);
-      const filters = input.filters ?? {};
-      const tokens = input.tokens ?? [];
+    const requireGeneration = input.requireGeneration ?? requireSearchGeneration;
+    const generation = await requireGeneration(searchIndexGenerationId);
 
-      const vectorHits = await querySearchIndexVectorsByGeneration({
+    const descriptor = {
+      provider: generation.embeddingProvider,
+      model: generation.embeddingModel,
+      modelRevision: generation.embeddingModelRevision,
+      dimension: generation.embeddingDimension,
+    };
+    const resolveAdapter =
+      input.resolveAdapter ?? resolveEmbeddingProviderAdapterForDescriptor;
+    const adapter = resolveAdapter(descriptor);
+    const queryEmbedding = await adapter.embed({ text: searchQuery });
+    const queryVector = queryEmbedding.vector;
+    const topK = input.topK ?? 10;
+    const vectorTopK = resolveVectorCandidateTopK(topK);
+    const filters = input.filters ?? {};
+    const tokens = input.tokens ?? [];
+
+    const vectorHits = await querySearchIndexVectorsByGeneration({
+      searchIndexGenerationId,
+      provider: descriptor.provider,
+      model: descriptor.model,
+      queryVector,
+      dimension: descriptor.dimension,
+      limit: vectorTopK,
+    });
+
+    if (vectorHits) {
+      const merged = await mergeKeywordAndVectorCandidates({
+        scored,
+        vectorHits,
+        versionId: input.versionId,
+        searchIndexGenerationId,
+        chunkGenerationId: generation.chunkGenerationId,
+        indexGenerationId: input.indexGenerationId,
+        excludeDraftScope: input.excludeDraftScope,
+        filters,
+        tokens,
+      });
+      await applyVectorScoresPreferringHits({
+        scored: merged,
+        queryVector,
+        vectorHits,
         searchIndexGenerationId,
         provider: descriptor.provider,
         model: descriptor.model,
-        queryVector,
-        dimension: descriptor.dimension,
-        limit: vectorTopK,
       });
-
-      if (vectorHits) {
-        const merged = await mergeKeywordAndVectorCandidates({
-          scored,
-          vectorHits,
-          versionId: input.versionId,
-          searchIndexGenerationId,
-          chunkGenerationId: generation.chunkGenerationId,
-          indexGenerationId: input.indexGenerationId,
-          excludeDraftScope: input.excludeDraftScope,
-          filters,
-          tokens,
-        });
-        await applyVectorScoresPreferringHits({
-          scored: merged,
-          queryVector,
-          vectorHits,
-          searchIndexGenerationId,
-          provider: descriptor.provider,
-          model: descriptor.model,
-        });
-        return {
-          scored: merged.slice(0, MAX_HYBRID_CANDIDATES),
-          embeddingProvider: descriptor.provider,
-          embeddingModel: descriptor.model,
-        };
-      }
-
-      // vectorHits === null: pgvector unavailable (development/test only).
-      // Fall back to generation-scoped JSON KnowledgeChunkEmbedding rows.
-      const chunkIds = scored.map((item) => item.chunk.id);
-      const jsonEmbeddings = await prisma.knowledgeChunkEmbedding.findMany({
-        where: {
-          chunkId: { in: chunkIds },
-          provider: descriptor.provider,
-          model: descriptor.model,
-          searchIndexGenerationId,
-        },
-        select: { chunkId: true, vector: true },
-      });
-      const jsonVectorByChunk = new Map<string, number[]>();
-      for (const row of jsonEmbeddings) {
-        if (isValidVector(row.vector)) jsonVectorByChunk.set(row.chunkId, row.vector);
-      }
-      applyVectorScores(scored, queryVector, jsonVectorByChunk);
       return {
-        scored,
+        scored: merged.slice(0, MAX_HYBRID_CANDIDATES),
         embeddingProvider: descriptor.provider,
         embeddingModel: descriptor.model,
       };
     }
+
+    // vectorHits === null: pgvector unavailable (development/test only).
+    // Fall back to generation-scoped JSON KnowledgeChunkEmbedding rows.
+    // Still not legacy local-hash — scoped to this generation's descriptor.
+    const chunkIds = scored.map((item) => item.chunk.id);
+    const jsonEmbeddings = await prisma.knowledgeChunkEmbedding.findMany({
+      where: {
+        chunkId: { in: chunkIds },
+        provider: descriptor.provider,
+        model: descriptor.model,
+        searchIndexGenerationId,
+      },
+      select: { chunkId: true, vector: true },
+    });
+    const jsonVectorByChunk = new Map<string, number[]>();
+    for (const row of jsonEmbeddings) {
+      if (isValidVector(row.vector)) jsonVectorByChunk.set(row.chunkId, row.vector);
+    }
+    applyVectorScores(scored, queryVector, jsonVectorByChunk);
+    return {
+      scored,
+      embeddingProvider: descriptor.provider,
+      embeddingModel: descriptor.model,
+    };
   }
 
-  // Legacy / fallback path — generation-agnostic local-hash JSON embeddings.
+  // Legacy/no-generation pack only — searchIndexGenerationId was null from the start.
+  // Generation lookup failure must never reach here.
   if (scored.length === 0) return { scored };
   const embeddingProvider = DEFAULT_EMBEDDING_PROVIDER;
   const embeddingModel = DEFAULT_EMBEDDING_MODEL;

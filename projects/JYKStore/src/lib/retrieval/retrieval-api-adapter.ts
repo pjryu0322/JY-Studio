@@ -8,6 +8,7 @@ import {
   resolvePublicRetrievalGenerationScope,
   resolveProviderValidationGenerationScope,
 } from "@/lib/retrieval/retrieval-generation-scope";
+import type { ApplyHybridVectorRankingInput } from "@/lib/retrieval/hybrid-ranking-service";
 import { retrieveContextsForVersion } from "@/lib/retrieval-service";
 
 export type RetrievalExecutionMode = "PUBLIC" | "PROVIDER_VALIDATION";
@@ -39,6 +40,8 @@ export async function executeRetrievalApiRequest(input: {
   /** Required for PROVIDER_VALIDATION — draft generation binding. */
   versionId?: string;
   indexGenerationId?: string | null;
+  /** @internal Test-only hybrid ranking hooks. */
+  hybridTestHooks?: Pick<ApplyHybridVectorRankingInput, "requireGeneration" | "resolveAdapter">;
 }): Promise<ExecuteRetrievalApiResult> {
   const started = Date.now();
   const includeMetadata = input.includeMetadata !== false;
@@ -91,6 +94,7 @@ export async function executeRetrievalApiRequest(input: {
         excludeDraftScope: true,
         indexGenerationId: scope.indexGenerationId,
         searchIndexGenerationId: scope.searchIndexGenerationId,
+        hybridTestHooks: input.hybridTestHooks,
       });
       return { ok: true, data, latencyMs: Date.now() - started };
     } catch (error) {
@@ -153,6 +157,7 @@ export async function executeRetrievalApiRequest(input: {
       indexGenerationId: scope.indexGenerationId ?? input.indexGenerationId,
       excludeDraftScope: false,
       searchIndexGenerationId: scope.searchIndexGenerationId,
+      hybridTestHooks: input.hybridTestHooks,
     });
     return { ok: true, data, latencyMs: Date.now() - started };
   } catch (error) {
@@ -161,7 +166,7 @@ export async function executeRetrievalApiRequest(input: {
 }
 
 /** Maps generation-resolution / pgvector runtime errors to a safe ExecuteRetrievalApiResult. */
-function mapRetrievalRuntimeError(error: unknown): ExecuteRetrievalApiResult {
+export function mapRetrievalRuntimeError(error: unknown): ExecuteRetrievalApiResult {
   if (isPayloadServiceError(error)) {
     return { ok: false, code: error.code, message: error.message, httpStatus: error.httpStatus };
   }

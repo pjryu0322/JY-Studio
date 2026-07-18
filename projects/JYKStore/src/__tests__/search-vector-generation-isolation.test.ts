@@ -112,6 +112,12 @@ test("isPgvectorUnavailableError recognizes missing table/type errors", () => {
     true,
   );
   assert.equal(isPgvectorUnavailableError(new Error('type "vector" does not exist')), true);
+  assert.equal(
+    isPgvectorUnavailableError(
+      new Error('"SearchIndexVector" 이름의 릴레이션(relation)이 없습니다'),
+    ),
+    true,
+  );
   assert.equal(isPgvectorUnavailableError(new Error("unique constraint failed")), false);
 });
 

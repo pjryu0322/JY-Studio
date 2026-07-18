@@ -61,6 +61,7 @@ describe("pgvector hybrid candidate policy", () => {
     const embedCalls = source.match(/adapter\.embed\(/g) ?? [];
     assert.equal(embedCalls.length, 1, "generation path must call adapter.embed exactly once");
     assert.match(source, /querySearchIndexVectorsByGeneration/);
-    assert.match(source, /hydrateVectorOnlyCandidates|vector-only/);
+    assert.match(source, /requireSearchGeneration|requireGeneration/);
+    assert.match(source, /Generation lookup failure is not legacy/);
   });
 });

@@ -5,7 +5,10 @@ import type {
   RetrievalResponseDto,
 } from "@/lib/retrieval-dto";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
-import { applyHybridVectorRanking } from "@/lib/retrieval/hybrid-ranking-service";
+import {
+  applyHybridVectorRanking,
+  type ApplyHybridVectorRankingInput,
+} from "@/lib/retrieval/hybrid-ranking-service";
 import { collectRetrievalCandidates } from "@/lib/retrieval/retrieval-candidate-store";
 import {
   mapRetrievalResponse,
@@ -89,6 +92,11 @@ export async function retrieveContextsForVersion(input: {
   excludeDraftScope?: boolean;
   /** P5: search generation to scope candidate/vector lookups to, when resolved. */
   searchIndexGenerationId?: string | null;
+  /**
+   * @internal Test-only hooks for hybrid ranking (adapter/generation injection).
+   * Production callers must not pass this.
+   */
+  hybridTestHooks?: Pick<ApplyHybridVectorRankingInput, "requireGeneration" | "resolveAdapter">;
 }): Promise<RetrievalResponseDto> {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
@@ -126,6 +134,7 @@ export async function retrieveContextsForVersion(input: {
       indexGenerationId: input.indexGenerationId,
       excludeDraftScope: input.excludeDraftScope,
       tokens,
+      ...(input.hybridTestHooks ?? {}),
     });
     hybridScored = hybrid.scored;
     embeddingProvider = hybrid.embeddingProvider;

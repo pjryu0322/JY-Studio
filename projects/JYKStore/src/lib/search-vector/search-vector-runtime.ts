@@ -14,11 +14,16 @@ import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-error
  */
 export function isPgvectorUnavailableError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const missingRelation =
+    message.includes("does not exist") ||
+    message.includes("없습니다") ||
+    message.includes("undefined_table") ||
+    message.includes("42p01");
   return (
-    (message.includes("searchindexvector") && message.includes("does not exist")) ||
-    (message.includes('"vector"') && message.includes("does not exist")) ||
+    (message.includes("searchindexvector") && missingRelation) ||
+    (message.includes('"vector"') && missingRelation) ||
     message.includes("type vector does not exist") ||
-    (message.includes("access method") && message.includes("does not exist"))
+    (message.includes("access method") && missingRelation)
   );
 }
 
