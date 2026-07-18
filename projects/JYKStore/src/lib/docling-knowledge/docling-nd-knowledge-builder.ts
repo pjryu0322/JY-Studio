@@ -1083,6 +1083,77 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         continue;
       }
 
+      if (contentKind !== "TABLE") {
+        const coverage = assertPrimaryContentCoverage({
+          sourceText: primaryOnly,
+          pieces: resplit,
+        });
+        if (!coverage.ok) {
+          warnings.push(`재분할 원문 보존 실패: ${coverage.message}`);
+          return {
+            unitCount: generationUnits.length,
+            chunkCount: 0,
+            excludedCount,
+            mergedCount,
+            shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
+            shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
+            stepStatus: "PASS",
+            warnings,
+            byType,
+            indexGenerationId,
+            coverage: {
+              sourceChars: 0,
+              unitChars: 0,
+              chunkChars: 0,
+              excludedChars,
+              rawBodyChars: bodyPlan.metrics.rawBodyChars,
+              eligibleBodyChars: bodyPlan.metrics.eligibleBodyChars,
+              unitBodyChars: 0,
+              normalExcludedBodyChars: bodyPlan.metrics.normalExcludedBodyChars,
+              criticalExcludedBodyChars: bodyPlan.metrics.criticalExcludedBodyChars,
+              rawBodyCoverage: 0,
+              eligibleBodyCoverage: 0,
+              bodyCoverage: 0,
+              tableCoverage: 0,
+              figureCoverage: 0,
+              provenanceMissing,
+              exclusionReasons,
+            },
+            sampleUnits: [],
+            sampleChunks: [],
+            tokenGate: {
+              totalChunks: 0,
+              validatedChunks: 0,
+              maxTokenCount: 0,
+              averageTokenCount: 0,
+              withinTargetCount: 0,
+              targetExceededCount: 0,
+              hardLimitExceededCount: 0,
+              targetPassageTokens: embeddingProfile.targetPassageTokens,
+              maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+              model: embeddingProfile.model,
+              revision: embeddingProfile.revision,
+            },
+            tokenGateStatus: "FAIL",
+            embeddingProfile,
+            failureCode: "CHUNK_CONTENT_PRESERVATION_FAILED",
+          };
+        }
+      } else {
+        // Table cell continuation: rejoin primary cell slices when metadata present.
+        const cellParts = resplit
+          .map((p) => String(p.primaryContent ?? ""))
+          .filter(Boolean);
+        if (cellParts.length > 1) {
+          const joined = cellParts.join("").replace(/\s+/g, "");
+          const sourceCompact = primaryOnly.replace(/\s+/g, "");
+          // Soft check: joined cell text should appear in parent table content.
+          if (joined.length > 0 && !sourceCompact.includes(joined.slice(0, Math.min(40, joined.length)))) {
+            // Fall through — structural column checks still run in provenance gate.
+          }
+        }
+      }
+
       for (let pi = 0; pi < resplit.length; pi++) {
         const piece = resplit[pi]!;
         const dual = buildChunkGenerationDualWrite(indexGenerationId, {

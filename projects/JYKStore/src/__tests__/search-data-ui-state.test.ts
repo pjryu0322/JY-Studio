@@ -63,8 +63,60 @@ describe("computeSearchDataUiState", () => {
     assert.equal(
       computeSearchDataUiState(
         base({
-          generation: { ...e5Gen, status: "EMBEDDING", embeddedCount: 34 },
+          generation: { ...e5Gen, status: "EMBEDDING", attempt: 1, embeddedCount: 34 },
           vectorCount: 34,
+        }),
+      ),
+      "CREATING",
+    );
+  });
+
+  it("shows scaffold PENDING attempt=0 as NOT_CREATED", () => {
+    assert.equal(
+      computeSearchDataUiState(
+        base({
+          generation: {
+            ...e5Gen,
+            status: "PENDING",
+            attempt: 0,
+            embeddedCount: 0,
+            failedCount: 0,
+          },
+          vectorCount: 0,
+        }),
+      ),
+      "NOT_CREATED",
+    );
+  });
+
+  it("treats PENDING with undefined attempt as scaffold", () => {
+    assert.equal(
+      computeSearchDataUiState(
+        base({
+          generation: {
+            ...e5Gen,
+            status: "PENDING",
+            attempt: undefined,
+            embeddedCount: 0,
+          },
+          vectorCount: 0,
+        }),
+      ),
+      "NOT_CREATED",
+    );
+  });
+
+  it("shows enqueued PENDING attempt=1 as CREATING", () => {
+    assert.equal(
+      computeSearchDataUiState(
+        base({
+          generation: {
+            ...e5Gen,
+            status: "PENDING",
+            attempt: 1,
+            embeddedCount: 0,
+          },
+          vectorCount: 0,
         }),
       ),
       "CREATING",
@@ -134,6 +186,56 @@ describe("buildSearchDataStatusResponse", () => {
     assert.equal(dto.canGenerate, true);
     assert.equal(dto.canValidate, false);
     assert.equal(dto.canRunServiceValidation, false);
+  });
+
+  it("shows scaffold as NOT_CREATED and enables generation", () => {
+    const dto = buildSearchDataStatusResponse(
+      base({
+        generation: {
+          ...e5Gen,
+          status: "PENDING",
+          attempt: 0,
+          embeddedCount: 0,
+          failedCount: 0,
+        },
+        vectorCount: 0,
+      }),
+    );
+    assert.equal(dto.state, "NOT_CREATED");
+    assert.equal(dto.canGenerate, true);
+    assert.equal(dto.canValidate, false);
+  });
+
+  it("shows enqueued PENDING attempt=1 as CREATING", () => {
+    const dto = buildSearchDataStatusResponse(
+      base({
+        generation: {
+          ...e5Gen,
+          status: "PENDING",
+          attempt: 1,
+          embeddedCount: 0,
+        },
+        vectorCount: 0,
+      }),
+    );
+    assert.equal(dto.state, "CREATING");
+    assert.equal(dto.canGenerate, false);
+  });
+
+  it("shows EMBEDDING as CREATING", () => {
+    const dto = buildSearchDataStatusResponse(
+      base({
+        generation: {
+          ...e5Gen,
+          status: "EMBEDDING",
+          attempt: 1,
+          embeddedCount: 10,
+        },
+        vectorCount: 10,
+      }),
+    );
+    assert.equal(dto.state, "CREATING");
+    assert.equal(dto.canGenerate, false);
   });
 
   it("enables validate after CREATED with complete vectors", () => {

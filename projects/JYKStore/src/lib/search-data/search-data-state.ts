@@ -94,12 +94,35 @@ export type SearchDataStatusInput = {
   legacyLocalHashPresent?: boolean;
 };
 
-const RUNNING_GEN = new Set(["PENDING", "EMBEDDING"]);
 const LOCAL_E5 = "local-e5";
 
 function modelLabel(model: string): string {
   const parts = model.split("/");
   return parts[parts.length - 1] || model;
+}
+
+/** Structure scaffold awaiting user enqueue (Worker must not claim). */
+export function isScaffoldGeneration(
+  generation: SearchDataStatusInput["generation"],
+): boolean {
+  return Boolean(
+    generation &&
+      generation.embeddingProvider === LOCAL_E5 &&
+      generation.status === "PENDING" &&
+      (generation.attempt ?? 0) === 0,
+  );
+}
+
+/** User-enqueued or worker-owned Local E5 generation in progress. */
+export function isRunningGeneration(
+  generation: SearchDataStatusInput["generation"],
+): boolean {
+  if (!generation || generation.embeddingProvider !== LOCAL_E5) return false;
+  if (generation.status === "EMBEDDING") return true;
+  if (generation.status === "PENDING" && (generation.attempt ?? 0) > 0) {
+    return true;
+  }
+  return false;
 }
 
 function isLocalE5Complete(input: SearchDataStatusInput): boolean {
@@ -115,9 +138,9 @@ function isLocalE5Complete(input: SearchDataStatusInput): boolean {
 }
 
 /**
- * Priority (§20 / hardening):
- * STALE → CREATING → eval RUNNING → Generation FAILED → NOT_CREATED →
- * vector mismatch → VALIDATION_FAILED → VALIDATED → CREATED
+ * Priority:
+ * STALE → Scaffold NOT_CREATED → CREATING → eval RUNNING → Generation FAILED →
+ * NOT_CREATED → vector mismatch → VALIDATION_FAILED → VALIDATED → CREATED
  */
 export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDataUiState {
   if (!input.pipelineCurrent && input.structurePassed) {
@@ -128,7 +151,13 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
   }
 
   const g = input.generation;
-  if (g && RUNNING_GEN.has(g.status) && g.embeddingProvider === LOCAL_E5) {
+
+  // Scaffold before enqueue — show generate CTA, never poll as CREATING.
+  if (isScaffoldGeneration(g)) {
+    return "NOT_CREATED";
+  }
+
+  if (isRunningGeneration(g)) {
     return "CREATING";
   }
   if (input.indexingStepStatus === "RUNNING") {
@@ -155,7 +184,8 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
     g &&
     g.embeddingProvider === LOCAL_E5 &&
     g.embeddingDimension === 384 &&
-    !RUNNING_GEN.has(g.status) &&
+    g.status !== "PENDING" &&
+    g.status !== "EMBEDDING" &&
     g.status !== "FAILED" &&
     g.status !== "STALE" &&
     g.status !== "RETIRED";

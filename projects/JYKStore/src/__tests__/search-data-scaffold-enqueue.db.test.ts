@@ -1,6 +1,11 @@
 /**
- * Scaffold enqueue + claim gating (PostgreSQL).
- * Requires DATABASE_URL. Missing DB → suite skipped (never fake PASS).
+ * Scaffold enqueue + claim (PostgreSQL isolated test DB only).
+ *
+ * Requires:
+ *   JYKSTORE_DB_TESTS=1
+ *   DATABASE_URL path containing "test" (e.g. .../jykstore_test)
+ *
+ * Never runs against a shared/dev database (avoids claiming foreign generations).
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -8,14 +13,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { PackStatus } from "@prisma/client";
+import { PackStatus, PipelineStatus } from "@prisma/client";
+import {
+  createKnowledgeRunBinding,
+  serializeKnowledgeRunBinding,
+} from "../lib/docling-knowledge/docling-knowledge-run-binding.ts";
+import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER, DOCLING_RETRIEVAL_CHUNK_TYPE } from "../lib/docling-knowledge/docling-knowledge-stages.ts";
 import {
   DEFAULT_E5_EMBEDDING_DIMENSION,
   DEFAULT_E5_MODEL_ID,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "../lib/embedding/e5-embedding-constants.ts";
 import { prisma } from "../lib/prisma.ts";
-import { claimNextSearchDataGeneration } from "../lib/search-data/search-data-generation-service.ts";
+import {
+  claimNextSearchDataGeneration,
+  startSearchDataGeneration,
+} from "../lib/search-data/search-data-generation-service.ts";
 
 function ensureDatabaseUrlFromDotEnv(): void {
   if (process.env.DATABASE_URL?.trim()) return;
@@ -34,31 +47,60 @@ function ensureDatabaseUrlFromDotEnv(): void {
 }
 
 ensureDatabaseUrlFromDotEnv();
-const hasDb = Boolean(process.env.DATABASE_URL?.trim());
+
+function isIsolatedTestDatabase(): boolean {
+  if (process.env.JYKSTORE_DB_TESTS !== "1") return false;
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) return false;
+  try {
+    return /test/i.test(new URL(url).pathname);
+  } catch {
+    return /test/i.test(url);
+  }
+}
+
+const runDb = isIsolatedTestDatabase();
 const SHA = "fcfc26bf355882620c48df58be112275bd756f50";
 
-async function seedScaffold(suffix: string, attempt: number) {
-  const packId = `sd-scaf-${suffix}`;
+if (!runDb) {
+  console.warn(
+    "DB tests: SKIPPED — set JYKSTORE_DB_TESTS=1 and use a DATABASE_URL whose path contains 'test'",
+  );
+}
+
+async function seedStructureScaffold(suffix: string) {
+  const packId = `sd-svc-${suffix}`;
+  const clientId = `client-${suffix}`;
   const category =
     (await prisma.packCategory.findFirst({ select: { categoryId: true } })) ??
     (await prisma.packCategory.create({
       data: {
-        categoryId: `sd-scaf-cat-${suffix}`,
+        categoryId: `sd-svc-cat-${suffix}`,
         name: "SD",
         description: "t",
         icon: "book",
       },
     }));
   const user = await prisma.user.create({
-    data: { email: `sd-scaf-${suffix}@example.com`, name: "SD", accountRole: "PROVIDER" },
+    data: {
+      email: `sd-svc-${suffix}@example.com`,
+      name: "SD",
+      accountRole: "PROVIDER",
+    },
   });
   const profile = await prisma.providerProfile.create({
-    data: { displayName: "SD", description: "t", userId: user.id, status: "ACTIVE" },
+    data: {
+      displayName: "SD",
+      description: "t",
+      userId: user.id,
+      clientId,
+      status: "ACTIVE",
+    },
   });
   await prisma.knowledgePack.create({
     data: {
       packId,
-      name: "SD Scaffold",
+      name: "SD Service Pack",
       categoryId: category.categoryId,
       providerName: "SD",
       providerType: "COMMUNITY",
@@ -84,19 +126,9 @@ async function seedScaffold(suffix: string, attempt: number) {
       versionSummary: "vs",
     },
   });
-  const pipeline = await prisma.pipelineRun.create({
-    data: {
-      packId,
-      triggerType: "DOCLING_KNOWLEDGE_GENERATION",
-      status: "PASS",
-      summary: "sd",
-      startedAt: new Date(),
-      finishedAt: new Date(),
-    },
-  });
   const bundle = await prisma.doclingImportBundle.create({
     data: {
-      id: `sd-scaf-b-${suffix}`,
+      id: `sd-svc-b-${suffix}`,
       packId,
       versionId: version.id,
       status: "REVIEW_READY",
@@ -104,18 +136,61 @@ async function seedScaffold(suffix: string, attempt: number) {
       isActive: true,
     },
   });
+  const fingerprint = `sd-svc-fp-${suffix}`;
   const normalized = await prisma.normalizedDocument.create({
     data: {
-      id: `sd-scaf-nd-${suffix}`,
+      id: `sd-svc-nd-${suffix}`,
       bundleId: bundle.id,
       packId,
       versionId: version.id,
       adapterVersion: "test",
-      fingerprint: `sd-scaf-fp-${suffix}`,
+      fingerprint,
       isActive: true,
+      title: "t",
     },
   });
-  const genId = `sd-scaf-gen-${suffix}`;
+  const genId = `sd-svc-gen-${suffix}`;
+  const binding = createKnowledgeRunBinding({
+    versionId: version.id,
+    normalizedDocumentId: normalized.id,
+    fingerprint,
+    bundleId: bundle.id,
+    indexGenerationId: genId,
+    requestedByUserId: user.id,
+    requestedByClientId: clientId,
+  });
+  const pipeline = await prisma.pipelineRun.create({
+    data: {
+      packId,
+      triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
+      status: "PASS",
+      summary: serializeKnowledgeRunBinding(binding),
+      startedAt: new Date(),
+      finishedAt: new Date(),
+    },
+  });
+  for (const step of [
+    { step: "STRUCTURE_VALIDATING" as PipelineStatus, status: "PASS" as const, details: { advisory: true } },
+    { step: "KNOWLEDGE_CHECKING" as PipelineStatus, status: "PASS" as const, details: { unitCount: 1 } },
+    {
+      step: "CHUNKING" as PipelineStatus,
+      status: "PASS" as const,
+      details: { chunkCount: 2, tokenGateStatus: "PASS", hardLimitExceededCount: 0 },
+    },
+  ]) {
+    await prisma.pipelineStep.create({
+      data: {
+        runId: pipeline.id,
+        packId,
+        step: step.step,
+        status: step.status,
+        message: "ok",
+        details: step.details,
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      },
+    });
+  }
   await prisma.searchIndexGeneration.create({
     data: {
       id: genId,
@@ -124,30 +199,56 @@ async function seedScaffold(suffix: string, attempt: number) {
       pipelineRunId: pipeline.id,
       normalizedDocumentId: normalized.id,
       chunkGenerationId: genId,
-      fingerprint: `sd-scaf-fp-${suffix}`,
+      fingerprint,
       embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
       embeddingModel: DEFAULT_E5_MODEL_ID,
       embeddingModelRevision: SHA,
       embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
       distanceMetric: "cosine",
-      chunkCount: 89,
+      chunkCount: 2,
       embeddedCount: 0,
-      generationFingerprint: `sd-scaf-gfp-${suffix}`,
-      attempt,
+      generationFingerprint: `sd-svc-gfp-${suffix}`,
+      attempt: 0,
       status: "PENDING",
       scope: "DRAFT",
     },
   });
+  for (let i = 0; i < 2; i++) {
+    await prisma.knowledgeChunk.create({
+      data: {
+        versionId: version.id,
+        chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+        title: `c${i}`,
+        content: `chunk content ${i} `.repeat(20),
+        section: "s",
+        tags: [],
+        sortOrder: i,
+        isActive: false,
+        chunkGenerationId: genId,
+        metadata: {
+          indexGenerationId: genId,
+          generatedBy: "docling-knowledge-pipeline",
+        },
+      },
+    });
+  }
   return {
     packId,
     genId,
-    pipelineId: pipeline.id,
-    fingerprint: `sd-scaf-fp-${suffix}`,
-    ndId: normalized.id,
     userId: user.id,
+    clientId,
     profileId: profile.id,
     bundleId: bundle.id,
+    ndId: normalized.id,
     versionId: version.id,
+    pipelineId: pipeline.id,
+    fingerprint,
+    descriptor: {
+      embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+      embeddingModel: DEFAULT_E5_MODEL_ID,
+      embeddingModelRevision: SHA,
+      embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+    },
   };
 }
 
@@ -158,6 +259,7 @@ async function cleanup(seeded: {
   profileId: string;
   bundleId: string;
   ndId: string;
+  versionId: string;
 }) {
   await prisma.$executeRaw`
     DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${seeded.genId}
@@ -165,139 +267,121 @@ async function cleanup(seeded: {
   await prisma.knowledgeChunkEmbedding
     .deleteMany({ where: { searchIndexGenerationId: seeded.genId } })
     .catch(() => undefined);
+  await prisma.knowledgeChunk
+    .deleteMany({ where: { versionId: seeded.versionId } })
+    .catch(() => undefined);
   await prisma.searchIndexGeneration.deleteMany({ where: { id: seeded.genId } }).catch(() => undefined);
+  await prisma.pipelineStep.deleteMany({ where: { packId: seeded.packId } }).catch(() => undefined);
+  await prisma.pipelineRun.deleteMany({ where: { packId: seeded.packId } }).catch(() => undefined);
   await prisma.normalizedDocument.deleteMany({ where: { id: seeded.ndId } }).catch(() => undefined);
   await prisma.doclingImportBundle.deleteMany({ where: { id: seeded.bundleId } }).catch(() => undefined);
-  await prisma.pipelineRun.deleteMany({ where: { packId: seeded.packId } }).catch(() => undefined);
   await prisma.knowledgePackVersion.deleteMany({ where: { packId: seeded.packId } }).catch(() => undefined);
   await prisma.knowledgePack.deleteMany({ where: { packId: seeded.packId } }).catch(() => undefined);
   await prisma.providerProfile.deleteMany({ where: { id: seeded.profileId } }).catch(() => undefined);
   await prisma.user.deleteMany({ where: { id: seeded.userId } }).catch(() => undefined);
 }
 
-describe("search-data scaffold enqueue/claim (DB)", { skip: !hasDb }, () => {
-  it("does not claim PENDING attempt=0 scaffold", async () => {
+describe("search-data real enqueue service (isolated test DB)", { skip: !runDb }, () => {
+  it("startSearchDataGeneration enqueues scaffold attempt 0→1", async () => {
     const suffix = randomUUID().slice(0, 8);
-    const seeded = await seedScaffold(suffix, 0);
+    const seeded = await seedStructureScaffold(suffix);
     try {
-      // Drain other claimable rows first by claiming until we get ours or null repeatedly.
-      for (let i = 0; i < 20; i++) {
-        const claimed = await claimNextSearchDataGeneration();
-        if (!claimed) break;
-        if (claimed.id === seeded.genId) {
-          assert.fail("attempt=0 scaffold must not be claimable");
-        }
-        // Release foreign claim back to PENDING so we do not leave orphan EMBEDDING.
-        await prisma.searchIndexGeneration.updateMany({
-          where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
-          data: { status: "PENDING", startedAt: null },
-        });
-      }
-      const ours = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
-      assert.equal(ours?.status, "PENDING");
-      assert.equal(ours?.attempt, 0);
+      const before = await prisma.searchIndexGeneration.findUniqueOrThrow({
+        where: { id: seeded.genId },
+      });
+      assert.equal(before.attempt, 0);
+      assert.equal(before.status, "PENDING");
+
+      const result = await startSearchDataGeneration({
+        userId: seeded.userId,
+        clientId: seeded.clientId,
+        packId: seeded.packId,
+        forceRegenerate: false,
+      });
+      assert.ok(!("error" in result), JSON.stringify(result));
+      assert.equal("accepted" in result && result.accepted, true);
+
+      const after = await prisma.searchIndexGeneration.findUniqueOrThrow({
+        where: { id: seeded.genId },
+      });
+      assert.equal(after.id, seeded.genId);
+      assert.equal(after.status, "PENDING");
+      assert.equal(after.attempt, 1);
+      assert.equal(after.chunkCount, 2);
+      assert.equal(after.embeddedCount, 0);
+      assert.equal(after.failedCount, 0);
+      assert.equal(after.embeddingProvider, before.embeddingProvider);
+      assert.equal(after.embeddingModel, before.embeddingModel);
+      assert.equal(after.embeddingModelRevision, before.embeddingModelRevision);
+      assert.equal(after.embeddingDimension, before.embeddingDimension);
+
+      const claimed = await claimNextSearchDataGeneration();
+      assert.ok(claimed);
+      assert.equal(claimed.id, seeded.genId);
+      assert.equal(claimed.attempt, 1);
+      const row = await prisma.searchIndexGeneration.findUniqueOrThrow({
+        where: { id: seeded.genId },
+      });
+      assert.equal(row.status, "EMBEDDING");
     } finally {
       await cleanup(seeded);
     }
   });
 
-  it("atomically enqueues attempt 0→1 and then allows claim", async () => {
+  it("concurrent startSearchDataGeneration keeps attempt=1", async () => {
     const suffix = randomUUID().slice(0, 8);
-    const seeded = await seedScaffold(suffix, 0);
+    const seeded = await seedStructureScaffold(suffix);
     try {
-      const updated = await prisma.searchIndexGeneration.updateMany({
-        where: {
-          id: seeded.genId,
-          scope: "DRAFT",
-          status: "PENDING",
-          attempt: 0,
-          chunkGenerationId: seeded.genId,
-          pipelineRunId: seeded.pipelineId,
-          normalizedDocumentId: seeded.ndId,
-          fingerprint: seeded.fingerprint,
-        },
-        data: {
-          attempt: 1,
-          embeddedCount: 0,
-          failedCount: 0,
-          failureCode: null,
-          failureMessage: null,
-          startedAt: null,
-        },
+      const input = {
+        userId: seeded.userId,
+        clientId: seeded.clientId,
+        packId: seeded.packId,
+        forceRegenerate: false,
+      };
+      const [a, b] = await Promise.all([
+        startSearchDataGeneration(input),
+        startSearchDataGeneration(input),
+      ]);
+      assert.ok(!("error" in a) || !("error" in b));
+      const after = await prisma.searchIndexGeneration.findUniqueOrThrow({
+        where: { id: seeded.genId },
       });
-      assert.equal(updated.count, 1);
-
-      const concurrent = await prisma.searchIndexGeneration.updateMany({
-        where: {
-          id: seeded.genId,
-          scope: "DRAFT",
-          status: "PENDING",
-          attempt: 0,
-        },
-        data: { attempt: 1 },
-      });
-      assert.equal(concurrent.count, 0, "second enqueue must not bump attempt again");
-
-      const after = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
-      assert.equal(after?.attempt, 1);
-      assert.equal(after?.status, "PENDING");
-
-      let claimedOurs = false;
-      for (let i = 0; i < 30; i++) {
-        const claimed = await claimNextSearchDataGeneration();
-        if (!claimed) break;
-        if (claimed.id === seeded.genId) {
-          claimedOurs = true;
-          assert.equal(claimed.attempt, 1);
-          const row = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
-          assert.equal(row?.status, "EMBEDDING");
-          break;
-        }
-        await prisma.searchIndexGeneration.updateMany({
-          where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
-          data: { status: "PENDING", startedAt: null },
-        });
-      }
-      assert.equal(claimedOurs, true);
+      assert.equal(after.attempt, 1);
+      assert.equal(after.status, "PENDING");
+      const count = await prisma.searchIndexGeneration.count({ where: { id: seeded.genId } });
+      assert.equal(count, 1);
+      // At least one accepted; the other may be already_running accepted.
+      const accepted = [a, b].filter((r) => "accepted" in r && r.accepted);
+      assert.ok(accepted.length >= 1);
     } finally {
       await cleanup(seeded);
     }
   });
 
-  it("concurrent claim of attempt=1 succeeds only once", async () => {
+  it("concurrent claim of attempt=1 succeeds exactly once", async () => {
     const suffix = randomUUID().slice(0, 8);
-    const seeded = await seedScaffold(suffix, 1);
+    const seeded = await seedStructureScaffold(suffix);
     try {
-      // Isolate: mark other PENDING attempt>0 as FAILED temporarily is too invasive.
-      // Instead claim twice on the same gen after ensuring ours is oldest claimable.
       await prisma.searchIndexGeneration.update({
         where: { id: seeded.genId },
-        data: { createdAt: new Date(0) },
+        data: { attempt: 1, createdAt: new Date(0) },
       });
       const [a, b] = await Promise.all([
         claimNextSearchDataGeneration(),
         claimNextSearchDataGeneration(),
       ]);
       const ours = [a, b].filter((c) => c?.id === seeded.genId);
-      assert.ok(ours.length <= 1, "same generation claimed at most once");
-      if (ours.length === 1) {
-        const row = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
-        assert.equal(row?.status, "EMBEDDING");
-      }
-      for (const c of [a, b]) {
-        if (c && c.id !== seeded.genId) {
-          await prisma.searchIndexGeneration.updateMany({
-            where: { id: c.id, attempt: c.attempt, status: "EMBEDDING" },
-            data: { status: "PENDING", startedAt: null },
-          });
-        }
-      }
+      assert.equal(ours.length, 1);
+      assert.equal(ours[0]!.attempt, 1);
+      const row = await prisma.searchIndexGeneration.findUniqueOrThrow({
+        where: { id: seeded.genId },
+      });
+      assert.equal(row.status, "EMBEDDING");
+      // On isolated test DB, the other claim should be null (no other claimable gens).
+      const other = [a, b].find((c) => c && c.id !== seeded.genId);
+      assert.equal(other, undefined);
     } finally {
       await cleanup(seeded);
     }
   });
 });
-
-if (!hasDb) {
-  console.warn("DB tests: SKIPPED — DATABASE_URL not configured");
-}
