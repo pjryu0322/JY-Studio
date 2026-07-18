@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildSearchVectorQuerySql } from "@/lib/search-vector/search-vector-query";
 import {
   handlePgvectorUnavailable,
+  isPgvectorRequired,
   isPgvectorUnavailableError,
   parseVectorLiteral,
   toVectorLiteral,
@@ -121,4 +122,31 @@ test("handlePgvectorUnavailable throws SEARCH_RUNTIME_UNAVAILABLE in production,
   );
   assert.equal(handlePgvectorUnavailable("ctx", { NODE_ENV: "development" }), "fallback");
   assert.equal(handlePgvectorUnavailable("ctx", { NODE_ENV: "test" }), "fallback");
+});
+
+test("JYKSTORE_REQUIRE_PGVECTOR forces hard-fail outside production", () => {
+  assert.equal(isPgvectorRequired({ NODE_ENV: "development" }), false);
+  assert.equal(
+    isPgvectorRequired({ NODE_ENV: "development", JYKSTORE_REQUIRE_PGVECTOR: "true" }),
+    true,
+  );
+  assert.throws(
+    () =>
+      handlePgvectorUnavailable("ctx", {
+        NODE_ENV: "development",
+        JYKSTORE_REQUIRE_PGVECTOR: "true",
+      }),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",
+  );
+});
+
+test("buildSearchVectorQuerySql casts through vector(n) when dimension is set", () => {
+  const sql = buildSearchVectorQuerySql({
+    ...BASE_INPUT,
+    searchIndexGenerationId: "gen-a",
+    dimension: 384,
+  });
+  assert.match(sql.sql, /::vector\(384\)/);
+  assert.doesNotMatch(sql.sql, /::vector\(\$/);
 });

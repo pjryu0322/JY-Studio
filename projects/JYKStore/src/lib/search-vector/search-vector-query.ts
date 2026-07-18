@@ -20,6 +20,11 @@ export type SearchVectorQueryInput = {
   model: string;
   queryVector: number[];
   limit: number;
+  /**
+   * When set (e.g. 384 for local-e5), distance expressions cast through
+   * `vector(n)` so they can use the matching expression/partial HNSW index.
+   */
+  dimension?: number;
   /** Optional: restrict to this candidate set (used by hybrid re-ranking). */
   chunkIds?: string[];
 };
@@ -39,6 +44,18 @@ function assertIsolationScope(input: Pick<SearchVectorQueryInput, "searchIndexGe
   }
 }
 
+function resolveVectorTypmod(dimension: number | undefined): number | null {
+  if (
+    typeof dimension !== "number" ||
+    !Number.isInteger(dimension) ||
+    dimension <= 0 ||
+    dimension > 16_000
+  ) {
+    return null;
+  }
+  return dimension;
+}
+
 /**
  * Builds the cosine-distance HNSW-ready SQL for a top-K vector search, always
  * filtered by searchIndexGenerationId (+ provider/model, + optional chunkId set).
@@ -48,25 +65,36 @@ export function buildSearchVectorQuerySql(input: SearchVectorQueryInput): Prisma
   assertIsolationScope(input);
   const vectorLiteral = toVectorLiteral(input.queryVector);
   const limit = Math.max(1, Math.min(Math.trunc(input.limit) || 1, 200));
+  const typmod = resolveVectorTypmod(input.dimension);
 
   const chunkFilter =
     input.chunkIds && input.chunkIds.length > 0
       ? Prisma.sql`AND sv."chunkId" IN (${Prisma.join(input.chunkIds)})`
       : Prisma.empty;
 
+  // Typmod must be a SQL literal (not a bind param) to match expression indexes.
+  const left =
+    typmod === null
+      ? Prisma.sql`sv."vector"`
+      : Prisma.sql`(sv."vector"::vector(${Prisma.raw(String(typmod))}))`;
+  const right =
+    typmod === null
+      ? Prisma.sql`${vectorLiteral}::vector`
+      : Prisma.sql`(${vectorLiteral}::vector(${Prisma.raw(String(typmod))}))`;
+
   return Prisma.sql`
     SELECT
       sv."chunkId" AS "chunkId",
       kc."title" AS "title",
       kc."content" AS "content",
-      (sv."vector" <=> ${vectorLiteral}::vector) AS "distance"
+      (${left} <=> ${right}) AS "distance"
     FROM "SearchIndexVector" sv
     JOIN "KnowledgeChunk" kc ON kc."id" = sv."chunkId"
     WHERE sv."searchIndexGenerationId" = ${input.searchIndexGenerationId}
       AND sv."provider" = ${input.provider}
       AND sv."model" = ${input.model}
       ${chunkFilter}
-    ORDER BY sv."vector" <=> ${vectorLiteral}::vector ASC
+    ORDER BY ${left} <=> ${right} ASC
     LIMIT ${limit}
   `;
 }

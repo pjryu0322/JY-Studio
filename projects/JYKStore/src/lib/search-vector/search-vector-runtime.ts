@@ -26,20 +26,34 @@ export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boole
   return env.NODE_ENV === "production";
 }
 
+function isTruthyEnv(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
+}
+
+/**
+ * When true, missing pgvector must hard-fail even outside production
+ * (P5.2 integration / local retrieval verification).
+ */
+export function isPgvectorRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isProductionRuntime(env) || isTruthyEnv(env.JYKSTORE_REQUIRE_PGVECTOR);
+}
+
 /**
  * Central policy for "what happens when pgvector is unavailable":
- *  - production: hard fail — throw SEARCH_RUNTIME_UNAVAILABLE, no silent fallback.
- *  - development/test: return a sentinel so the caller can fall back to JSON-only.
+ *  - production OR JYKSTORE_REQUIRE_PGVECTOR: hard fail — SEARCH_RUNTIME_UNAVAILABLE.
+ *  - development/test otherwise: return a sentinel so the caller can fall back to JSON-only.
  */
 export function handlePgvectorUnavailable(
   context: string,
   env: NodeJS.ProcessEnv = process.env,
 ): "fallback" {
-  if (isProductionRuntime(env)) {
+  if (isPgvectorRequired(env)) {
     throw new EmbeddingProviderError(
       "SEARCH_RUNTIME_UNAVAILABLE",
-      `${context}: pgvector runtime is unavailable in production. ` +
-        "No fallback to JSON-only/local-hash search is permitted.",
+      `${context}: pgvector runtime is unavailable` +
+        (isProductionRuntime(env)
+          ? " in production. No fallback to JSON-only/local-hash search is permitted."
+          : " (JYKSTORE_REQUIRE_PGVECTOR=true). No JSON-only fallback is permitted."),
     );
   }
   return "fallback";
