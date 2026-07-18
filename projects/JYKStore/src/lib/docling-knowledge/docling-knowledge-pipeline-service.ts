@@ -154,7 +154,13 @@ export type DoclingKnowledgePipelineStatusDto = {
   canStart: boolean;
   canRetry: boolean;
   canOpenDistribution: boolean;
-  primaryCta: "start" | "retry" | "distribution" | "warning_retry" | "none";
+  primaryCta:
+    | "start"
+    | "retry"
+    | "distribution"
+    | "warning_retry"
+    | "search_validation"
+    | "none";
   lockReason: string | null;
   summary: string | null;
 };
@@ -488,7 +494,9 @@ export async function getDoclingKnowledgePipelineStatus(input: {
   let primaryCta: DoclingKnowledgePipelineStatusDto["primaryCta"] = "none";
   if (running) primaryCta = "none";
   else if (passed) primaryCta = "distribution";
-  else if (warningOnly) primaryCta = "warning_retry";
+  else if (structurePassed && !searchFoundationPassed && !stale && !failed) {
+    primaryCta = "search_validation";
+  } else if (warningOnly) primaryCta = "warning_retry";
   else if (failed || stale) primaryCta = "retry";
   else if (providerConfirmed && owned.pack.status === PackStatus.DRAFT) primaryCta = "start";
 

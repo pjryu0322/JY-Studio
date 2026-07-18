@@ -31,8 +31,22 @@ import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 const MAX_UNIT_CHARS = 6000;
 const MIN_CHUNK_CHARS = 40;
+const MAX_RESPLIT_DEPTH = 2;
 
-function pieceProvenanceMeta(piece: TokenAwareSplitPiece): Record<string, unknown> {
+/** Budget title with worst-case multi-part suffix reserved (e.g. " (9999)"). */
+export function reserveSplitSuffixTokens(
+  title: string,
+  options?: { maxDigits?: number },
+): string {
+  const digits = Math.max(1, options?.maxDigits ?? 4);
+  const suffix = ` (${"9".repeat(digits)})`;
+  return clampTitle(`${title}${suffix}`, 120);
+}
+
+function pieceProvenanceMeta(
+  piece: TokenAwareSplitPiece,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     splitSourceId: piece.splitSourceId,
     splitIndex: piece.splitIndex,
@@ -41,6 +55,7 @@ function pieceProvenanceMeta(piece: TokenAwareSplitPiece): Record<string, unknow
     configuredOverlapTokens: piece.configuredOverlapTokens,
     actualOverlapTokens: piece.actualOverlapTokens,
     hasOverlap: piece.hasOverlap,
+    primaryContent: piece.primaryContent,
     primarySourceTextStart: piece.primarySourceTextStart,
     primarySourceTextEnd: piece.primarySourceTextEnd,
     overlapSourceTextStart: piece.overlapSourceTextStart,
@@ -49,7 +64,85 @@ function pieceProvenanceMeta(piece: TokenAwareSplitPiece): Record<string, unknow
     sourceTextEnd: piece.sourceTextEnd,
     tokenCount: piece.tokenCount,
     ...(piece.tableMeta ?? {}),
+    ...(extra ?? {}),
   };
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function validateChunkProvenanceBeforeSave(
+  creates: Array<{
+    title?: unknown;
+    content?: unknown;
+    metadata?: unknown;
+  }>,
+  targetPassageTokens: number,
+): { ok: true } | { ok: false; code: string; message: string } {
+  for (const created of creates) {
+    const md =
+      created.metadata && typeof created.metadata === "object"
+        ? (created.metadata as Record<string, unknown>)
+        : {};
+    const tokenCount = asNumber(md.tokenCount);
+    if (tokenCount != null && tokenCount > targetPassageTokens) {
+      return {
+        ok: false,
+        code: "PASSAGE_TARGET_TOKEN_EXCEEDED",
+        message: `tokenCount ${tokenCount} exceeds target ${targetPassageTokens}`,
+      };
+    }
+    const start = asNumber(md.primarySourceTextStart);
+    const end = asNumber(md.primarySourceTextEnd);
+    if (start != null && end != null && start > end) {
+      return {
+        ok: false,
+        code: "CHUNK_PROVENANCE_INVALID",
+        message: "primarySourceTextStart > primarySourceTextEnd",
+      };
+    }
+    const oStart = asNumber(md.overlapSourceTextStart);
+    const oEnd = asNumber(md.overlapSourceTextEnd);
+    if ((oStart == null) !== (oEnd == null)) {
+      return {
+        ok: false,
+        code: "CHUNK_PROVENANCE_INVALID",
+        message: "overlap source range partially set",
+      };
+    }
+    if (oStart != null && oEnd != null && oStart > oEnd) {
+      return {
+        ok: false,
+        code: "CHUNK_PROVENANCE_INVALID",
+        message: "overlapSourceTextStart > overlapSourceTextEnd",
+      };
+    }
+    const headers = md.tableHeaders;
+    if (Array.isArray(headers) && md.contentKind === "TABLE") {
+      const content = String(created.content);
+      const rowLine = content.split("\n").find((l) => l.includes("|") && !l.startsWith("컬럼:"));
+      if (rowLine) {
+        const cols = rowLine.split("|").map((c) => c.trim());
+        if (cols.length !== headers.length) {
+          return {
+            ok: false,
+            code: "TABLE_COLUMN_STRUCTURE_INVALID",
+            message: `row cols ${cols.length} != headers ${headers.length}`,
+          };
+        }
+      }
+    }
+    const depth = asNumber(md.resplitDepth) ?? 0;
+    if (depth > MAX_RESPLIT_DEPTH) {
+      return {
+        ok: false,
+        code: "CHUNK_TOKEN_RESPLIT_EXHAUSTED",
+        message: `resplitDepth ${depth} exceeds ${MAX_RESPLIT_DEPTH}`,
+      };
+    }
+  }
+  return { ok: true };
 }
 
 export {
@@ -648,11 +741,12 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
               .split("|")
               .map((c) => c.trim()) ?? [];
 
+      const provisionalTableTitle = reserveSplitSuffixTokens(unit.title, { maxDigits: 4 });
       const tablePieces = await splitTableRowsByTokens({
         caption: unit.title,
         headers: headerCells,
         rows: rowCells,
-        title: unit.title,
+        title: provisionalTableTitle,
         section: unit.section,
         tags: unit.tags,
         countTokens,
@@ -683,7 +777,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
             indexScope: "DRAFT",
             indexStatus: "BUILDING",
             pipelineRunId: input.pipelineRunId,
-            ...pieceProvenanceMeta(piece),
+            ...pieceProvenanceMeta(piece, { contentKind: "TABLE" }),
             embeddingProvider: embeddingProfile.provider,
             embeddingModel: embeddingProfile.model,
             embeddingModelRevision: embeddingProfile.revision,
@@ -713,8 +807,8 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
 
     const unitStart =
       typeof unitMeta.sourceTextStart === "number" ? unitMeta.sourceTextStart : 0;
-    // Budget with the worst-case multi-part title so suffix never pushes past target later.
-    const provisionalTitle = clampTitle(`${unit.title} (99)`, 120);
+    // Budget with reserved multi-part title so suffix never pushes past target later.
+    const provisionalTitle = reserveSplitSuffixTokens(unit.title, { maxDigits: 4 });
     const bodyPieces = await splitBodyContentByTokens({
       content: unit.content,
       title: provisionalTitle,
@@ -810,7 +904,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           indexScope: "DRAFT",
           indexStatus: "BUILDING",
           pipelineRunId: input.pipelineRunId,
-          ...pieceProvenanceMeta(piece),
+          ...pieceProvenanceMeta(piece, { contentKind: "BODY" }),
           embeddingProvider: embeddingProfile.provider,
           embeddingModel: embeddingProfile.model,
           embeddingModelRevision: embeddingProfile.revision,
@@ -848,7 +942,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     }),
   );
 
-  // If any passage still exceeds target, re-split into ALL pieces (never keep only [0]).
+  // If any passage still exceeds target, re-split primary content only (preserve absolute offsets).
   {
     const recount = await countTokens(passages);
     const expanded: typeof chunkCreates = [];
@@ -868,27 +962,145 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         created.metadata && typeof created.metadata === "object"
           ? { ...(created.metadata as Record<string, unknown>) }
           : {};
-      const resplit = await splitBodyContentByTokens({
-        content: String(created.content),
-        title: meta.title,
-        section: meta.section,
-        tags: meta.tags,
-        countTokens,
-        targetPassageTokens: embeddingProfile.targetPassageTokens,
-        maxSequenceTokens: embeddingProfile.maxSequenceTokens,
-        overlapTokens: 0,
-        splitSourceId: String(baseMd.knowledgeUnitId ?? baseMd.splitSourceId ?? ""),
-      });
+      const depth = asNumber(baseMd.resplitDepth) ?? 0;
+      if (depth >= MAX_RESPLIT_DEPTH) {
+        warnings.push(`재분할 한도 초과: ${String(created.title)}`);
+        return {
+          unitCount: generationUnits.length,
+          chunkCount: 0,
+          excludedCount,
+          mergedCount,
+          shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
+          shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
+          stepStatus: "PASS",
+          warnings,
+          byType,
+          indexGenerationId,
+          coverage: {
+            sourceChars: 0,
+            unitChars: 0,
+            chunkChars: 0,
+            excludedChars,
+            rawBodyChars: bodyPlan.metrics.rawBodyChars,
+            eligibleBodyChars: bodyPlan.metrics.eligibleBodyChars,
+            unitBodyChars: 0,
+            normalExcludedBodyChars: bodyPlan.metrics.normalExcludedBodyChars,
+            criticalExcludedBodyChars: bodyPlan.metrics.criticalExcludedBodyChars,
+            rawBodyCoverage: 0,
+            eligibleBodyCoverage: 0,
+            bodyCoverage: 0,
+            tableCoverage: 0,
+            figureCoverage: 0,
+            provenanceMissing,
+            exclusionReasons,
+          },
+          sampleUnits: [],
+          sampleChunks: [],
+          tokenGate: {
+            totalChunks: 0,
+            validatedChunks: 0,
+            maxTokenCount: 0,
+            averageTokenCount: 0,
+            withinTargetCount: 0,
+            targetExceededCount: 0,
+            hardLimitExceededCount: 0,
+            targetPassageTokens: embeddingProfile.targetPassageTokens,
+            maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+            model: embeddingProfile.model,
+            revision: embeddingProfile.revision,
+          },
+          tokenGateStatus: "FAIL",
+          embeddingProfile,
+          failureCode: "CHUNK_TOKEN_RESPLIT_EXHAUSTED",
+        };
+      }
+
+      const contentKind =
+        baseMd.contentKind === "TABLE"
+          ? "TABLE"
+          : baseMd.contentKind === "FIGURE"
+            ? "FIGURE"
+            : "BODY";
+      const absolutePrimaryStart = asNumber(baseMd.primarySourceTextStart) ?? 0;
+      const parentSplitIndex = asNumber(baseMd.splitIndex) ?? 0;
+      const parentSplitCount = asNumber(baseMd.splitCount) ?? 1;
+      const parentSplitSourceId = String(
+        baseMd.splitSourceId ?? baseMd.knowledgeUnitId ?? "",
+      );
+      const primaryOnly =
+        typeof baseMd.primaryContent === "string" && baseMd.primaryContent.length > 0
+          ? baseMd.primaryContent
+          : String(created.content);
+
+      let resplit: TokenAwareSplitPiece[] = [];
+      if (contentKind === "TABLE") {
+        const headers = Array.isArray(baseMd.tableHeaders)
+          ? (baseMd.tableHeaders as string[])
+          : [];
+        const lines = primaryOnly.split("\n").filter(Boolean);
+        const colIdx = lines.findIndex((l) => l.startsWith("컬럼:"));
+        const bodyLines =
+          colIdx >= 0 ? lines.slice(colIdx + 1).filter((l) => l.includes("|")) : [];
+        const rowCells = bodyLines.map((l) => l.split("|").map((c) => c.trim()));
+        const headerCells =
+          headers.length > 0
+            ? headers
+            : lines
+                .find((l) => l.startsWith("컬럼:"))
+                ?.replace(/^컬럼:\s*/, "")
+                .split("|")
+                .map((c) => c.trim()) ?? [];
+        resplit = await splitTableRowsByTokens({
+          caption: meta.title,
+          headers: headerCells,
+          rows: rowCells,
+          title: meta.title,
+          section: meta.section,
+          tags: meta.tags,
+          countTokens,
+          formatTableChunk,
+          targetPassageTokens: embeddingProfile.targetPassageTokens,
+          maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+          splitSourceId: parentSplitSourceId,
+        });
+      } else {
+        resplit = await splitBodyContentByTokens({
+          content: primaryOnly,
+          title: meta.title,
+          section: meta.section,
+          tags: meta.tags,
+          countTokens,
+          targetPassageTokens: embeddingProfile.targetPassageTokens,
+          maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+          overlapTokens: 0,
+          splitSourceId: parentSplitSourceId,
+          sourceTextStart: absolutePrimaryStart,
+        });
+      }
+
       if (resplit.length === 0) {
         expanded.push(created);
         continue;
       }
+
       for (let pi = 0; pi < resplit.length; pi++) {
         const piece = resplit[pi]!;
-        // Keep the already-final title (budgeted during resplit); avoid a second suffix bump.
         const dual = buildChunkGenerationDualWrite(indexGenerationId, {
           ...baseMd,
-          ...pieceProvenanceMeta(piece),
+          ...pieceProvenanceMeta(piece, {
+            contentKind,
+            parentSplitIndex,
+            parentSplitCount,
+            parentSplitSourceId,
+            resplitReason: "TITLE_SUFFIX_TOKEN_OVERFLOW",
+            resplitDepth: depth + 1,
+            // Preserve parent overlap provenance; fallback does not re-introduce overlap.
+            overlapSourceTextStart: null,
+            overlapSourceTextEnd: null,
+            actualOverlapTokens: 0,
+            hasOverlap: false,
+            configuredOverlapTokens: asNumber(baseMd.configuredOverlapTokens) ?? 0,
+          }),
           tokenizerValidatedAt: new Date().toISOString(),
         });
         expanded.push({
@@ -960,6 +1172,60 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
   }
 
   if (tokenStatus === "PASS" && chunkCreates.length > 0) {
+    // Sync final token counts into metadata before provenance gate + persist.
+    const finalCounts = await countTokens(passages);
+    for (let i = 0; i < chunkCreates.length; i++) {
+      const md =
+        chunkCreates[i]!.metadata && typeof chunkCreates[i]!.metadata === "object"
+          ? { ...(chunkCreates[i]!.metadata as Record<string, unknown>) }
+          : {};
+      md.tokenCount = finalCounts[i] ?? md.tokenCount;
+      chunkCreates[i]!.metadata = md as Prisma.InputJsonValue;
+    }
+    const provenance = validateChunkProvenanceBeforeSave(
+      chunkCreates,
+      embeddingProfile.targetPassageTokens,
+    );
+    if (!provenance.ok) {
+      warnings.push(`출처 검증 실패: ${provenance.message}`);
+      tokenStatus = "FAIL";
+      return {
+        unitCount: generationUnits.length,
+        chunkCount: 0,
+        excludedCount,
+        mergedCount,
+        shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
+        shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
+        stepStatus: "PASS",
+        warnings,
+        byType,
+        indexGenerationId,
+        coverage: {
+          sourceChars: 0,
+          unitChars: 0,
+          chunkChars: 0,
+          excludedChars,
+          rawBodyChars: bodyPlan.metrics.rawBodyChars,
+          eligibleBodyChars: bodyPlan.metrics.eligibleBodyChars,
+          unitBodyChars: 0,
+          normalExcludedBodyChars: bodyPlan.metrics.normalExcludedBodyChars,
+          criticalExcludedBodyChars: bodyPlan.metrics.criticalExcludedBodyChars,
+          rawBodyCoverage: 0,
+          eligibleBodyCoverage: 0,
+          bodyCoverage: 0,
+          tableCoverage: 0,
+          figureCoverage: 0,
+          provenanceMissing,
+          exclusionReasons,
+        },
+        sampleUnits: [],
+        sampleChunks: [],
+        tokenGate,
+        tokenGateStatus: "FAIL",
+        embeddingProfile,
+        failureCode: provenance.code,
+      };
+    }
     await prisma.knowledgeChunk.createMany({ data: chunkCreates });
   }
 

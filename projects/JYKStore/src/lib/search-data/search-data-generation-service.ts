@@ -460,12 +460,14 @@ export async function startSearchDataGeneration(input: {
         where: { id: indexGenerationId },
       });
 
-      if (
-        locked &&
-        locked.scope === "DRAFT" &&
+      // Scaffold (PENDING/attempt=0) is NOT running — user must enqueue first.
+      const isActivelyRunning =
+        locked?.scope === "DRAFT" &&
         locked.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER &&
-        ["PENDING", "EMBEDDING"].includes(locked.status)
-      ) {
+        (locked.status === "EMBEDDING" ||
+          (locked.status === "PENDING" && locked.attempt > 0));
+
+      if (isActivelyRunning && locked) {
         return {
           kind: "already_running" as const,
           generation: locked,
@@ -500,7 +502,57 @@ export async function startSearchDataGeneration(input: {
         );
       }
 
-      const nextAttempt = (locked?.attempt ?? 0) + 1;
+      // First enqueue: reuse structure scaffold row (PENDING / attempt=0 → attempt=1).
+      if (
+        locked &&
+        locked.scope === "DRAFT" &&
+        locked.status === "PENDING" &&
+        locked.attempt === 0 &&
+        !forceRegenerate
+      ) {
+        const updated = await tx.searchIndexGeneration.updateMany({
+          where: {
+            id: indexGenerationId,
+            scope: "DRAFT",
+            status: "PENDING",
+            attempt: 0,
+            chunkGenerationId: indexGenerationId,
+            pipelineRunId: latest.id,
+            normalizedDocumentId: binding.normalizedDocumentId,
+            fingerprint: binding.fingerprint,
+          },
+          data: {
+            attempt: 1,
+            chunkCount,
+            embeddedCount: 0,
+            failedCount: 0,
+            failureCode: null,
+            failureMessage: null,
+            startedAt: null,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new PayloadServiceError(
+            "SEARCH_GENERATION_TRANSITION_CONFLICT",
+            "검색데이터 생성 상태가 변경되었습니다. 화면을 새로고침해 주세요.",
+            409,
+          );
+        }
+        const generation = await tx.searchIndexGeneration.findUniqueOrThrow({
+          where: { id: indexGenerationId },
+        });
+        await markServiceValidationsStaleForVersion(version.id, tx);
+        return {
+          kind: "enqueued" as const,
+          generation,
+          forceRegenerate: false,
+          scaffoldReused: true,
+          previousAttempt: 0,
+        };
+      }
+
+      const previousAttempt = locked?.attempt ?? 0;
+      const nextAttempt = previousAttempt + 1;
 
       if (locked) {
         await tx.$executeRaw`
@@ -538,7 +590,13 @@ export async function startSearchDataGeneration(input: {
 
       await markServiceValidationsStaleForVersion(version.id, tx);
 
-      return { kind: "enqueued" as const, generation: created, forceRegenerate };
+      return {
+        kind: "enqueued" as const,
+        generation: created,
+        forceRegenerate,
+        scaffoldReused: false,
+        previousAttempt,
+      };
     });
 
     if (enqueueResult.kind === "already_complete") {
@@ -566,12 +624,15 @@ export async function startSearchDataGeneration(input: {
           : "SEARCH_DATA_GENERATION_ENQUEUED",
         packId: input.packId,
         versionId: version.id,
+        pipelineRunId: latest.id,
         normalizedDocumentId: binding.normalizedDocumentId,
         chunkGenerationId: indexGenerationId,
         searchIndexGenerationId: indexGenerationId,
         chunkCount,
+        previousAttempt: enqueueResult.previousAttempt,
         attempt: enqueueResult.generation.attempt,
-        forceRegenerate,
+        forceRegenerate: enqueueResult.forceRegenerate,
+        scaffoldReused: enqueueResult.scaffoldReused,
       },
     });
 
@@ -705,18 +766,19 @@ export async function recoverOneStaleSearchDataGeneration(
 
     return result;
   } catch (error) {
+    // Competing recover/claim is not a generation failure — do not mark FAILED.
+    if (
+      error instanceof Error &&
+      error.message === "SEARCH_DATA_RECOVERY_CONFLICT"
+    ) {
+      return null;
+    }
     if (lockedId != null && lockedAttempt != null) {
       await markSearchGenerationFailed(lockedId, {
         failureCode: "SEARCH_DATA_RECOVERY_FAILED",
         failureMessage: "stale recovery transaction failed",
         expectedAttempt: lockedAttempt,
       }).catch(() => undefined);
-    }
-    if (
-      error instanceof Error &&
-      error.message === "SEARCH_DATA_RECOVERY_CONFLICT"
-    ) {
-      return null;
     }
     return null;
   }

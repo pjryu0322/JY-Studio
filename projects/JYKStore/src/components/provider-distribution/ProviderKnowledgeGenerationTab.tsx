@@ -196,11 +196,29 @@ export function ProviderKnowledgeGenerationTab({
     return () => window.clearInterval(timer);
   }, [status?.runStatus, load]);
 
+  const primary = status?.primaryCta ?? "none";
+  const running =
+    status?.runStatus === "RUNNING" || status?.runStatus === "PENDING";
+  const structureStages = useMemo(
+    () => filterStagesByIds(status?.stages ?? [], STRUCTURE_STAGE_IDS),
+    [status?.stages],
+  );
+  const goToSearchValidation = onGoToSearchValidation ?? onGoToDistribution;
+  const structureComplete = Boolean(status?.structurePassed);
+
   async function handleStart(forceRestart = false) {
+    if (forceRestart || structureComplete) {
+      const confirmed = window.confirm(
+        "데이터 구조화를 다시 실행하면 현재 검색데이터 생성 준비 상태와\n기존 검색검증 결과가 무효화됩니다.\n\n계속하시겠습니까?",
+      );
+      if (!confirmed) return;
+    }
     setStarting(true);
     setError(null);
     try {
-      await startProviderKnowledgePipelineApi(packId, { forceRestart });
+      await startProviderKnowledgePipelineApi(packId, {
+        forceRestart: forceRestart || structureComplete,
+      });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "데이터 구조화를 시작하지 못했습니다.");
@@ -220,16 +238,6 @@ export function ProviderKnowledgeGenerationTab({
       setDownloadingStage(null);
     }
   }
-
-  const primary = status?.primaryCta ?? "none";
-  const running =
-    status?.runStatus === "RUNNING" || status?.runStatus === "PENDING";
-  const structureStages = useMemo(
-    () => filterStagesByIds(status?.stages ?? [], STRUCTURE_STAGE_IDS),
-    [status?.stages],
-  );
-  const goToSearchValidation = onGoToSearchValidation ?? onGoToDistribution;
-  const structureComplete = Boolean(status?.structurePassed);
 
   if (loading) {
     return <p className="text-sm text-store-muted">데이터 구조화 상태를 불러오는 중…</p>;
@@ -352,7 +360,7 @@ export function ProviderKnowledgeGenerationTab({
       </ol>
 
       <div className="flex flex-wrap gap-2">
-        {editable && primary === "start" ? (
+        {editable && primary === "start" && !structureComplete ? (
           <button
             type="button"
             disabled={starting}
@@ -362,7 +370,9 @@ export function ProviderKnowledgeGenerationTab({
             {starting ? "시작 중…" : "데이터 구조화 시작"}
           </button>
         ) : null}
-        {editable && (primary === "retry" || primary === "warning_retry") ? (
+        {editable &&
+        (primary === "retry" || primary === "warning_retry") &&
+        !structureComplete ? (
           <button
             type="button"
             disabled={starting}
@@ -383,6 +393,16 @@ export function ProviderKnowledgeGenerationTab({
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
             검색데이터 생성·검증으로 이동
+          </button>
+        ) : null}
+        {editable && structureComplete && !running ? (
+          <button
+            type="button"
+            disabled={starting}
+            onClick={() => void handleStart(true)}
+            className="rounded-xl border border-store-border bg-white px-4 py-2 text-sm font-bold text-slate-800 disabled:opacity-60"
+          >
+            {starting ? "재시작 중…" : "데이터 구조화 다시 실행"}
           </button>
         ) : null}
       </div>
