@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   confirmProviderServiceValidationApi,
+  fetchProviderSearchDataStatusApi,
   fetchProviderServiceValidationApi,
   fetchProviderServiceValidationSourcePreviewApi,
+  generateProviderSearchDataApi,
   providerServiceValidationDownloadTestUrl,
   providerSourcePreviewPageUrl,
   rejectProviderServiceValidationApi,
   runProviderServiceValidationApi,
+  validateProviderSearchDataApi,
   type DoclingKnowledgePipelineStatusDto,
+  type SearchDataStatusDto,
   type ServiceValidationStatusDto,
 } from "@/lib/provider-center-api";
 import type { ServiceValidationChannelDto } from "@/lib/distribution/service-validation-service";
@@ -18,10 +22,6 @@ import {
   DOWNLOAD_REJECTION_REASONS,
   RETRIEVAL_REJECTION_REASONS,
 } from "@/lib/distribution/service-validation-confirmation-constants";
-import {
-  filterStagesByIds,
-  SEARCH_FOUNDATION_STAGE_IDS,
-} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
 
 function systemLabel(status: string): string {
   switch (status) {
@@ -80,7 +80,7 @@ const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   },
   DOWNLOAD: {
     title: "원본문서 다운로드 검증",
-    hint: "현재: 등록한 원본문서 다운로드와 무결성 확인. 향후: Portable RAG Export 생성·검증(미구현).",
+    hint: "등록한 원본문서 다운로드와 무결성을 확인합니다.",
   },
 };
 
@@ -460,22 +460,25 @@ function DownloadConfirmPanel({
 export function ProviderServiceValidationTab({
   packId,
   editable,
-  knowledgeStatus,
+  knowledgeStatus: _knowledgeStatus,
   onGoToDistributionReview,
   onGoToReview,
+  onGoToKnowledge,
   onStatusChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
-  /** Pipeline stages used to show SEARCH_INDEX / RETRIEVAL_EVALUATION in this tab. */
+  /** @deprecated Search-data status API is authoritative; kept for caller compat. */
   readonly knowledgeStatus?: DoclingKnowledgePipelineStatusDto | null;
-  /** Preferred callback name. */
   readonly onGoToDistributionReview?: () => void;
   /** @deprecated Prefer onGoToDistributionReview */
   readonly onGoToReview?: () => void;
+  readonly onGoToKnowledge?: () => void;
   readonly onStatusChange?: (status: ServiceValidationStatusDto) => void;
 }) {
+  void _knowledgeStatus;
   const [status, setStatus] = useState<ServiceValidationStatusDto | null>(null);
+  const [searchData, setSearchData] = useState<SearchDataStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -483,13 +486,25 @@ export function ProviderServiceValidationTab({
   const [expandedRanks, setExpandedRanks] = useState<Record<string, boolean>>({});
   const [showAllResults, setShowAllResults] = useState<Record<string, boolean>>({});
   const [previewMsg, setPreviewMsg] = useState<string | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [techOpen, setTechOpen] = useState(false);
+
+  const loadSearchData = useCallback(async () => {
+    const data = await fetchProviderSearchDataStatusApi(packId);
+    setSearchData(data);
+    return data;
+  }, [packId]);
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchProviderServiceValidationApi(packId);
-      setStatus(data);
-      onStatusChange?.(data);
-      if (!query && data.suggestedQuery) setQuery(data.suggestedQuery);
+      const [svc, sd] = await Promise.all([
+        fetchProviderServiceValidationApi(packId),
+        fetchProviderSearchDataStatusApi(packId),
+      ]);
+      setStatus(svc);
+      setSearchData(sd);
+      onStatusChange?.(svc);
+      if (!query && svc.suggestedQuery) setQuery(svc.suggestedQuery);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색데이터 검증 상태를 불러오지 못했습니다.");
@@ -503,17 +518,55 @@ export function ProviderServiceValidationTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, [packId]);
 
-  const canRun = Boolean(editable && status?.canRunValidation);
+  useEffect(() => {
+    if (searchData?.state !== "CREATING" && searchData?.state !== "VALIDATING") return;
+    const id = window.setInterval(() => {
+      void loadSearchData().catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [searchData?.state, loadSearchData]);
+
+  const searchReady = searchData?.state === "VALIDATED";
+  const canRun = Boolean(editable && status?.canRunValidation && searchData?.canRunServiceValidation);
 
   const retrievalConfirmChannel = useMemo(() => {
     const selected = status?.channels.filter((c) => c.selected) ?? [];
     const api = selected.find((c) => c.channel === "API");
     const mcp = selected.find((c) => c.channel === "MCP");
-    // Shared confirm UI once on API when both can share; otherwise each channel confirms alone.
     if (api?.canConfirm && api.canShareConfirmationWithPeer) return "API";
     if (mcp?.canConfirm && mcp.canShareConfirmationWithPeer) return "MCP";
     return null;
   }, [status]);
+
+  async function handleGenerate() {
+    if (!editable || searchBusy) return;
+    setSearchBusy(true);
+    setError(null);
+    try {
+      const next = await generateProviderSearchDataApi(packId);
+      setSearchData(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "검색데이터 생성에 실패했습니다.");
+      await loadSearchData().catch(() => undefined);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+
+  async function handleValidateQuality() {
+    if (!editable || searchBusy) return;
+    setSearchBusy(true);
+    setError(null);
+    try {
+      const next = await validateProviderSearchDataApi(packId);
+      setSearchData(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "검색 품질 검증에 실패했습니다.");
+      await loadSearchData().catch(() => undefined);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
 
   async function handleRun(channel: "API" | "MCP" | "DOWNLOAD") {
     if (!canRun) return;
@@ -568,91 +621,211 @@ export function ProviderServiceValidationTab({
   }
 
   const selected = status?.channels.filter((c) => c.selected) ?? [];
-  const foundationStages = useMemo(
-    () => filterStagesByIds(knowledgeStatus?.stages ?? [], SEARCH_FOUNDATION_STAGE_IDS),
-    [knowledgeStatus?.stages],
-  );
   const goToDistributionReview = onGoToDistributionReview ?? onGoToReview;
   const preparationPassed = Boolean(
     status?.allPreparationChannelsPassed ?? status?.allSelectedPassed,
   );
-  const fingerprintShort = knowledgeStatus?.fingerprint
-    ? `${knowledgeStatus.fingerprint.slice(0, 8)}…`
-    : null;
+  const showServiceChannels =
+    searchData?.state === "VALIDATED" ||
+    searchData?.state === "CREATED" ||
+    searchData?.canRunServiceValidation;
+  const showTestQuestions =
+    searchData?.state === "CREATED" ||
+    searchData?.state === "VALIDATED" ||
+    searchData?.state === "VALIDATION_FAILED";
 
   if (loading) {
     return <p className="text-sm text-store-muted">검색데이터 검증 상태를 불러오는 중…</p>;
   }
+
+  const sd = searchData;
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
         <h2 className="text-base font-bold text-slate-900">검색데이터 생성·검증</h2>
         <p className="mt-1 text-sm text-store-muted">
-          Draft 검색 인덱스·검색 평가와 API·MCP·원본문서 다운로드 경로를 준비·검증합니다. 실제 공개
-          채널은 다음 단계 유통정보에서 선택합니다.
+          구조화된 데이터를 검색 가능한 형태로 생성하고 검색 품질을 확인합니다.
         </p>
         <p className="mt-1 text-xs text-store-muted">
-          개발·검증용 Draft 검색 인덱스(local-hash) 기준입니다. 운영용 Embedding·pgvector는 미적용이며,
-          DOWNLOAD PASS는 RAG Export PASS가 아닙니다.
-        </p>
-        <p className="mt-1 text-xs text-store-muted">
-          현재 Draft 검색 인덱스는 데이터 구조화 파이프라인에서 함께 준비됩니다. 운영용 Search
-          Generation 도입 후 이 단계에서 별도로 생성·승격됩니다.
+          검색데이터가 준비되면 API와 MCP 연결도 검증할 수 있습니다.
         </p>
       </div>
 
-      <div className="rounded-xl border border-store-border bg-slate-50 px-3 py-3 text-xs text-slate-700">
-        <p className="font-semibold text-slate-900">현재 검색데이터 Binding</p>
-        <ul className="mt-1 space-y-0.5">
-          <li>
-            상태:{" "}
-            {knowledgeStatus?.pipelineCurrent
-              ? "현재"
-              : knowledgeStatus?.stale
-                ? "STALE · 다시 생성 필요"
-                : "확인 중"}
-          </li>
-          <li>
-            구조화: {knowledgeStatus?.structurePassed ? "완료" : "미완료"} · 검색 기반:{" "}
-            {knowledgeStatus?.searchFoundationPassed ? "완료" : "미완료"}
-          </li>
-          {fingerprintShort ? <li>Fingerprint: {fingerprintShort}</li> : null}
-          {knowledgeStatus?.runId ? (
-            <li>PipelineRun: {knowledgeStatus.runId.slice(0, 8)}…</li>
-          ) : null}
-        </ul>
-      </div>
+      <div className="rounded-xl border border-store-border bg-slate-50 px-3 py-3">
+        <p className="text-sm font-bold text-slate-900">검색데이터</p>
+        {sd?.state === "STALE" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm text-slate-800">{sd.message}</p>
+            <button
+              type="button"
+              onClick={() => onGoToKnowledge?.()}
+              className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-sm font-bold text-white"
+            >
+              데이터 구조화로 이동
+            </button>
+          </div>
+        ) : null}
 
-      {foundationStages.length > 0 ? (
-        <div className="space-y-2">
-          <h3 className="text-sm font-bold text-slate-900">Draft 검색 인덱스 · 검색 평가</h3>
-          <ol className="space-y-2">
-            {foundationStages.map((stage) => (
-              <li
-                key={stage.id}
-                className="rounded-xl border border-store-border bg-white px-3 py-2 text-sm"
+        {sd?.state === "NOT_CREATED" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm text-slate-800">
+              현재 구조화 결과로 생성된 검색데이터가 없습니다.
+            </p>
+            {sd.chunkCount > 0 ? (
+              <p className="text-xs text-store-muted">
+                검색 단위 {sd.chunkCount}개를 검색데이터로 변환합니다.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              disabled={!editable || !sd.canGenerate || searchBusy}
+              onClick={() => void handleGenerate()}
+              className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {searchBusy ? "생성 중…" : "검색데이터 생성"}
+            </button>
+          </div>
+        ) : null}
+
+        {sd?.state === "CREATING" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">검색데이터 생성 중</p>
+            <p className="text-xs text-store-muted">
+              처리 {sd.processedCount} / {sd.chunkCount || "…"}
+            </p>
+            <button
+              type="button"
+              disabled={searchBusy}
+              onClick={() => void loadSearchData()}
+              className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800"
+            >
+              진행 상태 새로고침
+            </button>
+          </div>
+        ) : null}
+
+        {sd?.state === "CREATE_FAILED" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-semibold text-rose-800">검색데이터 생성 실패</p>
+            <p className="text-sm text-slate-800">{sd.message}</p>
+            <button
+              type="button"
+              disabled={!editable || searchBusy}
+              onClick={() => void handleGenerate()}
+              className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              검색데이터 다시 생성
+            </button>
+          </div>
+        ) : null}
+
+        {sd?.state === "CREATED" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-semibold text-emerald-900">검색데이터 생성 완료</p>
+            <ul className="grid grid-cols-2 gap-1 text-xs text-slate-700 sm:grid-cols-4">
+              <li>검색 단위 {sd.chunkCount}</li>
+              <li>벡터 {sd.vectorCount}</li>
+              <li>모델 {sd.modelLabel ?? sd.model ?? "—"}</li>
+              <li>차원 {sd.dimension ?? "—"}</li>
+            </ul>
+            <button
+              type="button"
+              disabled={!editable || !sd.canValidate || searchBusy}
+              onClick={() => void handleValidateQuality()}
+              className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {searchBusy ? "검증 중…" : "검색 품질 검증"}
+            </button>
+          </div>
+        ) : null}
+
+        {sd?.state === "VALIDATING" ? (
+          <div className="mt-2">
+            <p className="text-sm font-semibold text-slate-900">검색 품질 검증 중</p>
+          </div>
+        ) : null}
+
+        {sd?.state === "VALIDATION_FAILED" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-semibold text-rose-800">검색 품질 검증 실패</p>
+            <p className="text-sm text-slate-800">
+              검색 품질이 기준을 충족하지 못했습니다. 미통과 질문을 확인한 후 검색데이터를 다시
+              생성하거나 검색 단위를 보완해 주세요.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!editable || searchBusy}
+                onClick={() => void handleValidateQuality()}
+                className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-slate-900">{stage.label}</p>
-                    <p className="text-xs text-store-muted">{stage.description}</p>
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">{stage.status}</span>
-                </div>
-                {stage.message ? (
-                  <p className="mt-1 text-xs text-slate-700">{stage.message}</p>
-                ) : null}
-                {stage.id === "SEARCH_INDEX" ? (
-                  <p className="mt-1 text-[11px] text-store-muted">
-                    Embedding provider: local-hash (개발·검증용) · 운영용 Vector Index 아님
-                  </p>
-                ) : null}
+                다시 검증
+              </button>
+              <button
+                type="button"
+                disabled={!editable || searchBusy}
+                onClick={() => void handleGenerate()}
+                className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+              >
+                검색데이터 다시 생성
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {sd?.state === "VALIDATED" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-semibold text-emerald-900">검색 품질 검증 완료</p>
+            {sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
+              <p className="text-xs text-slate-700">
+                테스트 질문 {sd.validationSummary.totalCases}건 중 {sd.validationSummary.passedCases}
+                건 통과
+              </p>
+            ) : null}
+            <ul className="grid grid-cols-2 gap-1 text-xs text-slate-700 sm:grid-cols-4">
+              <li>검색 단위 {sd.chunkCount}</li>
+              <li>벡터 {sd.vectorCount}</li>
+              <li>모델 {sd.modelLabel ?? sd.model ?? "—"}</li>
+              <li>차원 {sd.dimension ?? "—"}</li>
+            </ul>
+          </div>
+        ) : null}
+
+        {sd?.technical?.legacyLocalHashPresent &&
+        (sd.state === "NOT_CREATED" || sd.state === "CREATE_FAILED") ? (
+          <p className="mt-3 text-xs text-store-muted">
+            이전 개발용 검색 결과가 있습니다. 현재 구조화 결과의 검색데이터를 새로 생성해야 합니다.
+          </p>
+        ) : null}
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setTechOpen((v) => !v)}
+            className="min-h-[44px] text-xs font-semibold text-slate-600 underline-offset-2 hover:underline"
+          >
+            {techOpen ? "기술정보 접기" : "기술정보 보기"}
+          </button>
+          {techOpen && sd?.technical ? (
+            <ul className="mt-2 space-y-1 break-all rounded-lg border border-store-border bg-white px-3 py-2 font-mono text-[11px] text-slate-600">
+              <li>Generation: {sd.technical.searchIndexGenerationId ?? "—"}</li>
+              <li>Chunk Gen: {sd.technical.chunkGenerationId ?? "—"}</li>
+              <li>PipelineRun: {sd.technical.pipelineRunId ?? "—"}</li>
+              <li>ND: {sd.technical.normalizedDocumentId ?? "—"}</li>
+              <li>Fingerprint: {sd.technical.fingerprint ?? "—"}</li>
+              <li>Provider: {sd.technical.embeddingProvider ?? "—"}</li>
+              <li>Model: {sd.technical.embeddingModel ?? "—"}</li>
+              <li>Revision: {sd.technical.embeddingModelRevision ?? "—"}</li>
+              <li>Dimension: {sd.technical.dimension ?? "—"}</li>
+              <li>Vectors: {sd.technical.vectorCount ?? 0}</li>
+              <li>
+                Scope/Status: {sd.technical.indexScope ?? "—"} / {sd.technical.indexStatus ?? "—"}
               </li>
-            ))}
-          </ol>
+            </ul>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {!status?.canRunValidation ? (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -672,7 +845,16 @@ export function ProviderServiceValidationTab({
         </p>
       ) : null}
 
-      {selected.some((c) => c.channel === "API" || c.channel === "MCP") && canRun ? (
+      {!searchReady && showServiceChannels === false ? (
+        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          검색 품질 검증을 완료하면 API·MCP 검증을 진행할 수 있습니다.
+        </p>
+      ) : null}
+
+      {showTestQuestions &&
+      selected.some((c) => c.channel === "API" || c.channel === "MCP") &&
+      searchReady &&
+      canRun ? (
         <div>
           <label className="text-xs font-semibold text-slate-700" htmlFor="svc-query">
             테스트 질문
@@ -702,6 +884,7 @@ export function ProviderServiceValidationTab({
         </div>
       ) : null}
 
+      {searchReady ? (
       <div className="space-y-4">
         {selected.map((channel) => {
           const copy = CHANNEL_COPY[channel.channel] ?? { title: channel.channel, hint: "" };
@@ -895,32 +1078,36 @@ export function ProviderServiceValidationTab({
                     ? "검증 중…"
                     : channel.systemStatus === "PASS"
                       ? "다시 검증"
-                      : "검증 실행"}
+                      : channel.channel === "API"
+                        ? "API 검증"
+                        : channel.channel === "MCP"
+                          ? "MCP 검증"
+                          : "검증 실행"}
                 </button>
               ) : null}
             </div>
           );
         })}
       </div>
+      ) : null}
 
-      {selected.length === 0 ? (
+      {searchReady && selected.length === 0 ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          데이터 구조화가 완료되면 API·MCP·원본문서 다운로드 검증을 진행할 수 있습니다.
+          API·MCP·원본문서 다운로드 검증 채널을 준비 중입니다.
         </p>
       ) : null}
 
-      {preparationPassed ? (
+      {preparationPassed && searchReady ? (
         <div className="space-y-2">
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            API·MCP·원본문서 다운로드 준비 검증과 제공자 품질 확인이 완료되었습니다. 유통정보에서 공개
-            채널을 선택한 뒤 검수요청을 진행하세요. (DOWNLOAD PASS ≠ RAG Export PASS)
+            검색과 서비스 검증이 완료되었습니다.
           </p>
           <button
             type="button"
             onClick={() => goToDistributionReview?.()}
             className="min-h-[44px] rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
-            유통정보·검수요청으로 이동
+            유통·검수 단계로 이동
           </button>
         </div>
       ) : null}

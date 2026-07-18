@@ -96,7 +96,7 @@ const STEP_META: Record<
     label: "검색데이터 생성·검증",
     shortLabel: "검색검증",
     tab: "serviceValidation",
-    description: "Draft 인덱스·검색 평가·API·MCP·DOWNLOAD",
+    description: "검색데이터 생성·검색 품질·API·MCP·DOWNLOAD",
   },
   DISTRIBUTION_REVIEW: {
     label: "유통정보·검수요청",

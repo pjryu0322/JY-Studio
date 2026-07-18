@@ -237,8 +237,7 @@ export function ProviderKnowledgeGenerationTab({
           연결을 확인한 뒤 다음 단계에서 검색 경로를 검증합니다.
         </p>
         <p className="mt-2 text-xs text-store-muted">
-          Draft 검색 인덱스는 이 파이프라인에서 함께 준비되며, 상태는 다음 단계(검색데이터 생성·검증)에서
-          확인합니다. 운영용 Search Generation 도입 후 별도 생성·승격됩니다.
+          검색데이터는 다음 단계(검색검증)에서 생성하며, 상태는 그 단계에서 확인할 수 있습니다.
         </p>
       </div>
 
@@ -383,7 +382,7 @@ export function ProviderKnowledgeGenerationTab({
 
       {structureComplete ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          데이터 구조화가 완료되었습니다. 다음 단계에서 Draft 검색 인덱스·검색 평가와 API·MCP·DOWNLOAD를
+          데이터 구조화가 완료되었습니다. 다음 단계에서 검색데이터를 생성하고 검색 품질·API·MCP를
           확인하세요.
         </p>
       ) : null}

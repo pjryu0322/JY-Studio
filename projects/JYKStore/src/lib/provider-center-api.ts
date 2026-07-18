@@ -237,6 +237,58 @@ export async function upsertProviderPackDistributionApi(
 export type ServiceValidationStatusDto =
   import("@/lib/distribution/service-validation-service").ServiceValidationStatusDto;
 
+export type SearchDataStatusDto =
+  import("@/lib/search-data/search-data-state").SearchDataStatusResponse;
+
+export async function fetchProviderSearchDataStatusApi(
+  packId: string,
+): Promise<SearchDataStatusDto> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/search-data/status`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as SearchDataStatusDto;
+}
+
+export async function generateProviderSearchDataApi(
+  packId: string,
+): Promise<SearchDataStatusDto> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/search-data/generate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as SearchDataStatusDto;
+}
+
+export async function validateProviderSearchDataApi(
+  packId: string,
+): Promise<SearchDataStatusDto> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/search-data/validate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as SearchDataStatusDto;
+}
+
 export async function fetchProviderServiceValidationApi(
   packId: string,
 ): Promise<ServiceValidationStatusDto> {

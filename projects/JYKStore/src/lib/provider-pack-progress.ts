@@ -101,7 +101,7 @@ const STEP_DESCRIPTIONS: Record<ProviderPackProgressStepKey, string> = {
   SOURCE_MATERIALS: "원본문서와 Docling 산출물을 등록하고 확인합니다.",
   DATA_STRUCTURE: "문서 구조·Knowledge Unit·Retrieval Chunk를 생성합니다.",
   SEARCH_DATA_VALIDATION:
-    "Draft 검색 인덱스·검색 평가와 API·MCP·DOWNLOAD를 검증합니다.",
+    "검색데이터 생성·검색 품질과 API·MCP·DOWNLOAD를 검증합니다.",
   DISTRIBUTION_REVIEW: "공개 채널·유통 권한을 입력하고 검수요청을 제출합니다.",
 };
 

@@ -23,14 +23,14 @@ export const DOCLING_KNOWLEDGE_STAGES = [
   {
     id: "SEARCH_INDEX",
     pipelineStep: "INDEXING" as PipelineStatus,
-    label: "Draft 검색 인덱스",
-    description: "개발·검증용 Draft 검색 인덱스를 준비합니다. 운영용 Embedding은 아직 적용되지 않습니다.",
+    label: "검색데이터",
+    description: "구조화 결과로 검색데이터를 준비합니다.",
   },
   {
     id: "RETRIEVAL_EVALUATION",
     pipelineStep: "SEARCH_EVALUATING" as PipelineStatus,
-    label: "검색 결과 검증",
-    description: "개발용 규칙 기반 평가로 Draft 인덱스 품질을 확인합니다.",
+    label: "검색 품질 검증",
+    description: "검색 품질이 기준을 충족하는지 확인합니다.",
   },
 ] as const;
 

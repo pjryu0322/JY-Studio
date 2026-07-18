@@ -631,6 +631,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               editable={editable}
               knowledgeStatus={knowledgeStatus}
               onGoToDistributionReview={() => selectTab("distributionReview")}
+              onGoToKnowledge={() => selectTab("knowledge")}
               onStatusChange={setServiceValidation}
             />
           )}

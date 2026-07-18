@@ -41,25 +41,27 @@ describe("structure vs search validation UI boundaries", () => {
     assert.ok(!src.includes("SEARCH_FOUNDATION_STAGE_IDS"));
   });
 
-  it("search validation tab shows foundation stages and channel cards", () => {
+  it("search validation tab shows search-data CTAs and channel cards", () => {
     const src = readSource(
       "src/components/provider-distribution/ProviderServiceValidationTab.tsx",
     );
-    assert.ok(src.includes("SEARCH_FOUNDATION_STAGE_IDS"));
     assert.ok(src.includes("API"));
     assert.ok(src.includes("MCP"));
     assert.ok(src.includes("DOWNLOAD"));
     assert.ok(src.includes("onGoToDistributionReview"));
-    assert.ok(src.includes("local-hash"));
-    assert.ok(src.includes("RAG Export"));
-    assert.ok(src.includes("DOWNLOAD PASS는 RAG Export PASS가 아닙니다"));
+    assert.ok(src.includes("검색데이터 생성"));
+    assert.ok(src.includes("검색 품질 검증"));
+    assert.ok(src.includes("원본문서 다운로드 검증"));
+    assert.ok(!src.includes("Embedding provider: local-hash"));
+    assert.ok(!src.includes("SEARCH_FOUNDATION_STAGE_IDS"));
   });
 
   it("does not market local-hash as production embedding", () => {
     const stages = readSource("src/lib/docling-knowledge/docling-knowledge-stages.ts");
-    assert.ok(stages.includes("운영용 Embedding은 아직 적용되지 않습니다"));
+    assert.ok(stages.includes("검색데이터"));
     assert.ok(!stages.includes("운영용 Vector Index 구축 완료"));
     assert.ok(!stages.includes("pgvector 적용 완료"));
+    assert.ok(!stages.includes("local-hash"));
   });
 
   it("keeps URL aliases for renamed tabs", () => {
