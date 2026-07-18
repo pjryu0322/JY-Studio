@@ -412,10 +412,24 @@ export async function markSearchGenerationStale(
 /**
  * Promote a validated DRAFT/READY generation to PRODUCTION/PROMOTED.
  * Retires the previous production generation in the same transaction.
+ *
+ * When `guard` is provided (approval path), the conditional updateMany also
+ * pins fingerprint + embedding descriptor so concurrent drift yields
+ * SEARCH_GENERATION_TRANSITION_CONFLICT and rolls back the whole approval tx.
  */
+export type PromoteSearchGenerationGuard = {
+  generationFingerprint?: string | null;
+  embeddingProvider?: string | null;
+  embeddingModel?: string | null;
+  embeddingModelRevision?: string | null;
+  embeddingDimension?: number | null;
+  distanceMetric?: string | null;
+};
+
 export async function promoteSearchGeneration(
   id: string,
   client: SearchGenerationClient = prisma,
+  guard?: PromoteSearchGenerationGuard,
 ): Promise<SearchIndexGeneration> {
   const run = async (tx: SearchGenerationClient) => {
     const generation = await tx.searchIndexGeneration.findUnique({ where: { id } });
@@ -433,6 +447,8 @@ export async function promoteSearchGeneration(
         409,
       );
     }
+
+    // F: retire previous Production first so Partial Unique Index does not conflict.
     await tx.searchIndexGeneration.updateMany({
       where: {
         versionId: generation.versionId,
@@ -442,9 +458,33 @@ export async function promoteSearchGeneration(
       },
       data: { status: "RETIRED", retiredAt: new Date() },
     });
+
+    // E: conditional promotion — status/scope + optional Snapshot descriptor guard.
+    // Descriptor fields themselves are NEVER written (immutability).
     const promoted = await tx.searchIndexGeneration.updateMany({
-      where: { id: generation.id, status: "READY", scope: "DRAFT" },
-      data: { scope: "PRODUCTION", status: "PROMOTED", promotedAt: new Date() },
+      where: {
+        id: generation.id,
+        versionId: generation.versionId,
+        status: "READY",
+        scope: "DRAFT",
+        ...(guard?.generationFingerprint
+          ? { generationFingerprint: guard.generationFingerprint }
+          : {}),
+        ...(guard?.embeddingProvider ? { embeddingProvider: guard.embeddingProvider } : {}),
+        ...(guard?.embeddingModel ? { embeddingModel: guard.embeddingModel } : {}),
+        ...(guard?.embeddingModelRevision
+          ? { embeddingModelRevision: guard.embeddingModelRevision }
+          : {}),
+        ...(typeof guard?.embeddingDimension === "number"
+          ? { embeddingDimension: guard.embeddingDimension }
+          : {}),
+        ...(guard?.distanceMetric ? { distanceMetric: guard.distanceMetric } : {}),
+      },
+      data: {
+        scope: "PRODUCTION",
+        status: "PROMOTED",
+        promotedAt: new Date(),
+      },
     });
     if (promoted.count !== 1) {
       throw new PayloadServiceError(

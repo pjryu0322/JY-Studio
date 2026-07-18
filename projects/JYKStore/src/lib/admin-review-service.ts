@@ -734,25 +734,9 @@ export async function approvePackReview(input: {
     "제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다. 제공자에게 다시 검수요청하도록 안내해 주세요.";
 
   if (packageMode === "DOCLING_BUNDLE" && isDoclingBundleReviewSnapshot(approveSnapshot)) {
-    const latestVersion = await prisma.knowledgePackVersion.findFirst({
-      where: { packId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-    const activeNd = latestVersion
-      ? await prisma.normalizedDocument.findFirst({
-          where: { versionId: latestVersion.id, isActive: true },
-          select: { id: true, fingerprint: true },
-        })
-      : null;
-
+    // UX pre-check only — final approval is decided solely by the in-transaction
+    // assertApprovalSearchGenerationInTx + conditional promotion result.
     if (
-      !latestVersion ||
-      !activeNd ||
-      approveSnapshot.submittedVersionId !== latestVersion.id ||
-      approveSnapshot.normalizedDocumentId !== activeNd.id ||
-      (approveSnapshot.normalizedDocumentFingerprint ?? approveSnapshot.fingerprint) !==
-        activeNd.fingerprint ||
       !approveSnapshot.pipelineRunId ||
       !approveSnapshot.indexGenerationId ||
       !approveSnapshot.searchIndexGenerationId ||
@@ -761,127 +745,36 @@ export async function approvePackReview(input: {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
     }
 
-    const passRun = await prisma.pipelineRun.findUnique({
-      where: { id: approveSnapshot.pipelineRunId },
-      include: { steps: true },
-    });
-    const { parseKnowledgeRunBinding } = await import(
-      "@/lib/docling-knowledge/docling-knowledge-run-binding"
-    );
-    const binding = parseKnowledgeRunBinding(passRun?.summary ?? null);
-    const evalStep = passRun?.steps.find((s) => s.step === "SEARCH_EVALUATING");
-    const readyStep = passRun?.steps.find((s) => s.step === "READY_FOR_REVIEW");
-    if (
-      !passRun ||
-      passRun.status !== "PASS" ||
-      !binding ||
-      binding.indexGenerationId !== approveSnapshot.indexGenerationId ||
-      binding.versionId !== latestVersion.id ||
-      binding.normalizedDocumentId !== activeNd.id ||
-      binding.fingerprint !== activeNd.fingerprint ||
-      evalStep?.status !== "PASS" ||
-      readyStep?.status !== "PASS"
-    ) {
-      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-    }
-
-    const generation = await prisma.searchIndexGeneration.findUnique({
-      where: { id: approveSnapshot.searchIndexGenerationId },
-    });
-    if (
-      !generation ||
-      generation.id !== approveSnapshot.indexGenerationId ||
-      generation.status !== "READY" ||
-      generation.scope !== "DRAFT" ||
-      generation.versionId !== latestVersion.id ||
-      generation.pipelineRunId !== approveSnapshot.pipelineRunId ||
-      generation.normalizedDocumentId !== activeNd.id ||
-      generation.fingerprint !== activeNd.fingerprint ||
-      generation.chunkCount <= 0 ||
-      generation.embeddedCount !== generation.chunkCount ||
-      generation.failedCount !== 0 ||
-      (approveSnapshot.searchGenerationFingerprint != null &&
-        generation.generationFingerprint !== approveSnapshot.searchGenerationFingerprint)
-    ) {
-      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-    }
-
-    // P5.1: re-verify operational descriptor + direct Snapshot↔Generation comparison.
-    const { embeddingDescriptorsEqual, validateOperationalEmbeddingDescriptor } = await import(
-      "@/lib/search-generation/search-generation-descriptor"
-    );
-    const generationDescriptor = {
-      embeddingProvider: generation.embeddingProvider,
-      embeddingModel: generation.embeddingModel,
-      embeddingModelRevision: generation.embeddingModelRevision,
-      embeddingDimension: generation.embeddingDimension,
-      distanceMetric: generation.distanceMetric,
-    };
-    if (!validateOperationalEmbeddingDescriptor(generationDescriptor).ok) {
-      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-    }
-    const snapshotDescriptor = {
-      embeddingProvider: approveSnapshot.embeddingProvider,
-      embeddingModel: approveSnapshot.embeddingModel,
-      embeddingModelRevision: approveSnapshot.embeddingModelRevision,
-      embeddingDimension: approveSnapshot.embeddingDimension,
-      distanceMetric: approveSnapshot.distanceMetric,
-    };
-    if (!embeddingDescriptorsEqual(snapshotDescriptor, generationDescriptor)) {
-      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-    }
-
-    for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-      const run = await prisma.serviceValidationRun.findFirst({
-        where: { versionId: latestVersion.id, channel },
-        orderBy: { createdAt: "desc" },
-        select: {
-          status: true,
-          invalidatedAt: true,
-          searchIndexGenerationId: true,
-          indexGenerationId: true,
-        },
-      });
-      if (
-        !run ||
-        run.status !== "PASS" ||
-        run.invalidatedAt != null ||
-        run.searchIndexGenerationId !== generation.id ||
-        run.indexGenerationId !== generation.id
-      ) {
-        return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-      }
-    }
-
-    const draftChunk = await prisma.knowledgeChunk.findFirst({
-      where: {
-        versionId: latestVersion.id,
-        metadata: {
-          path: ["indexGenerationId"],
-          equals: approveSnapshot.indexGenerationId,
-        },
-      },
-      select: { metadata: true },
-    });
-    const draftMeta = draftChunk?.metadata as Record<string, unknown> | null;
-    if (
-      !draftMeta ||
-      (draftMeta.indexScope !== "DRAFT" && draftMeta.indexStatus !== "DRAFT")
-    ) {
-      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
-    }
-
     try {
+      const { assertApprovalSearchGenerationInTx } = await import(
+        "@/lib/distribution/approval-search-generation-evidence"
+      );
+      const { promoteDraftIndexToProduction } = await import(
+        "@/lib/docling-knowledge/docling-nd-knowledge-builder"
+      );
+      const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+
       await prisma.$transaction(async (tx) => {
-        const { promoteDraftIndexToProduction } = await import(
-          "@/lib/docling-knowledge/docling-nd-knowledge-builder"
-        );
+        const evidence = await assertApprovalSearchGenerationInTx(tx, {
+          packId,
+          reviewId: accepted.id,
+          snapshot: approveSnapshot,
+        });
+
         await promoteDraftIndexToProduction({
-          versionId: latestVersion.id,
-          pipelineRunId: approveSnapshot.pipelineRunId!,
-          indexGenerationId: approveSnapshot.indexGenerationId!,
-          fingerprint: activeNd.fingerprint!,
+          versionId: evidence.versionId,
+          pipelineRunId: evidence.pipelineRunId,
+          indexGenerationId: evidence.generation.id,
+          fingerprint: evidence.fingerprint,
           tx,
+          promotionGuard: {
+            generationFingerprint: approveSnapshot.searchGenerationFingerprint,
+            embeddingProvider: approveSnapshot.embeddingProvider,
+            embeddingModel: approveSnapshot.embeddingModel,
+            embeddingModelRevision: approveSnapshot.embeddingModelRevision,
+            embeddingDimension: approveSnapshot.embeddingDimension,
+            distanceMetric: approveSnapshot.distanceMetric,
+          },
         });
 
         await tx.knowledgePack.update({
@@ -904,6 +797,25 @@ export async function approvePackReview(input: {
             decidedAt: now,
           },
         });
+
+        await recordAuditInTx({
+          client: tx,
+          action: AuditAction.ADMIN_PACK_APPROVE,
+          entityType: "KnowledgePack",
+          entityId: packId,
+          actorUserId: input.reviewerUserId,
+          metadata: {
+            publishAsVerified,
+            memo,
+            adminUserId: input.reviewerUserId ?? null,
+            reviewerClientId: input.reviewerClientId ?? null,
+            action: "APPROVE",
+            pipelineRunId: evidence.pipelineRunId,
+            indexGenerationId: evidence.generation.id,
+            searchIndexGenerationId: evidence.generation.id,
+            embeddingModelRevision: evidence.generation.embeddingModelRevision,
+          },
+        });
       });
     } catch {
       return {
@@ -911,6 +823,10 @@ export async function approvePackReview(input: {
         message: knowledgeMismatchMessage,
       };
     }
+
+    await recordApprovalPipeline(packId, input.reviewerClientId);
+    const detail = await getAdminReviewDetail(packId);
+    return { detail: detail! };
   } else {
     await prisma.$transaction(async (tx) => {
       await tx.knowledgePack.update({

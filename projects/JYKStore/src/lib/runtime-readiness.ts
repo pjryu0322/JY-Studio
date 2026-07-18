@@ -138,29 +138,26 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
 
       // Production Generation descriptors must match the current Worker descriptor.
       // Skip when a custom DatabaseProbe is injected (unit tests without Prisma models).
+      // P5.1.1: scan ALL promoted local-e5 generations (no take:50 limit).
       if (!db) {
-        const prodGens = await prisma.searchIndexGeneration.findMany({
-          where: { scope: "PRODUCTION", status: "PROMOTED" },
-          select: {
-            id: true,
-            embeddingProvider: true,
-            embeddingModel: true,
-            embeddingModelRevision: true,
-            embeddingDimension: true,
+        const mismatch = await prisma.searchIndexGeneration.findFirst({
+          where: {
+            scope: "PRODUCTION",
+            status: "PROMOTED",
+            embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+            OR: [
+              { embeddingModel: { not: ready.model } },
+              { embeddingModelRevision: { not: ready.revision } },
+              { embeddingDimension: { not: ready.dimension } },
+              { distanceMetric: { not: "cosine" } },
+            ],
           },
-          take: 50,
+          select: { id: true },
         });
-        for (const gen of prodGens) {
-          if (gen.embeddingProvider !== LOCAL_E5_EMBEDDING_PROVIDER) continue;
-          if (
-            gen.embeddingModel !== ready.model ||
-            gen.embeddingModelRevision !== ready.revision ||
-            gen.embeddingDimension !== ready.dimension
-          ) {
-            throw new Error(
-              `Production SearchIndexGeneration ${gen.id} descriptor does not match the live Worker.`,
-            );
-          }
+        if (mismatch) {
+          throw new Error(
+            `Production SearchIndexGeneration ${mismatch.id} descriptor does not match the live Worker.`,
+          );
         }
       }
 

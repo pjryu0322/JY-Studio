@@ -199,6 +199,7 @@ export async function syncSearchGenerationPromotion(input: {
   versionId: string;
   indexGenerationId: string;
   tx: Prisma.TransactionClient;
+  guard?: import("@/lib/search-generation/search-generation-service").PromoteSearchGenerationGuard;
 }): Promise<SearchIndexGeneration> {
   const generation = await input.tx.searchIndexGeneration.findUnique({
     where: { id: input.indexGenerationId },
@@ -220,5 +221,5 @@ export async function syncSearchGenerationPromotion(input: {
   if (generation.scope === "PRODUCTION" && generation.status === "PROMOTED") {
     return generation;
   }
-  return promoteSearchGeneration(input.indexGenerationId, input.tx);
+  return promoteSearchGeneration(input.indexGenerationId, input.tx, input.guard);
 }

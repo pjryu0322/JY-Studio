@@ -920,6 +920,8 @@ export async function promoteDraftIndexToProduction(input: {
   indexGenerationId: string;
   fingerprint: string;
   tx?: Prisma.TransactionClient;
+  /** P5.1.1: Snapshot descriptor guard for conditional Generation promotion. */
+  promotionGuard?: import("@/lib/search-generation/search-generation-service").PromoteSearchGenerationGuard;
 }): Promise<number> {
   const db = input.tx ?? prisma;
 
@@ -1010,6 +1012,7 @@ export async function promoteDraftIndexToProduction(input: {
     versionId: input.versionId,
     indexGenerationId: input.indexGenerationId,
     tx: db as Prisma.TransactionClient,
+    ...(input.promotionGuard ? { guard: input.promotionGuard } : {}),
   });
 
   return n;

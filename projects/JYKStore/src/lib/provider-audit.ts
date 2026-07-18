@@ -7,8 +7,11 @@ export async function recordProviderAudit(input: {
   entityId: string;
   actorUserId?: string | null;
   metadata?: Record<string, unknown>;
+  /** Optional transaction client for atomic approval (P5.1.1). */
+  client?: Prisma.TransactionClient | typeof prisma;
 }) {
-  await prisma.auditLog.create({
+  const db = input.client ?? prisma;
+  await db.auditLog.create({
     data: {
       action: input.action,
       entityType: input.entityType,
