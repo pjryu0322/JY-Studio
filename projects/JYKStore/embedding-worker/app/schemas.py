@@ -19,6 +19,8 @@ class ReadyResponse(BaseModel):
     maxSequenceTokens: int
     normalized: bool
     device: str
+    modelSource: str = "stub"
+    offline: bool = False
 
 
 class EmbedResponse(BaseModel):

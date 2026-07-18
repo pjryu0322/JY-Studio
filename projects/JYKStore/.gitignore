@@ -39,3 +39,9 @@ next-env.d.ts
 # Local MinIO binary/data (dev)
 .local/
 
+# Do not commit local embedding model trees if ever copied into the repo
+/models/
+**/multilingual-e5-small-ko-v2/
+jykstore-model-manifest.json
+.install-complete
+

@@ -37,6 +37,8 @@ def test_ready_schema_reports_stub(client: TestClient):
     assert data["maxSequenceTokens"] == 512
     assert data["normalized"] is True
     assert data["device"] == "cpu"
+    assert data["modelSource"] == "stub"
+    assert data["offline"] is False
 
 
 def test_korean_query_embedding(client: TestClient):
@@ -111,6 +113,7 @@ def _restore_test_settings(monkeypatch):
     monkeypatch.setenv("E5_WORKER_STUB", "true")
     monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)
     monkeypatch.delenv("E5_MODEL_REVISION", raising=False)
+    monkeypatch.delenv("E5_MODEL_DIR", raising=False)
     import app.settings as settings_module
 
     importlib.reload(settings_module)
@@ -131,10 +134,28 @@ def test_production_token_required(monkeypatch):
     monkeypatch.setenv("E5_WORKER_ENV", "production")
     monkeypatch.setenv("E5_WORKER_STUB", "false")
     monkeypatch.setenv("E5_MODEL_REVISION", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    monkeypatch.setenv(
+        "E5_MODEL_DIR",
+        "C:/JYKStore/models/multilingual-e5-small-ko-v2/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
     monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)
     import app.settings as settings_module
 
     with pytest.raises(RuntimeError, match="E5_WORKER_TOKEN"):
+        importlib.reload(settings_module)
+
+    _restore_test_settings(monkeypatch)
+
+
+def test_production_valid_sha_requires_model_dir(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_ENV", "production")
+    monkeypatch.setenv("E5_WORKER_STUB", "false")
+    monkeypatch.setenv("E5_MODEL_REVISION", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    monkeypatch.setenv("E5_WORKER_TOKEN", "tok")
+    monkeypatch.delenv("E5_MODEL_DIR", raising=False)
+    import app.settings as settings_module
+
+    with pytest.raises(RuntimeError, match="E5_MODEL_DIR"):
         importlib.reload(settings_module)
 
     _restore_test_settings(monkeypatch)
@@ -145,6 +166,10 @@ def test_production_invalid_revision_rejected(monkeypatch):
     monkeypatch.setenv("E5_WORKER_STUB", "false")
     monkeypatch.setenv("E5_MODEL_REVISION", "main")
     monkeypatch.setenv("E5_WORKER_TOKEN", "tok")
+    monkeypatch.setenv(
+        "E5_MODEL_DIR",
+        "C:/JYKStore/models/multilingual-e5-small-ko-v2/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
     import app.settings as settings_module
 
     with pytest.raises(RuntimeError, match="40-char"):
@@ -157,12 +182,17 @@ def test_production_valid_sha_and_token_accepted(monkeypatch):
     monkeypatch.setenv("E5_WORKER_ENV", "production")
     monkeypatch.setenv("E5_WORKER_STUB", "false")
     monkeypatch.setenv("E5_MODEL_REVISION", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    monkeypatch.setenv(
+        "E5_MODEL_DIR",
+        "C:/JYKStore/models/multilingual-e5-small-ko-v2/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
     monkeypatch.setenv("E5_WORKER_TOKEN", "tok")
     import app.settings as settings_module
 
     reloaded = importlib.reload(settings_module)
     assert reloaded.settings.token == "tok"
     assert reloaded.settings.model_revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    assert "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in reloaded.settings.model_dir
 
     _restore_test_settings(monkeypatch)
 

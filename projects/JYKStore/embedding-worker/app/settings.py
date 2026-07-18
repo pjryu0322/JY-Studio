@@ -32,6 +32,8 @@ class Settings:
     environment: str
     model_id: str
     model_revision: str
+    model_dir: str
+    model_offline: bool
     dimension: int
     max_sequence_tokens: int
     stub_mode: bool
@@ -46,7 +48,7 @@ class Settings:
 
     @staticmethod
     def from_env() -> "Settings":
-        # Validation order: environment → stub → revision → token → dimension → tokens → concurrency
+        # Validation order: environment → stub → revision → model_dir → token → dimension
         environment = os.getenv("E5_WORKER_ENV", "development").strip().lower()
         if environment not in ALLOWED_ENVIRONMENTS:
             raise RuntimeError(
@@ -58,12 +60,15 @@ class Settings:
             raise RuntimeError("E5_WORKER_STUB must be false in production")
 
         model_revision = os.getenv("E5_MODEL_REVISION", "").strip()
+        model_dir = os.getenv("E5_MODEL_DIR", "").strip()
+        model_offline = _as_bool(os.getenv("E5_MODEL_OFFLINE"), default=not stub_mode)
+
         if stub_mode:
-            # Stub may omit revision; resolved_revision returns "stub".
             pass
         else:
-            # Live backends always require a pinned 40-char commit SHA.
             assert_pinned_revision(model_revision, context="E5_MODEL_REVISION")
+            if not model_dir:
+                raise RuntimeError("E5_MODEL_DIR_REQUIRED: E5_MODEL_DIR must be set for live worker")
 
         token = os.getenv("E5_WORKER_TOKEN", "").strip()
         if environment == "production" and not token:
@@ -87,6 +92,8 @@ class Settings:
             environment=environment,
             model_id=os.getenv("E5_MODEL_ID", "dragonkue/multilingual-e5-small-ko-v2").strip(),
             model_revision=model_revision,
+            model_dir=model_dir,
+            model_offline=model_offline if not stub_mode else False,
             dimension=dimension,
             max_sequence_tokens=max_sequence_tokens,
             stub_mode=stub_mode,

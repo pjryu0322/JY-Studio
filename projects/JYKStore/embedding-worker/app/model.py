@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import math
-import os
-import re
 import threading
 from typing import TYPE_CHECKING
 
-from app.settings import HF_COMMIT_SHA_RE, settings
+from app.model_asset import (
+    ModelAssetError,
+    set_offline_hub_env,
+    validate_installed_model_dir,
+)
+from app.settings import settings
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -18,8 +21,7 @@ _tokenizer = None
 _ready = False
 _device = "cpu"
 _resolved_revision: str | None = None
-
-_SHA_DIR_RE = re.compile(r"snapshots[/\\]([0-9a-f]{40})(?:[/\\]|$)")
+_model_source = "stub"
 
 
 def estimate_token_count(text: str) -> int:
@@ -77,63 +79,46 @@ def _stub_vector(text: str) -> list[float]:
     return _l2_normalize(values)
 
 
-def _extract_sha_from_path(path: str) -> str | None:
-    match = _SHA_DIR_RE.search(path.replace("\\", "/"))
-    if match:
-        return match.group(1)
-    # Also accept a bare directory named as the SHA.
-    base = os.path.basename(path.rstrip("/\\"))
-    if HF_COMMIT_SHA_RE.match(base):
-        return base
-    return None
-
-
-def _resolve_commit_sha(repo_id: str, revision: str) -> str:
-    """Download (or reuse cache) and return the actual resolved commit SHA."""
-    from huggingface_hub import snapshot_download
-
-    snapshot_path = snapshot_download(repo_id=repo_id, revision=revision)
-    resolved = _extract_sha_from_path(str(snapshot_path))
-    if not resolved:
-        # Fallback: ask the hub for the commit info.
-        try:
-            from huggingface_hub import HfApi
-
-            info = HfApi().model_info(repo_id, revision=revision)
-            sha = getattr(info, "sha", None)
-            if isinstance(sha, str) and HF_COMMIT_SHA_RE.match(sha):
-                resolved = sha
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(
-                f"unable to resolve commit SHA for {repo_id}@{revision}: {exc}"
-            ) from exc
-    if not resolved or not HF_COMMIT_SHA_RE.match(resolved):
-        raise RuntimeError(f"unable to resolve commit SHA for {repo_id}@{revision}")
-    if resolved != revision:
-        raise RuntimeError(
-            f"configured revision {revision} != resolved revision {resolved}"
-        )
-    return resolved
-
-
 def _load_model() -> None:
-    global _model, _tokenizer, _ready, _resolved_revision
+    """Load from local E5_MODEL_DIR only. Never calls snapshot_download / HfApi."""
+    global _model, _tokenizer, _ready, _resolved_revision, _model_source
     with _lock:
         if _ready:
             return
         if settings.stub_mode:
             _resolved_revision = "stub"
+            _model_source = "stub"
             _ready = True
             return
 
-        configured = settings.model_revision
-        resolved = _resolve_commit_sha(settings.model_id, configured)
-        _resolved_revision = resolved
+        set_offline_hub_env()
+        try:
+            manifest = validate_installed_model_dir(
+                settings.model_dir,
+                expected_model_id=settings.model_id,
+                expected_revision=settings.model_revision,
+                expected_dimension=settings.dimension,
+                expected_max_sequence_tokens=settings.max_sequence_tokens,
+            )
+        except ModelAssetError as exc:
+            raise RuntimeError(str(exc)) from exc
 
         from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(settings.model_id, revision=resolved, device="cpu")
-        _tokenizer = _model.tokenizer
+        try:
+            _model = SentenceTransformer(
+                settings.model_dir,
+                device="cpu",
+                local_files_only=True,
+            )
+            _tokenizer = _model.tokenizer
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"E5_MODEL_LOCAL_LOAD_FAILED: cannot load local model ({type(exc).__name__})"
+            ) from exc
+
+        _resolved_revision = manifest.resolved_revision
+        _model_source = "local-directory"
         _ready = True
 
 
@@ -153,13 +138,29 @@ def configured_revision() -> str:
     return settings.configured_revision
 
 
+def model_source() -> str:
+    return _model_source
+
+
+def offline_mode() -> bool:
+    return bool(settings.model_offline) and not settings.stub_mode
+
+
 def warmup() -> None:
     _load_model()
     if settings.stub_mode:
         _stub_vector("passage: warmup")
     else:
         assert _model is not None
-        _model.encode(["passage: warmup"], normalize_embeddings=settings.normalize)
+        vectors = _model.encode(["passage: warmup"], normalize_embeddings=settings.normalize)
+        row = [float(x) for x in vectors[0]]
+        if len(row) != settings.dimension:
+            raise RuntimeError(
+                f"E5_MODEL_DIMENSION_MISMATCH: warmup got {len(row)}, expected {settings.dimension}"
+            )
+        for value in row:
+            if not math.isfinite(value):
+                raise RuntimeError("E5_MODEL_LOCAL_LOAD_FAILED: warmup vector non-finite")
 
 
 class TokenLimitError(ValueError):

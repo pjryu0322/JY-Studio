@@ -96,6 +96,8 @@ def ready() -> ReadyResponse:
         maxSequenceTokens=settings.max_sequence_tokens,
         normalized=settings.normalize,
         device=embed_model.device(),
+        modelSource=embed_model.model_source(),
+        offline=embed_model.offline_mode(),
     )
 
 

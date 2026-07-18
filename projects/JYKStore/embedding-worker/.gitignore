@@ -7,3 +7,10 @@ venv/
 .mypy_cache/
 .ruff_cache/
 model-cache/
+.venv/
+venv/
+# Local Windows E5 model assets (never commit binaries / manifests)
+**/multilingual-e5-small-ko-v2/
+jykstore-model-manifest.json
+.install-complete
+
