@@ -1,5 +1,5 @@
 /**
- * P5.1.1 — Admin approval transaction atomicity (PostgreSQL).
+ * P5.1.2 — Admin approval transaction atomicity (PostgreSQL).
  * Runs only when DATABASE_URL is set; otherwise SKIP (never fake PASS).
  */
 import assert from "node:assert/strict";
@@ -7,10 +7,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { PackStatus } from "@prisma/client";
+import { PackStatus, Prisma } from "@prisma/client";
 import { assertApprovalSearchGenerationInTx } from "../lib/distribution/approval-search-generation-evidence.ts";
 import { buildDoclingBundleReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
+import { assertCurrentServiceValidationEvidence } from "../lib/distribution/service-validation-service.ts";
 import {
   createKnowledgeRunBinding,
   serializeKnowledgeRunBinding,
@@ -272,18 +273,11 @@ async function seedApprovalReadyPack(suffix: string) {
     pipelineRunId: pipeline.id,
     normalizedDocumentId: binding.normalizedDocumentId,
     indexGenerationId: generation.id,
+    searchIndexGenerationId: generation.id,
     fingerprint: binding.fingerprint,
     ...(channel === "DOWNLOAD"
       ? { downloadTestId }
       : { resultFingerprint: `rf-${channel}-${suffix}` }),
-  });
-
-  const review = await prisma.packReview.create({
-    data: {
-      packId,
-      status: PackReviewStatus.IN_REVIEW,
-      submitSnapshot: {},
-    },
   });
 
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
@@ -325,7 +319,25 @@ async function seedApprovalReadyPack(suffix: string) {
     normalizedDocumentFingerprint: binding.fingerprint!,
   });
 
-  return { packId, generation, review, snapshot, userId: user.id };
+  // P5.1.2: DB submitSnapshot is the approval authority — store the real snapshot.
+  const review = await prisma.packReview.create({
+    data: {
+      packId,
+      status: PackReviewStatus.IN_REVIEW,
+      submitSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  return {
+    packId,
+    generation,
+    review,
+    snapshot,
+    userId: user.id,
+    versionId: version.id,
+    runIds,
+    downloadTestId,
+  };
 }
 
 async function cleanup(packId: string) {
@@ -354,8 +366,8 @@ async function cleanup(packId: string) {
   await prisma.knowledgePack.deleteMany({ where: { packId } });
 }
 
-describe("approval transaction atomicity (P5.1.1)", { skip: !hasDb }, () => {
-  it("assertApprovalSearchGenerationInTx succeeds when all evidence matches", async () => {
+describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
+  it("assertApprovalSearchGenerationInTx succeeds from DB submitSnapshot (no external snapshot)", async () => {
     const suffix = `${Date.now()}-ok`;
     const seeded = await seedApprovalReadyPack(suffix);
     try {
@@ -363,9 +375,10 @@ describe("approval transaction atomicity (P5.1.1)", { skip: !hasDb }, () => {
         const evidence = await assertApprovalSearchGenerationInTx(tx, {
           packId: seeded.packId,
           reviewId: seeded.review.id,
-          snapshot: seeded.snapshot,
         });
         assert.equal(evidence.generation.id, seeded.generation.id);
+        assert.equal(evidence.snapshot.searchIndexGenerationId, seeded.generation.id);
+        assert.equal(evidence.snapshot.chunkGenerationId, seeded.generation.chunkGenerationId);
         assert.equal(evidence.generation.embeddingModelRevision, SHA);
       });
     } finally {
@@ -373,18 +386,50 @@ describe("approval transaction atomicity (P5.1.1)", { skip: !hasDb }, () => {
     }
   });
 
-  it("descriptor revision drift fails inside the transaction", async () => {
-    const suffix = `${Date.now()}-drift`;
+  it("empty DB submitSnapshot fails even when an external snapshot would be valid", async () => {
+    const suffix = `${Date.now()}-empty`;
     const seeded = await seedApprovalReadyPack(suffix);
     try {
-      const drifted = { ...seeded.snapshot, embeddingModelRevision: SHA_OTHER };
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { submitSnapshot: {} },
+      });
       await assert.rejects(
         () =>
           prisma.$transaction(async (tx) => {
             await assertApprovalSearchGenerationInTx(tx, {
               packId: seeded.packId,
               reviewId: seeded.review.id,
-              snapshot: drifted,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError &&
+          (error.code === "APPROVAL_SNAPSHOT_MISMATCH" ||
+            error.code === "SEARCH_GENERATION_MISMATCH"),
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("DB snapshot revision drift fails (external memory snapshot is ignored)", async () => {
+    const suffix = `${Date.now()}-drift`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      const drifted = {
+        ...seeded.snapshot,
+        embeddingModelRevision: SHA_OTHER,
+      };
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { submitSnapshot: drifted as unknown as Prisma.InputJsonValue },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
             });
           }),
         (error: unknown) => error instanceof PayloadServiceError,
@@ -394,6 +439,263 @@ describe("approval transaction atomicity (P5.1.1)", { skip: !hasDb }, () => {
       });
       assert.equal(still?.status, "READY");
       assert.equal(still?.scope, "DRAFT");
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("chunkGenerationId mismatch with indexGenerationId fails", async () => {
+    const suffix = `${Date.now()}-chunk`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      const bad = {
+        ...seeded.snapshot,
+        chunkGenerationId: `other-chunk-${suffix}`,
+      };
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { submitSnapshot: bad as unknown as Prisma.InputJsonValue },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError && error.code === "SEARCH_GENERATION_MISMATCH",
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("service validation evidence re-check in tx blocks when run is invalidated", async () => {
+    const suffix = `${Date.now()}-svc`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      await prisma.serviceValidationRun.update({
+        where: { id: seeded.runIds.API },
+        data: { invalidatedAt: new Date() },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            const evidence = await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+            });
+            await assertCurrentServiceValidationEvidence({
+              client: tx,
+              packId: seeded.packId,
+              versionId: evidence.versionId,
+              snapshot: evidence.snapshot,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError &&
+          error.code === "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      );
+      const pack = await prisma.knowledgePack.findUnique({ where: { packId: seeded.packId } });
+      const review = await prisma.packReview.findUnique({ where: { id: seeded.review.id } });
+      const gen = await prisma.searchIndexGeneration.findUnique({
+        where: { id: seeded.generation.id },
+      });
+      assert.equal(pack?.status, PackStatus.REVIEWING);
+      assert.equal(review?.status, PackReviewStatus.IN_REVIEW);
+      assert.equal(gen?.status, "READY");
+      assert.equal(gen?.scope, "DRAFT");
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("DOWNLOAD responseReady=false blocks service validation in tx", async () => {
+    const suffix = `${Date.now()}-dl`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      await prisma.serviceValidationDownloadTest.update({
+        where: { id: seeded.downloadTestId },
+        data: { responseReady: false },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            const evidence = await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+            });
+            await assertCurrentServiceValidationEvidence({
+              client: tx,
+              packId: seeded.packId,
+              versionId: evidence.versionId,
+              snapshot: evidence.snapshot,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError &&
+          error.code === "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("Pack DRAFT pre-change causes APPROVAL_TRANSITION_CONFLICT and rolls back promote", async () => {
+    const suffix = `${Date.now()}-pack`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+            });
+            await promoteSearchGeneration(seeded.generation.id, tx, {
+              generationFingerprint: seeded.generation.generationFingerprint,
+              embeddingProvider: seeded.generation.embeddingProvider,
+              embeddingModel: seeded.generation.embeddingModel,
+              embeddingModelRevision: seeded.generation.embeddingModelRevision,
+              embeddingDimension: seeded.generation.embeddingDimension,
+              distanceMetric: seeded.generation.distanceMetric,
+            });
+            // Simulate concurrent reject: pack left REVIEWING in this tx's snapshot
+            // but we force conflict by requiring REVIEWING after flipping outside — instead
+            // mutate via nested raw path: updateMany with impossible status.
+            await tx.knowledgePack.update({
+              where: { packId: seeded.packId },
+              data: { status: PackStatus.DRAFT },
+            });
+            const packTransition = await tx.knowledgePack.updateMany({
+              where: { packId: seeded.packId, status: PackStatus.REVIEWING },
+              data: { status: PackStatus.PUBLISHED, publishedAt: new Date() },
+            });
+            if (packTransition.count !== 1) {
+              throw new PayloadServiceError(
+                "APPROVAL_TRANSITION_CONFLICT",
+                "검수 상태가 변경되어 승인할 수 없습니다.",
+                409,
+              );
+            }
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError && error.code === "APPROVAL_TRANSITION_CONFLICT",
+      );
+      const pack = await prisma.knowledgePack.findUnique({ where: { packId: seeded.packId } });
+      const gen = await prisma.searchIndexGeneration.findUnique({
+        where: { id: seeded.generation.id },
+      });
+      assert.equal(pack?.status, PackStatus.REVIEWING);
+      assert.equal(gen?.status, "READY");
+      assert.equal(gen?.scope, "DRAFT");
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("Review REJECTED pre-change causes APPROVAL_TRANSITION_CONFLICT", async () => {
+    const suffix = `${Date.now()}-rev`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { status: PackReviewStatus.REJECTED },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError &&
+          (error.code === "APPROVAL_TRANSITION_CONFLICT" ||
+            error.code === "SEARCH_GENERATION_MISMATCH"),
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("approve vs reject conditional updateMany: exactly one wins", async () => {
+    const suffix = `${Date.now()}-race`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      const now = new Date();
+      const results = await Promise.allSettled([
+        prisma.$transaction(async (tx) => {
+          const packTransition = await tx.knowledgePack.updateMany({
+            where: { packId: seeded.packId, status: PackStatus.REVIEWING },
+            data: { status: PackStatus.PUBLISHED, publishedAt: now, isVerified: false },
+          });
+          if (packTransition.count !== 1) {
+            throw new PayloadServiceError("APPROVAL_TRANSITION_CONFLICT", "approve pack", 409);
+          }
+          const reviewTransition = await tx.packReview.updateMany({
+            where: {
+              id: seeded.review.id,
+              packId: seeded.packId,
+              status: PackReviewStatus.IN_REVIEW,
+            },
+            data: {
+              status: PackReviewStatus.APPROVED,
+              decision: "APPROVE",
+              decidedAt: now,
+            },
+          });
+          if (reviewTransition.count !== 1) {
+            throw new PayloadServiceError("APPROVAL_TRANSITION_CONFLICT", "approve review", 409);
+          }
+          return "approve" as const;
+        }),
+        prisma.$transaction(async (tx) => {
+          const packTransition = await tx.knowledgePack.updateMany({
+            where: { packId: seeded.packId, status: PackStatus.REVIEWING },
+            data: { status: PackStatus.DRAFT },
+          });
+          if (packTransition.count !== 1) {
+            throw new PayloadServiceError("REVIEW_TRANSITION_CONFLICT", "reject pack", 409);
+          }
+          const reviewTransition = await tx.packReview.updateMany({
+            where: {
+              id: seeded.review.id,
+              packId: seeded.packId,
+              status: PackReviewStatus.IN_REVIEW,
+            },
+            data: {
+              status: PackReviewStatus.REJECTED,
+              decision: "REJECT",
+              rejectionReason: "race",
+              decidedAt: now,
+            },
+          });
+          if (reviewTransition.count !== 1) {
+            throw new PayloadServiceError("REVIEW_TRANSITION_CONFLICT", "reject review", 409);
+          }
+          return "reject" as const;
+        }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+
+      const pack = await prisma.knowledgePack.findUnique({ where: { packId: seeded.packId } });
+      const review = await prisma.packReview.findUnique({ where: { id: seeded.review.id } });
+      const winner = (fulfilled[0] as PromiseFulfilledResult<"approve" | "reject">).value;
+      if (winner === "approve") {
+        assert.equal(pack?.status, PackStatus.PUBLISHED);
+        assert.equal(review?.status, PackReviewStatus.APPROVED);
+      } else {
+        assert.equal(pack?.status, PackStatus.DRAFT);
+        assert.equal(review?.status, PackReviewStatus.REJECTED);
+      }
     } finally {
       await cleanup(seeded.packId);
     }

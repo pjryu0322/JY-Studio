@@ -735,11 +735,12 @@ export async function approvePackReview(input: {
 
   if (packageMode === "DOCLING_BUNDLE" && isDoclingBundleReviewSnapshot(approveSnapshot)) {
     // UX pre-check only — final approval is decided solely by the in-transaction
-    // assertApprovalSearchGenerationInTx + conditional promotion result.
+    // DB snapshot + assertApprovalSearchGenerationInTx + service evidence + conditional transitions.
     if (
       !approveSnapshot.pipelineRunId ||
       !approveSnapshot.indexGenerationId ||
       !approveSnapshot.searchIndexGenerationId ||
+      !approveSnapshot.chunkGenerationId ||
       (approveSnapshot.snapshotSchemaVersion ?? 1) < 3
     ) {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
@@ -749,16 +750,26 @@ export async function approvePackReview(input: {
       const { assertApprovalSearchGenerationInTx } = await import(
         "@/lib/distribution/approval-search-generation-evidence"
       );
+      const { assertCurrentServiceValidationEvidence } = await import(
+        "@/lib/distribution/service-validation-service"
+      );
       const { promoteDraftIndexToProduction } = await import(
         "@/lib/docling-knowledge/docling-nd-knowledge-builder"
       );
       const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+      const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
 
       await prisma.$transaction(async (tx) => {
         const evidence = await assertApprovalSearchGenerationInTx(tx, {
           packId,
           reviewId: accepted.id,
-          snapshot: approveSnapshot,
+        });
+
+        await assertCurrentServiceValidationEvidence({
+          client: tx,
+          packId,
+          versionId: evidence.versionId,
+          snapshot: evidence.snapshot,
         });
 
         await promoteDraftIndexToProduction({
@@ -768,28 +779,39 @@ export async function approvePackReview(input: {
           fingerprint: evidence.fingerprint,
           tx,
           promotionGuard: {
-            generationFingerprint: approveSnapshot.searchGenerationFingerprint,
-            embeddingProvider: approveSnapshot.embeddingProvider,
-            embeddingModel: approveSnapshot.embeddingModel,
-            embeddingModelRevision: approveSnapshot.embeddingModelRevision,
-            embeddingDimension: approveSnapshot.embeddingDimension,
-            distanceMetric: approveSnapshot.distanceMetric,
+            generationFingerprint: evidence.snapshot.searchGenerationFingerprint!,
+            embeddingProvider: evidence.snapshot.embeddingProvider!,
+            embeddingModel: evidence.snapshot.embeddingModel!,
+            embeddingModelRevision: evidence.snapshot.embeddingModelRevision!,
+            embeddingDimension: evidence.snapshot.embeddingDimension!,
+            distanceMetric: evidence.snapshot.distanceMetric!,
           },
         });
 
-        await tx.knowledgePack.update({
-          where: { packId },
+        const packTransition = await tx.knowledgePack.updateMany({
+          where: { packId, status: PackStatus.REVIEWING },
           data: {
             status: nextStatus,
             publishedAt: now,
             isVerified: publishAsVerified,
           },
         });
+        if (packTransition.count !== 1) {
+          throw new PayloadServiceError(
+            "APPROVAL_TRANSITION_CONFLICT",
+            "검수 상태가 변경되어 승인할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+            409,
+          );
+        }
 
-        await tx.packReview.update({
-          where: { id: accepted.id },
+        const reviewTransition = await tx.packReview.updateMany({
+          where: {
+            id: accepted.id,
+            packId,
+            status: PackReviewStatus.IN_REVIEW,
+          },
           data: {
-            status: "APPROVED",
+            status: PackReviewStatus.APPROVED,
             decision: "APPROVE",
             memo,
             reviewerClientId: input.reviewerClientId ?? null,
@@ -797,6 +819,13 @@ export async function approvePackReview(input: {
             decidedAt: now,
           },
         });
+        if (reviewTransition.count !== 1) {
+          throw new PayloadServiceError(
+            "APPROVAL_TRANSITION_CONFLICT",
+            "검수 상태가 변경되어 승인할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+            409,
+          );
+        }
 
         await recordAuditInTx({
           client: tx,
@@ -817,62 +846,103 @@ export async function approvePackReview(input: {
           },
         });
       });
-    } catch {
-      return {
-        error: "INCOMPLETE" as const,
-        message: knowledgeMismatchMessage,
-      };
+    } catch (error) {
+      const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      if (isPayloadServiceError(error)) {
+        if (error.httpStatus === 409) {
+          return {
+            error: "CONFLICT" as const,
+            message: error.message,
+            code: error.code,
+          };
+        }
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      throw error;
     }
 
     await recordApprovalPipeline(packId, input.reviewerClientId);
     const detail = await getAdminReviewDetail(packId);
     return { detail: detail! };
   } else {
-    await prisma.$transaction(async (tx) => {
-      await tx.knowledgePack.update({
-        where: { packId },
-        data: {
-          status: nextStatus,
-          publishedAt: now,
-          isVerified: publishAsVerified,
-        },
-      });
+    const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+    try {
+      await prisma.$transaction(async (tx) => {
+        const packTransition = await tx.knowledgePack.updateMany({
+          where: { packId, status: PackStatus.REVIEWING },
+          data: {
+            status: nextStatus,
+            publishedAt: now,
+            isVerified: publishAsVerified,
+          },
+        });
+        if (packTransition.count !== 1) {
+          throw new PayloadServiceError(
+            "APPROVAL_TRANSITION_CONFLICT",
+            "검수 상태가 변경되어 승인할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+            409,
+          );
+        }
 
-      await tx.packReview.update({
-        where: { id: accepted.id },
-        data: {
-          status: "APPROVED",
-          decision: "APPROVE",
-          memo,
-          reviewerClientId: input.reviewerClientId ?? null,
-          reviewerUserId: input.reviewerUserId ?? null,
-          decidedAt: now,
-        },
+        const reviewTransition = await tx.packReview.updateMany({
+          where: {
+            id: accepted.id,
+            packId,
+            status: PackReviewStatus.IN_REVIEW,
+          },
+          data: {
+            status: PackReviewStatus.APPROVED,
+            decision: "APPROVE",
+            memo,
+            reviewerClientId: input.reviewerClientId ?? null,
+            reviewerUserId: input.reviewerUserId ?? null,
+            decidedAt: now,
+          },
+        });
+        if (reviewTransition.count !== 1) {
+          throw new PayloadServiceError(
+            "APPROVAL_TRANSITION_CONFLICT",
+            "검수 상태가 변경되어 승인할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+            409,
+          );
+        }
+
+        await recordAuditInTx({
+          client: tx,
+          action: AuditAction.ADMIN_PACK_APPROVE,
+          entityType: "KnowledgePack",
+          entityId: packId,
+          actorUserId: input.reviewerUserId,
+          metadata: {
+            publishAsVerified,
+            memo,
+            adminUserId: input.reviewerUserId ?? null,
+            reviewerClientId: input.reviewerClientId ?? null,
+            action: "APPROVE",
+            pipelineRunId:
+              isDoclingBundleReviewSnapshot(approveSnapshot)
+                ? approveSnapshot.pipelineRunId ?? null
+                : null,
+            indexGenerationId:
+              isDoclingBundleReviewSnapshot(approveSnapshot)
+                ? approveSnapshot.indexGenerationId ?? null
+                : null,
+          },
+        });
       });
-    });
+    } catch (error) {
+      const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      if (isPayloadServiceError(error) && error.httpStatus === 409) {
+        return {
+          error: "CONFLICT" as const,
+          message: error.message,
+          code: error.code,
+        };
+      }
+      throw error;
+    }
   }
-
-  await recordProviderAudit({
-    action: AuditAction.ADMIN_PACK_APPROVE,
-    entityType: "KnowledgePack",
-    entityId: packId,
-    actorUserId: input.reviewerUserId,
-    metadata: {
-      publishAsVerified,
-      memo,
-      adminUserId: input.reviewerUserId ?? null,
-      reviewerClientId: input.reviewerClientId ?? null,
-      action: "APPROVE",
-      pipelineRunId:
-        isDoclingBundleReviewSnapshot(approveSnapshot)
-          ? approveSnapshot.pipelineRunId ?? null
-          : null,
-      indexGenerationId:
-        isDoclingBundleReviewSnapshot(approveSnapshot)
-          ? approveSnapshot.indexGenerationId ?? null
-          : null,
-    },
-  });
 
   await recordApprovalPipeline(packId, input.reviewerClientId);
 
@@ -924,40 +994,75 @@ export async function rejectPackReview(input: {
 
   const memo = input.memo?.trim() || null;
   const now = new Date();
+  const reviewStatusForTransition = openReview!.status;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.knowledgePack.update({
-      where: { packId },
-      data: { status: PackStatus.DRAFT },
+  try {
+    const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+
+    await prisma.$transaction(async (tx) => {
+      const packTransition = await tx.knowledgePack.updateMany({
+        where: { packId, status: PackStatus.REVIEWING },
+        data: { status: PackStatus.DRAFT },
+      });
+      if (packTransition.count !== 1) {
+        throw new PayloadServiceError(
+          "REVIEW_TRANSITION_CONFLICT",
+          "검수 상태가 변경되어 반려할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+          409,
+        );
+      }
+
+      const reviewTransition = await tx.packReview.updateMany({
+        where: {
+          id: openReview!.id,
+          packId,
+          status: reviewStatusForTransition,
+        },
+        data: {
+          status: PackReviewStatus.REJECTED,
+          decision: "REJECT",
+          memo,
+          rejectionReason,
+          reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
+          decidedAt: now,
+        },
+      });
+      if (reviewTransition.count !== 1) {
+        throw new PayloadServiceError(
+          "REVIEW_TRANSITION_CONFLICT",
+          "검수 상태가 변경되어 반려할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+          409,
+        );
+      }
+
+      await recordAuditInTx({
+        client: tx,
+        action: AuditAction.ADMIN_PACK_REJECT,
+        entityType: "KnowledgePack",
+        entityId: packId,
+        actorUserId: input.reviewerUserId,
+        metadata: {
+          rejectionReason,
+          memo,
+          adminUserId: input.reviewerUserId ?? null,
+          reviewerClientId: input.reviewerClientId ?? null,
+          action: "REJECT",
+        },
+      });
     });
-
-    await tx.packReview.update({
-      where: { id: openReview!.id },
-      data: {
-        status: "REJECTED",
-        decision: "REJECT",
-        memo,
-        rejectionReason,
-        reviewerClientId: input.reviewerClientId ?? null,
-        reviewerUserId: input.reviewerUserId ?? null,
-        decidedAt: now,
-      },
-    });
-  });
-
-  await recordProviderAudit({
-    action: AuditAction.ADMIN_PACK_REJECT,
-    entityType: "KnowledgePack",
-    entityId: packId,
-    actorUserId: input.reviewerUserId,
-    metadata: {
-      rejectionReason,
-      memo,
-      adminUserId: input.reviewerUserId ?? null,
-      reviewerClientId: input.reviewerClientId ?? null,
-      action: "REJECT",
-    },
-  });
+  } catch (error) {
+    const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    if (isPayloadServiceError(error) && error.httpStatus === 409) {
+      return {
+        error: "CONFLICT" as const,
+        message: error.message,
+        code: error.code,
+      };
+    }
+    throw error;
+  }
 
   await recordRejectionPipeline(packId, rejectionReason, input.reviewerClientId);
 

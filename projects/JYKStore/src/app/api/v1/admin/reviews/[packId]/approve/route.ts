@@ -61,6 +61,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 409 },
       );
     }
+    if (result.error === "CONFLICT") {
+      return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 409 });
+    }
     if (result.error === "INCOMPLETE") {
       return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 400 });
     }

@@ -1,62 +1,84 @@
 /**
- * P5.1.1: Re-validate SearchIndexGeneration binding + embedding descriptor
- * inside the admin approval transaction. Outside-tx checks are UX-only;
- * final approval is decided solely by this in-tx result.
+ * P5.1.2: Re-validate approval evidence inside the admin approval transaction.
+ * Authority data is ALWAYS the DB PackReview.submitSnapshot (never a memory object).
  */
 
 import type { Prisma, SearchIndexGeneration } from "@prisma/client";
-import type { DoclingBundleReviewSubmitSnapshot } from "@/lib/distribution/distribution-submit-snapshot";
+import {
+  isReviewSubmitSnapshotV3,
+  parseDoclingBundleReviewSubmitSnapshot,
+  type DoclingBundleReviewSubmitSnapshot,
+} from "@/lib/distribution/distribution-submit-snapshot";
 import { PayloadServiceError, type PayloadErrorCode } from "@/lib/distribution/payload-errors";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
+import { PackReviewStatus } from "@/lib/pack-review-status";
 import {
   embeddingDescriptorsEqual,
   validateOperationalEmbeddingDescriptor,
 } from "@/lib/search-generation/search-generation-descriptor";
 
 export type ApprovalSearchGenerationContext = {
+  /** Parsed from DB PackReview.submitSnapshot — the sole authority for approval. */
+  snapshot: DoclingBundleReviewSubmitSnapshot;
   generation: SearchIndexGeneration;
   versionId: string;
   normalizedDocumentId: string;
   pipelineRunId: string;
   fingerprint: string;
+  reviewId: string;
 };
 
 const APPROVAL_MISMATCH =
-  "제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다. 제공자에게 다시 검수요청하도록 안내해 주세요.";
+  "제출 이후 검수 증적 또는 상태가 변경되었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.";
 
 function mismatch(code: PayloadErrorCode = "SEARCH_GENERATION_MISMATCH"): never {
   throw new PayloadServiceError(code, APPROVAL_MISMATCH, 409);
 }
 
 /**
- * Re-read and verify all approval evidence for a Docling-bundle pack inside `tx`.
- * Returns the verified Generation that alone may be promoted.
+ * Re-read PackReview.submitSnapshot from DB and verify all approval evidence inside `tx`.
+ * Do NOT pass an external snapshot — the DB row is the authority.
  */
 export async function assertApprovalSearchGenerationInTx(
   tx: Prisma.TransactionClient,
   input: {
     packId: string;
     reviewId: string;
-    snapshot: DoclingBundleReviewSubmitSnapshot;
   },
 ): Promise<ApprovalSearchGenerationContext> {
-  const { packId, reviewId, snapshot } = input;
+  const { packId, reviewId } = input;
 
   const pack = await tx.knowledgePack.findUnique({
     where: { packId },
     select: { packId: true, status: true },
   });
   if (!pack || pack.status !== "REVIEWING") {
-    mismatch("SEARCH_GENERATION_NOT_CURRENT");
+    mismatch("APPROVAL_TRANSITION_CONFLICT");
   }
 
   const review = await tx.packReview.findUnique({
     where: { id: reviewId },
-    select: { id: true, packId: true, status: true },
+    select: {
+      id: true,
+      packId: true,
+      status: true,
+      submitSnapshot: true,
+      updatedAt: true,
+    },
   });
-  if (!review || review.packId !== packId || review.status !== "IN_REVIEW") {
-    mismatch("SEARCH_GENERATION_NOT_CURRENT");
+  if (!review || review.packId !== packId || review.status !== PackReviewStatus.IN_REVIEW) {
+    mismatch("APPROVAL_TRANSITION_CONFLICT");
   }
+
+  // A: DB submitSnapshot is the sole approval authority.
+  const parsed = parseDoclingBundleReviewSubmitSnapshot(review.submitSnapshot);
+  if (!parsed || parsed.mode !== "DOCLING_BUNDLE") {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
+  if (!isReviewSubmitSnapshotV3(parsed)) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
+  const snapshot = parsed;
 
   const latestVersion = await tx.knowledgePackVersion.findFirst({
     where: { packId },
@@ -83,15 +105,18 @@ export async function assertApprovalSearchGenerationInTx(
     !snapshot.pipelineRunId ||
     !snapshot.indexGenerationId ||
     !snapshot.searchIndexGenerationId ||
-    (snapshot.snapshotSchemaVersion ?? 1) < 3
+    !snapshot.chunkGenerationId ||
+    !snapshot.searchGenerationFingerprint ||
+    snapshot.retrievalEvaluationStatus !== "PASS"
   ) {
-    mismatch("SEARCH_GENERATION_REQUIRED");
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
 
-  // Generation ID binding: all four identities must agree.
+  // B: chunkGenerationId must agree with both snapshot IDs and the Generation row.
   if (
-    snapshot.searchIndexGenerationId !== snapshot.indexGenerationId ||
-    !snapshot.searchIndexGenerationId
+    snapshot.chunkGenerationId !== snapshot.indexGenerationId ||
+    snapshot.chunkGenerationId !== snapshot.searchIndexGenerationId ||
+    snapshot.searchIndexGenerationId !== snapshot.indexGenerationId
   ) {
     mismatch();
   }
@@ -109,6 +134,7 @@ export async function assertApprovalSearchGenerationInTx(
     !binding ||
     binding.indexGenerationId !== snapshot.indexGenerationId ||
     binding.indexGenerationId !== snapshot.searchIndexGenerationId ||
+    binding.indexGenerationId !== snapshot.chunkGenerationId ||
     binding.versionId !== latestVersion.id ||
     binding.normalizedDocumentId !== activeNd.id ||
     binding.fingerprint !== activeNd.fingerprint ||
@@ -133,6 +159,7 @@ export async function assertApprovalSearchGenerationInTx(
     generation.normalizedDocumentId !== activeNd.id ||
     generation.normalizedDocumentId !== snapshot.normalizedDocumentId ||
     generation.fingerprint !== activeNd.fingerprint ||
+    generation.chunkGenerationId !== snapshot.chunkGenerationId ||
     generation.chunkGenerationId !== snapshot.indexGenerationId ||
     generation.status !== "READY" ||
     generation.scope !== "DRAFT" ||
@@ -143,14 +170,10 @@ export async function assertApprovalSearchGenerationInTx(
     mismatch("SEARCH_GENERATION_NOT_CURRENT");
   }
 
-  if (
-    snapshot.searchGenerationFingerprint != null &&
-    generation.generationFingerprint !== snapshot.searchGenerationFingerprint
-  ) {
+  if (generation.generationFingerprint !== snapshot.searchGenerationFingerprint) {
     mismatch("SEARCH_GENERATION_NOT_CURRENT");
   }
 
-  // Descriptor: operational fitness then Snapshot ↔ Generation equality.
   const generationDescriptor = {
     embeddingProvider: generation.embeddingProvider,
     embeddingModel: generation.embeddingModel,
@@ -178,53 +201,21 @@ export async function assertApprovalSearchGenerationInTx(
     mismatch("SEARCH_GENERATION_DESCRIPTOR_DRIFT");
   }
 
-  // Validation runs: re-read each channel by Snapshot runId (not merely "latest PASS").
+  // Full service-validation evidence is asserted by the caller via
+  // assertCurrentServiceValidationEvidence({ client: tx, snapshot }).
+  // Keep a minimal run-id presence check here so Generation binding stays coherent.
   const prep = snapshot.preparationValidation;
-  if (!prep) {
-    mismatch("SEARCH_GENERATION_REQUIRED");
-  }
-  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-    const snap = prep[channel];
-    if (!snap?.runId) {
-      mismatch("SEARCH_GENERATION_REQUIRED");
-    }
-    const run = await tx.serviceValidationRun.findUnique({
-      where: { id: snap.runId },
-      select: {
-        id: true,
-        packId: true,
-        versionId: true,
-        channel: true,
-        status: true,
-        invalidatedAt: true,
-        pipelineRunId: true,
-        normalizedDocumentId: true,
-        searchIndexGenerationId: true,
-        indexGenerationId: true,
-      },
-    });
-    if (
-      !run ||
-      run.id !== snap.runId ||
-      run.packId !== packId ||
-      run.versionId !== latestVersion.id ||
-      run.channel !== channel ||
-      run.status !== "PASS" ||
-      run.invalidatedAt != null ||
-      run.pipelineRunId !== passRun.id ||
-      run.normalizedDocumentId !== activeNd.id ||
-      run.searchIndexGenerationId !== generation.id ||
-      run.indexGenerationId !== generation.id
-    ) {
-      mismatch("SEARCH_GENERATION_NOT_CURRENT");
-    }
+  if (!prep?.API?.runId || !prep?.MCP?.runId || !prep?.DOWNLOAD?.runId) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
 
   return {
+    snapshot,
     generation,
     versionId: latestVersion.id,
     normalizedDocumentId: activeNd.id,
     pipelineRunId: passRun.id,
-    fingerprint: activeNd.fingerprint,
+    fingerprint: activeNd.fingerprint!,
+    reviewId: review.id,
   };
 }

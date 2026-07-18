@@ -1,5 +1,5 @@
 /**
- * Unit tests for P5.1.1 approval-transaction evidence helper and
+ * Unit tests for P5.1.2 approval-transaction evidence helper and
  * conditional promotion guard (no DB required).
  */
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import { promoteSearchGeneration } from "../lib/search-generation/search-generat
 
 const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-describe("promoteSearchGeneration conditional guard (P5.1.1)", () => {
+describe("promoteSearchGeneration conditional guard (P5.1.2)", () => {
   it("rejects promotion when descriptor guard does not match (count 0 → conflict)", async () => {
     const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const fakeTx = {
@@ -126,14 +126,27 @@ describe("promoteSearchGeneration conditional guard (P5.1.1)", () => {
     assert.equal(promoteWhere!.embeddingModelRevision, SHA);
     assert.equal(promoteWhere!.embeddingDimension, 384);
     assert.equal(promoteWhere!.distanceMetric, "cosine");
-    // Descriptor immutability: data must only change status/scope/promotedAt
-    // (verified by not including embedding* in data — checked via the mock path above)
   });
 });
 
-describe("approval evidence helper exports (P5.1.1)", () => {
-  it("exports assertApprovalSearchGenerationInTx", async () => {
+describe("approval evidence helper exports (P5.1.2)", () => {
+  it("exports assertApprovalSearchGenerationInTx without requiring external snapshot", async () => {
     const mod = await import("../lib/distribution/approval-search-generation-evidence.ts");
     assert.equal(typeof mod.assertApprovalSearchGenerationInTx, "function");
+    // Arity 2: (tx, { packId, reviewId }) — no snapshot parameter.
+    assert.equal(mod.assertApprovalSearchGenerationInTx.length, 2);
+  });
+
+  it("registers transition conflict error codes", async () => {
+    const { PayloadServiceError: Err } = await import(
+      "../lib/distribution/payload-errors.ts"
+    );
+    const approval = new Err("APPROVAL_TRANSITION_CONFLICT", "승인 충돌", 409);
+    const review = new Err("REVIEW_TRANSITION_CONFLICT", "반려 충돌", 409);
+    const snap = new Err("APPROVAL_SNAPSHOT_MISMATCH", "스냅샷", 409);
+    assert.equal(approval.code, "APPROVAL_TRANSITION_CONFLICT");
+    assert.equal(review.code, "REVIEW_TRANSITION_CONFLICT");
+    assert.equal(snap.code, "APPROVAL_SNAPSHOT_MISMATCH");
+    assert.equal(approval.httpStatus, 409);
   });
 });

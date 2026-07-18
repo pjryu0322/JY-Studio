@@ -234,11 +234,15 @@ export async function requireOwnedDraftPackForServiceValidationRun(input: {
   return owned;
 }
 
-async function loadBindingContext(packId: string, versionId: string) {
-  const dist = await prisma.packDistributionMetadata.findUnique({ where: { versionId } });
+async function loadBindingContext(
+  packId: string,
+  versionId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  const dist = await client.packDistributionMetadata.findUnique({ where: { versionId } });
   try {
-    const binding = await resolveCurrentValidationBindingTx(prisma, { packId, versionId });
-    const latest = await prisma.pipelineRun.findUnique({ where: { id: binding.pipelineRunId } });
+    const binding = await resolveCurrentValidationBindingTx(client, { packId, versionId });
+    const latest = await client.pipelineRun.findUnique({ where: { id: binding.pipelineRunId } });
     return {
       dist,
       latest,
@@ -1415,11 +1419,21 @@ export async function assertSelectedServiceValidationsPassed(input: {
 }
 
 export async function assertCurrentServiceValidationEvidence(input: {
+  /** When set (e.g. approval tx), all reads use this client so evidence is re-checked atomically. */
+  client?: Prisma.TransactionClient | typeof prisma;
   packId: string;
   versionId: string;
   snapshot: DoclingBundleReviewSubmitSnapshot;
 }): Promise<void> {
-  const dist = await prisma.packDistributionMetadata.findUnique({
+  const db = input.client ?? prisma;
+  const evidenceMismatch = () =>
+    new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+      400,
+    );
+
+  const dist = await db.packDistributionMetadata.findUnique({
     where: { versionId: input.versionId },
   });
   if (!dist) {
@@ -1442,11 +1456,7 @@ export async function assertCurrentServiceValidationEvidence(input: {
     snapAllowMcp !== dist.allowMcp ||
     snapAllowDownload !== dist.allowDownload
   ) {
-    throw new PayloadServiceError(
-      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-      "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-      400,
-    );
+    throw evidenceMismatch();
   }
 
   if (selectedNow.length < 1) {
@@ -1470,27 +1480,24 @@ export async function assertCurrentServiceValidationEvidence(input: {
     );
   }
 
-  const { binding, latest } = await loadBindingContext(input.packId, input.versionId);
+  const { binding, latest } = await loadBindingContext(input.packId, input.versionId, db);
   if (!binding || !latest) {
-    throw new PayloadServiceError(
-      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-      "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-      400,
-    );
+    throw evidenceMismatch();
   }
+
+  const approvedGenerationId =
+    input.snapshot.searchIndexGenerationId ??
+    input.snapshot.indexGenerationId ??
+    binding.indexGenerationId;
 
   const snapValidation =
     input.snapshot.preparationValidation ?? input.snapshot.serviceValidation ?? {};
   for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
     const snap = snapValidation[channel];
     if (!snap?.runId) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      throw evidenceMismatch();
     }
-    const run = await prisma.serviceValidationRun.findUnique({ where: { id: snap.runId } });
+    const run = await db.serviceValidationRun.findUnique({ where: { id: snap.runId } });
     if (
       !run ||
       run.packId !== input.packId ||
@@ -1499,82 +1506,75 @@ export async function assertCurrentServiceValidationEvidence(input: {
       run.status !== "PASS" ||
       run.pipelineRunId !== latest.id ||
       run.indexGenerationId !== binding.indexGenerationId ||
+      run.indexGenerationId !== approvedGenerationId ||
+      (run.searchIndexGenerationId != null &&
+        run.searchIndexGenerationId !== approvedGenerationId) ||
       run.fingerprint !== binding.fingerprint ||
       run.normalizedDocumentId !== binding.normalizedDocumentId ||
       (snap.testedAt && run.testedAt && run.testedAt.toISOString() !== snap.testedAt)
     ) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      throw evidenceMismatch();
     }
     if (run.invalidatedAt) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      throw evidenceMismatch();
+    }
+    if (
+      "resultFingerprint" in snap &&
+      snap.resultFingerprint != null &&
+      run.resultFingerprint !== snap.resultFingerprint
+    ) {
+      throw evidenceMismatch();
     }
     if (channel === "API" || channel === "MCP") {
-      const itemCount = await prisma.serviceValidationResultItem.count({
+      const itemCount = await db.serviceValidationResultItem.count({
         where: { runId: run.id },
       });
       if (itemCount < 1) {
-        throw new PayloadServiceError(
-          "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-          "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-          400,
-        );
+        throw evidenceMismatch();
       }
     }
     if (channel === "DOWNLOAD") {
-      const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
+      const downloadTest = await db.serviceValidationDownloadTest.findUnique({
         where: { runId: run.id },
       });
       if (!downloadTest?.responseReady) {
-        throw new PayloadServiceError(
-          "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-          "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-          400,
-        );
+        throw evidenceMismatch();
+      }
+      if (
+        "downloadTestId" in snap &&
+        snap.downloadTestId &&
+        snap.downloadTestId !== downloadTest.id
+      ) {
+        throw evidenceMismatch();
       }
     }
-    const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+    const confirmation = await db.serviceValidationProviderConfirmation.findUnique({
       where: { runId: run.id },
     });
     if (!confirmation || confirmation.status !== "CONFIRMED") {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      throw evidenceMismatch();
     }
     if (
       "providerConfirmationId" in snap &&
       snap.providerConfirmationId &&
       snap.providerConfirmationId !== confirmation.id
     ) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
-        400,
-      );
+      throw evidenceMismatch();
     }
   }
 
   const apiSnap = snapValidation.API;
   const mcpSnap = snapValidation.MCP;
   if (apiSnap?.runId && mcpSnap?.runId) {
-    const apiRun = await prisma.serviceValidationRun.findUnique({ where: { id: apiSnap.runId } });
-    const mcpRun = await prisma.serviceValidationRun.findUnique({ where: { id: mcpSnap.runId } });
+    const apiRun = await db.serviceValidationRun.findUnique({ where: { id: apiSnap.runId } });
+    const mcpRun = await db.serviceValidationRun.findUnique({ where: { id: mcpSnap.runId } });
     const apiConf = apiSnap.providerConfirmationId
-      ? await prisma.serviceValidationProviderConfirmation.findUnique({
+      ? await db.serviceValidationProviderConfirmation.findUnique({
           where: { id: apiSnap.providerConfirmationId },
         })
       : null;
     const mcpConf = mcpSnap.providerConfirmationId
-      ? await prisma.serviceValidationProviderConfirmation.findUnique({
+      ? await db.serviceValidationProviderConfirmation.findUnique({
           where: { id: mcpSnap.providerConfirmationId },
         })
       : null;
@@ -1583,11 +1583,11 @@ export async function assertCurrentServiceValidationEvidence(input: {
       apiConf.sharedConfirmationGroupId === mcpConf?.sharedConfirmationGroupId
     ) {
       const [apiResults, mcpResults] = await Promise.all([
-        prisma.serviceValidationResultItem.findMany({
+        db.serviceValidationResultItem.findMany({
           where: { runId: apiSnap.runId },
           orderBy: { rank: "asc" },
         }),
-        prisma.serviceValidationResultItem.findMany({
+        db.serviceValidationResultItem.findMany({
           where: { runId: mcpSnap.runId },
           orderBy: { rank: "asc" },
         }),
