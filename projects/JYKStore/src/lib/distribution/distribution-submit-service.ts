@@ -323,6 +323,20 @@ export async function commitDistributionPackForReview(
     };
   }
 
+  // P5.1: Snapshot creation requires an operational (pinned-SHA) embedding descriptor.
+  const { validateOperationalEmbeddingDescriptor } = await import(
+    "@/lib/search-generation/search-generation-descriptor"
+  );
+  const descriptorCheck = validateOperationalEmbeddingDescriptor(searchGenerationRow);
+  if (!descriptorCheck.ok) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "검색 인덱스 세대의 Embedding descriptor가 운영 기준에 맞지 않습니다. 검색 데이터를 다시 생성해 주세요.",
+      missingRequirements: [descriptorCheck.code],
+    };
+  }
+
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: version.id,
     doclingBundleId: doclingBundle.id,

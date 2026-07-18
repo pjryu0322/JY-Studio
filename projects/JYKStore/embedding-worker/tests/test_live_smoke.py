@@ -1,7 +1,8 @@
 """Live smoke tests against the real sentence-transformers model.
 
 Skipped unless E5_WORKER_STUB=false. Run with:
-  E5_WORKER_STUB=false E5_MODEL_REVISION=<sha> python -m pytest tests/test_live_smoke.py
+  E5_WORKER_STUB=false E5_MODEL_REVISION=<40-char-sha> E5_WORKER_TOKEN=<token> \\
+    python -m pytest tests/test_live_smoke.py
 Validates relative ranking (never a hardcoded absolute score).
 """
 import os
@@ -14,6 +15,12 @@ if os.getenv("E5_WORKER_STUB", "true").lower() in ("1", "true", "yes", "on"):
 
 os.environ.setdefault("E5_WORKER_ENV", "development")
 
+
+def auth_headers() -> dict[str, str]:
+    token = os.getenv("E5_WORKER_TOKEN", "")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 from app.main import app  # noqa: E402
 
 MODEL = os.getenv("E5_MODEL_ID", "dragonkue/multilingual-e5-small-ko-v2")
@@ -24,7 +31,11 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def _embed(client: TestClient, path: str, text: str) -> list[float]:
-    res = client.post(path, json={"model": MODEL, "texts": [text], "normalize": True})
+    res = client.post(
+        path,
+        json={"model": MODEL, "texts": [text], "normalize": True},
+        headers=auth_headers(),
+    )
     assert res.status_code == 200, res.text
     return res.json()["vectors"][0]
 
@@ -36,10 +47,11 @@ def client():
 
 
 def test_ready_reports_live_backend(client: TestClient):
-    data = client.get("/ready").json()
+    data = client.get("/ready", headers=auth_headers()).json()
     assert data["backend"] == "sentence-transformers"
     assert data["stub"] is False
     assert data["dimension"] == 384
+    assert len(data["revision"]) == 40
 
 
 def test_korean_relative_ranking(client: TestClient):

@@ -478,6 +478,7 @@ export function isReviewSubmitSnapshotV2(
 /**
  * Version 3: V2 requirements plus READY SearchIndexGeneration binding fields.
  * Version 1·2 remain readable via parse; only V3 is accepted for new submits.
+ * P5.1: embeddingModelRevision must be a pinned 40-char commit SHA (not legacy-unknown).
  */
 export function isReviewSubmitSnapshotV3(
   snapshot: DoclingBundleReviewSubmitSnapshot,
@@ -505,10 +506,21 @@ export function isReviewSubmitSnapshotV3(
   if (typeof snapshot.embeddingModel !== "string" || snapshot.embeddingModel.length === 0) {
     return false;
   }
+  if (
+    typeof snapshot.embeddingModelRevision !== "string" ||
+    snapshot.embeddingModelRevision.length === 0 ||
+    snapshot.embeddingModelRevision === "legacy-unknown" ||
+    !/^[0-9a-f]{40}$/.test(snapshot.embeddingModelRevision)
+  ) {
+    return false;
+  }
   if (typeof snapshot.embeddingDimension !== "number" || snapshot.embeddingDimension <= 0) {
     return false;
   }
   if (typeof snapshot.distanceMetric !== "string" || snapshot.distanceMetric.length === 0) {
+    return false;
+  }
+  if (snapshot.retrievalEvaluationStatus !== "PASS") {
     return false;
   }
   return true;

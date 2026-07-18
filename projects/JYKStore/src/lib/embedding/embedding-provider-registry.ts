@@ -7,6 +7,7 @@ import {
 } from "@/lib/embedding/embedding-provider-config";
 import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
 import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
+import { assertPinnedModelRevision } from "@/lib/embedding/e5-model-revision";
 import {
   createLocalE5EmbeddingAdapter,
   LOCAL_E5_PRODUCTION_WARNING,
@@ -48,19 +49,18 @@ export function assertEmbeddingProviderProductionReady(
         "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
     }
+    // Production requires pinned revision + worker token. Non-production still
+    // validates the revision format whenever it is set.
     if (isProductionMode(env)) {
-      if (!full.modelRevision) {
-        throw new EmbeddingProviderError(
-          "EMBEDDING_PROVIDER_NOT_CONFIGURED",
-          "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_MODEL_REVISION(고정 commit SHA)이 필요합니다.",
-        );
-      }
       if (!full.workerToken) {
         throw new EmbeddingProviderError(
           "EMBEDDING_PROVIDER_NOT_CONFIGURED",
           "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_WORKER_TOKEN이 필요합니다.",
         );
       }
+      assertPinnedModelRevision(full.modelRevision, "JYKSTORE_EMBEDDING_MODEL_REVISION");
+    } else if (full.modelRevision) {
+      assertPinnedModelRevision(full.modelRevision, "JYKSTORE_EMBEDDING_MODEL_REVISION");
     }
     return { ok: true, provider: config.provider, warning: LOCAL_E5_PRODUCTION_WARNING };
   }
@@ -77,6 +77,11 @@ export function assertSearchGenerationEmbeddingProvider(config: { provider: stri
   }
 }
 
+/**
+ * Resolve an adapter for an existing Generation descriptor.
+ * The Generation's modelRevision is authoritative — env revision is NEVER used as a fallback.
+ * Empty / legacy-unknown revisions are rejected (operational Generation path).
+ */
 export function resolveEmbeddingProviderAdapterForDescriptor(
   descriptor: EmbeddingDescriptor,
   env: NodeJS.ProcessEnv = process.env,
@@ -89,12 +94,13 @@ export function resolveEmbeddingProviderAdapterForDescriptor(
         "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
     }
+    // Generation descriptor is the authority — require a pinned SHA, no env fallback.
+    assertPinnedModelRevision(descriptor.modelRevision, "SearchIndexGeneration.embeddingModelRevision");
     return createLocalE5EmbeddingAdapter({
       workerBaseUrl: config.workerUrl,
       model: descriptor.model,
       dimension: descriptor.dimension,
-      // The generation's pinned revision is authoritative; env is a fallback.
-      modelRevision: descriptor.modelRevision ?? config.modelRevision ?? null,
+      modelRevision: descriptor.modelRevision!.trim(),
       token: config.workerToken ?? null,
       batchSize: config.batchSize,
     });
@@ -102,6 +108,11 @@ export function resolveEmbeddingProviderAdapterForDescriptor(
   return createLocalHashEmbeddingAdapter(descriptor.dimension, descriptor.model);
 }
 
+/**
+ * Resolve an adapter from ambient env config (no Generation).
+ * Used for readiness probes and ad-hoc embedding outside a Generation pipeline.
+ * Env revision must be a pinned SHA when set / in production.
+ */
 export function resolveEmbeddingProviderAdapter(
   config: EmbeddingProviderConfig = readEmbeddingProviderConfig(),
 ): EmbeddingProviderAdapter {
@@ -111,6 +122,9 @@ export function resolveEmbeddingProviderAdapter(
         "EMBEDDING_PROVIDER_NOT_CONFIGURED",
         "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
+    }
+    if (config.modelRevision) {
+      assertPinnedModelRevision(config.modelRevision, "JYKSTORE_EMBEDDING_MODEL_REVISION");
     }
     return createLocalE5EmbeddingAdapter({
       workerBaseUrl: config.workerUrl,

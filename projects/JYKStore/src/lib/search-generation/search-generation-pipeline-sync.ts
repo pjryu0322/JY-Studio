@@ -29,9 +29,9 @@ export async function createSearchGenerationForPipeline(input: {
   normalizedDocumentId: string;
   fingerprint: string;
   chunkGenerationId: string;
-  descriptor?: ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>;
+  descriptor?: Awaited<ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>>;
 }): Promise<SearchIndexGeneration> {
-  const descriptor = input.descriptor ?? resolveSearchGenerationEmbeddingDescriptor();
+  const descriptor = input.descriptor ?? (await resolveSearchGenerationEmbeddingDescriptor());
   const provisionalFingerprint = computeSearchGenerationFingerprint({
     packId: input.packId,
     versionId: input.versionId,

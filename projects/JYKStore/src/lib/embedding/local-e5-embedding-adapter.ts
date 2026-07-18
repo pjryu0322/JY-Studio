@@ -54,7 +54,7 @@ type WorkerVectorsResponse = {
   vectors: number[][];
 };
 
-type WorkerReadyResponse = {
+export type WorkerReadyResponse = {
   ready: boolean;
   backend: string;
   stub: boolean;
@@ -65,6 +65,33 @@ type WorkerReadyResponse = {
   normalized: boolean;
   device: string;
 };
+
+/** Extended adapter surface for Generation creation (probe /ready before INSERT). */
+export type LocalE5EmbeddingAdapter = EmbeddingProviderAdapter & {
+  probeReady: (signal?: AbortSignal) => Promise<WorkerReadyResponse>;
+};
+
+function assertRevisionMatch(
+  expected: string | null,
+  actual: string | null | undefined,
+  context: string,
+): void {
+  if (!expected) return;
+  if (!actual || actual.trim().length === 0) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_MODEL_REVISION_MISMATCH",
+      `${context}: worker omitted model revision (expected ${expected.slice(0, 12)}…).`,
+      { retryable: false },
+    );
+  }
+  if (actual !== expected) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_MODEL_REVISION_MISMATCH",
+      `${context}: worker model revision mismatch.`,
+      { retryable: false },
+    );
+  }
+}
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -114,7 +141,7 @@ async function fetchWithTimeout(
 
 export function createLocalE5EmbeddingAdapter(
   options: LocalE5EmbeddingAdapterOptions,
-): EmbeddingProviderAdapter {
+): LocalE5EmbeddingAdapter {
   const {
     workerBaseUrl,
     model = DEFAULT_E5_MODEL_ID,
@@ -144,7 +171,9 @@ export function createLocalE5EmbeddingAdapter(
   }
 
   const base = normalizeBaseUrl(workerBaseUrl);
-  const expectedRevision = modelRevision && modelRevision !== LEGACY_MODEL_REVISION ? modelRevision : null;
+  // Any non-legacy revision is required on /ready and /embed responses.
+  const expectedRevision =
+    modelRevision && modelRevision !== LEGACY_MODEL_REVISION ? modelRevision.trim() : null;
   const descriptor = { provider: LOCAL_E5_EMBEDDING_PROVIDER, model, dimension, modelRevision };
 
   function authHeaders(base: Record<string, string> = {}): Record<string, string> {
@@ -174,12 +203,7 @@ export function createLocalE5EmbeddingAdapter(
         `local-e5: worker model mismatch (expected ${model}).`,
       );
     }
-    if (expectedRevision && ready.revision !== expectedRevision) {
-      throw new EmbeddingProviderError(
-        "EMBEDDING_MODEL_REVISION_MISMATCH",
-        "local-e5: worker model revision mismatch.",
-      );
-    }
+    assertRevisionMatch(expectedRevision, ready.revision, "local-e5 /ready");
     if (ready.dimension !== dimension) {
       throw new EmbeddingProviderError(
         "EMBEDDING_DIMENSION_MISMATCH",
@@ -225,9 +249,10 @@ export function createLocalE5EmbeddingAdapter(
   }
 
   /** Fetch + verify /ready. Called before every embed / embedBatch operation. */
-  async function ensureWorkerReady(signal?: AbortSignal): Promise<void> {
+  async function ensureWorkerReady(signal?: AbortSignal): Promise<WorkerReadyResponse> {
     const ready = await fetchReady(signal);
     verifyReady(ready);
+    return ready;
   }
 
   async function postVectors(
@@ -320,13 +345,7 @@ export function createLocalE5EmbeddingAdapter(
             { retryable: false },
           );
         }
-        if (expectedRevision && json.revision && json.revision !== expectedRevision) {
-          throw new EmbeddingProviderError(
-            "EMBEDDING_MODEL_REVISION_MISMATCH",
-            "local-e5: worker model revision mismatch.",
-            { retryable: false },
-          );
-        }
+        assertRevisionMatch(expectedRevision, json.revision, "local-e5 embed");
         if (json.dimension !== dimension) {
           throw new EmbeddingProviderError(
             "EMBEDDING_DIMENSION_MISMATCH",
@@ -384,6 +403,9 @@ export function createLocalE5EmbeddingAdapter(
     id: LOCAL_E5_EMBEDDING_PROVIDER,
     resolveDescriptor() {
       return descriptor;
+    },
+    async probeReady(signal?: AbortSignal): Promise<WorkerReadyResponse> {
+      return ensureWorkerReady(signal);
     },
     async embed(input: EmbeddingRequest): Promise<EmbeddingResult> {
       await ensureWorkerReady(input.signal);

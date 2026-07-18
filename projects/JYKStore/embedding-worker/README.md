@@ -42,8 +42,8 @@ The JYKStore Node adapter verifies `ready`, `stub=false`, `backend`, `model`, `r
 | `E5_WORKER_ENV`        | `development`                             | `development` / `test` / `production`        |
 | `E5_WORKER_STUB`       | `false`                                   | **must be `false` in production** (startup fails) |
 | `E5_MODEL_ID`          | `dragonkue/multilingual-e5-small-ko-v2`   |                                              |
-| `E5_MODEL_REVISION`    | (empty)                                   | fixed HF commit SHA — **required in production** |
-| `E5_WORKER_TOKEN`      | (empty)                                   | internal bearer token; enforced when set     |
+| `E5_MODEL_REVISION`    | (empty)                                   | **40-char HF commit SHA** — required for all live (non-stub) runs |
+| `E5_WORKER_TOKEN`      | (empty)                                   | internal bearer token — **required in production**; constant-time compare |
 | `E5_MAX_BATCH_SIZE`    | `32`                                       | per-request text cap                         |
 | `E5_MAX_TEXT_BYTES`    | `20000`                                    | per-text byte cap                            |
 | `E5_MAX_REQUEST_BYTES` | `300000`                                   | whole-request byte cap                       |

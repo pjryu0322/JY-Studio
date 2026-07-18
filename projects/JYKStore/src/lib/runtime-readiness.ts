@@ -2,10 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
 import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
 import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
-import {
-  assertEmbeddingProviderProductionReady,
-  resolveEmbeddingProviderAdapter,
-} from "@/lib/embedding/embedding-provider-registry";
+import { assertEmbeddingProviderProductionReady } from "@/lib/embedding/embedding-provider-registry";
 import { evaluateRuntimeEnv } from "@/lib/runtime-env";
 import {
   JYKSTORE_SERVICE_NAME,
@@ -112,15 +109,64 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
       ...(readiness.warning ? { warning: readiness.warning } : {}),
     };
 
-    // L. For local-e5, the web process is only Ready when the worker is reachable,
-    // not in stub mode, and matches the configured model/revision/dimension/normalized/device.
+    // P5.1: local-e5 readiness requires pinned SHA + token + live worker probe.
     if (embeddingProviderConfig.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
-      const adapter = resolveEmbeddingProviderAdapter(embeddingProviderConfig);
-      const health = await adapter.healthCheck();
+      const { isFullCommitSha } = await import("@/lib/embedding/e5-model-revision");
+      if (!isFullCommitSha(embeddingProviderConfig.modelRevision)) {
+        throw new Error(
+          "JYKSTORE_EMBEDDING_MODEL_REVISION must be a 40-char Hugging Face commit SHA.",
+        );
+      }
+      if (!embeddingProviderConfig.workerToken) {
+        throw new Error("JYKSTORE_EMBEDDING_WORKER_TOKEN is required for local-e5 readiness.");
+      }
+
+      const { createLocalE5EmbeddingAdapter } = await import(
+        "@/lib/embedding/local-e5-embedding-adapter"
+      );
+      const adapter = createLocalE5EmbeddingAdapter({
+        workerBaseUrl: embeddingProviderConfig.workerUrl!,
+        model: embeddingProviderConfig.model,
+        dimension: embeddingProviderConfig.dimension,
+        modelRevision: embeddingProviderConfig.modelRevision!,
+        token: embeddingProviderConfig.workerToken,
+      });
+      const ready = await adapter.probeReady();
+      if (ready.revision !== embeddingProviderConfig.modelRevision) {
+        throw new Error("Worker resolved revision does not match configured revision.");
+      }
+
+      // Production Generation descriptors must match the current Worker descriptor.
+      // Skip when a custom DatabaseProbe is injected (unit tests without Prisma models).
+      if (!db) {
+        const prodGens = await prisma.searchIndexGeneration.findMany({
+          where: { scope: "PRODUCTION", status: "PROMOTED" },
+          select: {
+            id: true,
+            embeddingProvider: true,
+            embeddingModel: true,
+            embeddingModelRevision: true,
+            embeddingDimension: true,
+          },
+          take: 50,
+        });
+        for (const gen of prodGens) {
+          if (gen.embeddingProvider !== LOCAL_E5_EMBEDDING_PROVIDER) continue;
+          if (
+            gen.embeddingModel !== ready.model ||
+            gen.embeddingModelRevision !== ready.revision ||
+            gen.embeddingDimension !== ready.dimension
+          ) {
+            throw new Error(
+              `Production SearchIndexGeneration ${gen.id} descriptor does not match the live Worker.`,
+            );
+          }
+        }
+      }
+
       embeddingProvider = {
-        ok: health.ok,
+        ok: true,
         provider: embeddingProviderConfig.provider,
-        ...(health.ok ? {} : { error: health.message ?? "embedding worker not ready." }),
         ...(readiness.warning ? { warning: readiness.warning } : {}),
       };
     }
@@ -128,7 +174,11 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
     embeddingProvider = {
       ok: false,
       provider: embeddingProviderConfig.provider,
-      error: isEmbeddingProviderError(error) ? error.message : "embedding provider is not production-ready.",
+      error: isEmbeddingProviderError(error)
+        ? error.message
+        : error instanceof Error
+          ? error.message.slice(0, 240)
+          : "embedding provider is not production-ready.",
     };
   }
 

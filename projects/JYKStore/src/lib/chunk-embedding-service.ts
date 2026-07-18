@@ -302,9 +302,12 @@ export async function rebuildPackEmbeddings(input: {
   let descriptor: EmbeddingDescriptor;
   let adapter: EmbeddingProviderAdapter;
   if (generation) {
+    // P5.1: Generation descriptor is authoritative — include pinned modelRevision.
+    // Env revision must never override the Generation's stored revision.
     descriptor = {
       provider: generation.embeddingProvider,
       model: generation.embeddingModel,
+      modelRevision: generation.embeddingModelRevision,
       dimension: generation.embeddingDimension,
     };
     assertEmbeddingProviderProductionReady({ provider: descriptor.provider });

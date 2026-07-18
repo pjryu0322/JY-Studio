@@ -797,9 +797,37 @@ export async function approvePackReview(input: {
       generation.pipelineRunId !== approveSnapshot.pipelineRunId ||
       generation.normalizedDocumentId !== activeNd.id ||
       generation.fingerprint !== activeNd.fingerprint ||
+      generation.chunkCount <= 0 ||
+      generation.embeddedCount !== generation.chunkCount ||
+      generation.failedCount !== 0 ||
       (approveSnapshot.searchGenerationFingerprint != null &&
         generation.generationFingerprint !== approveSnapshot.searchGenerationFingerprint)
     ) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    // P5.1: re-verify operational descriptor + direct Snapshot↔Generation comparison.
+    const { embeddingDescriptorsEqual, validateOperationalEmbeddingDescriptor } = await import(
+      "@/lib/search-generation/search-generation-descriptor"
+    );
+    const generationDescriptor = {
+      embeddingProvider: generation.embeddingProvider,
+      embeddingModel: generation.embeddingModel,
+      embeddingModelRevision: generation.embeddingModelRevision,
+      embeddingDimension: generation.embeddingDimension,
+      distanceMetric: generation.distanceMetric,
+    };
+    if (!validateOperationalEmbeddingDescriptor(generationDescriptor).ok) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+    const snapshotDescriptor = {
+      embeddingProvider: approveSnapshot.embeddingProvider,
+      embeddingModel: approveSnapshot.embeddingModel,
+      embeddingModelRevision: approveSnapshot.embeddingModelRevision,
+      embeddingDimension: approveSnapshot.embeddingDimension,
+      distanceMetric: approveSnapshot.distanceMetric,
+    };
+    if (!embeddingDescriptorsEqual(snapshotDescriptor, generationDescriptor)) {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
     }
 

@@ -41,6 +41,7 @@ export async function applyHybridVectorRanking(input: {
       const descriptor = {
         provider: generation.embeddingProvider,
         model: generation.embeddingModel,
+        modelRevision: generation.embeddingModelRevision,
         dimension: generation.embeddingDimension,
       };
       const adapter = resolveEmbeddingProviderAdapterForDescriptor(descriptor);

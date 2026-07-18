@@ -179,6 +179,32 @@ export async function assertReviewSubmitEvidenceInTx(
     throw new ReviewSubmitEvidenceError("SEARCH_GENERATION_NOT_CURRENT", EVIDENCE_DRIFT_MESSAGE);
   }
 
+  // P5.1: fingerprint alone is not enough — compare embedding descriptor fields directly.
+  const { embeddingDescriptorsEqual, validateOperationalEmbeddingDescriptor } = await import(
+    "@/lib/search-generation/search-generation-descriptor"
+  );
+  const generationDescriptor = {
+    embeddingProvider: generation.embeddingProvider,
+    embeddingModel: generation.embeddingModel,
+    embeddingModelRevision: generation.embeddingModelRevision,
+    embeddingDimension: generation.embeddingDimension,
+    distanceMetric: generation.distanceMetric,
+  };
+  const descriptorCheck = validateOperationalEmbeddingDescriptor(generationDescriptor);
+  if (!descriptorCheck.ok) {
+    throw new ReviewSubmitEvidenceError(descriptorCheck.code, EVIDENCE_DRIFT_MESSAGE);
+  }
+  const snapshotDescriptor = {
+    embeddingProvider: snapshot.embeddingProvider,
+    embeddingModel: snapshot.embeddingModel,
+    embeddingModelRevision: snapshot.embeddingModelRevision,
+    embeddingDimension: snapshot.embeddingDimension,
+    distanceMetric: snapshot.distanceMetric,
+  };
+  if (!embeddingDescriptorsEqual(snapshotDescriptor, generationDescriptor)) {
+    throw new ReviewSubmitEvidenceError("SEARCH_GENERATION_DESCRIPTOR_DRIFT", EVIDENCE_DRIFT_MESSAGE);
+  }
+
   // §10 preparation-channel evidence — compare each snapshot entry against the current run.
   const prep = snapshot.preparationValidation ?? null;
   if (!prep) {

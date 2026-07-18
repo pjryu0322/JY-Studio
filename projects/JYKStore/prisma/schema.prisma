@@ -1001,7 +1001,8 @@ model SearchIndexGeneration {
 
   embeddingProvider    String
   embeddingModel       String
-  embeddingModelRevision String @default("legacy-unknown")
+  /** Pinned HF commit SHA. Required on INSERT (no DB default — legacy rows keep "legacy-unknown"). */
+  embeddingModelRevision String
   embeddingDimension   Int
   distanceMetric       String
 

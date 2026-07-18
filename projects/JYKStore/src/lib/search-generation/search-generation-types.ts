@@ -19,6 +19,8 @@ import {
   LEGACY_MODEL_REVISION,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "@/lib/embedding/e5-embedding-constants";
+import { assertPinnedModelRevision } from "@/lib/embedding/e5-model-revision";
+import { createLocalE5EmbeddingAdapter } from "@/lib/embedding/local-e5-embedding-adapter";
 import { assertSearchGenerationEmbeddingProvider } from "@/lib/embedding/embedding-provider-registry";
 
 /** Legacy dev/foundation descriptor (local-hash). Backfill-only / unit tests. */
@@ -57,7 +59,10 @@ export function defaultLocalEmbeddingDescriptor(): SearchGenerationEmbeddingDesc
   };
 }
 
-/** Descriptor for new Docling search generations (local E5 worker). */
+/**
+ * Static E5 defaults for unit tests only.
+ * New pipeline Generations MUST use {@link resolveSearchGenerationEmbeddingDescriptor}.
+ */
 export function defaultE5SearchGenerationDescriptor(): SearchGenerationEmbeddingDescriptor {
   return {
     embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
@@ -69,12 +74,14 @@ export function defaultE5SearchGenerationDescriptor(): SearchGenerationEmbedding
 }
 
 /**
- * Resolves the embedding descriptor stored on a new SearchIndexGeneration.
- * Blocks local-hash and OpenAI; requires local-e5 configuration.
+ * Resolve + verify the embedding descriptor stored on a new SearchIndexGeneration.
+ *
+ * Flow: env config → require pinned SHA → Worker /ready → store resolved revision.
+ * Never stores an unverified env revision string, and never falls back to legacy-unknown.
  */
-export function resolveSearchGenerationEmbeddingDescriptor(
+export async function resolveSearchGenerationEmbeddingDescriptor(
   env: NodeJS.ProcessEnv = process.env,
-): SearchGenerationEmbeddingDescriptor {
+): Promise<SearchGenerationEmbeddingDescriptor> {
   const config = readEmbeddingProviderConfig(env);
   assertSearchGenerationEmbeddingProvider(config);
   if (config.provider !== LOCAL_E5_EMBEDDING_PROVIDER) {
@@ -89,18 +96,28 @@ export function resolveSearchGenerationEmbeddingDescriptor(
       "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
     );
   }
-  const isProduction = env.NODE_ENV === "production";
-  if (isProduction && !config.modelRevision) {
-    throw new EmbeddingProviderError(
-      "EMBEDDING_PROVIDER_NOT_CONFIGURED",
-      "local-e5: 운영 환경에서는 JYKSTORE_EMBEDDING_MODEL_REVISION(고정 commit SHA)이 필요합니다.",
-    );
-  }
+
+  // New Generations always require a pinned 40-char commit SHA (any environment).
+  assertPinnedModelRevision(config.modelRevision, "JYKSTORE_EMBEDDING_MODEL_REVISION");
+
+  const adapter = createLocalE5EmbeddingAdapter({
+    workerBaseUrl: config.workerUrl,
+    model: config.model,
+    dimension: config.dimension,
+    modelRevision: config.modelRevision!,
+    token: config.workerToken ?? null,
+    batchSize: config.batchSize,
+  });
+
+  // Probe /ready — verifies stub=false, model, revision, dimension, normalized, device.
+  const ready = await adapter.probeReady();
+  assertPinnedModelRevision(ready.revision, "worker /ready revision");
+
   return {
     embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
-    embeddingModel: config.model,
-    embeddingModelRevision: config.modelRevision ?? LEGACY_MODEL_REVISION,
-    embeddingDimension: config.dimension,
+    embeddingModel: ready.model,
+    embeddingModelRevision: ready.revision,
+    embeddingDimension: ready.dimension,
     distanceMetric: E5_DISTANCE_METRIC,
   };
 }

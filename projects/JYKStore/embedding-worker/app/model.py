@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
+import re
 import threading
 from typing import TYPE_CHECKING
 
-from app.settings import settings
+from app.settings import HF_COMMIT_SHA_RE, settings
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -15,6 +17,9 @@ _model: "SentenceTransformer | None" = None
 _tokenizer = None
 _ready = False
 _device = "cpu"
+_resolved_revision: str | None = None
+
+_SHA_DIR_RE = re.compile(r"snapshots[/\\]([0-9a-f]{40})(?:[/\\]|$)")
 
 
 def estimate_token_count(text: str) -> int:
@@ -72,19 +77,62 @@ def _stub_vector(text: str) -> list[float]:
     return _l2_normalize(values)
 
 
+def _extract_sha_from_path(path: str) -> str | None:
+    match = _SHA_DIR_RE.search(path.replace("\\", "/"))
+    if match:
+        return match.group(1)
+    # Also accept a bare directory named as the SHA.
+    base = os.path.basename(path.rstrip("/\\"))
+    if HF_COMMIT_SHA_RE.match(base):
+        return base
+    return None
+
+
+def _resolve_commit_sha(repo_id: str, revision: str) -> str:
+    """Download (or reuse cache) and return the actual resolved commit SHA."""
+    from huggingface_hub import snapshot_download
+
+    snapshot_path = snapshot_download(repo_id=repo_id, revision=revision)
+    resolved = _extract_sha_from_path(str(snapshot_path))
+    if not resolved:
+        # Fallback: ask the hub for the commit info.
+        try:
+            from huggingface_hub import HfApi
+
+            info = HfApi().model_info(repo_id, revision=revision)
+            sha = getattr(info, "sha", None)
+            if isinstance(sha, str) and HF_COMMIT_SHA_RE.match(sha):
+                resolved = sha
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"unable to resolve commit SHA for {repo_id}@{revision}: {exc}"
+            ) from exc
+    if not resolved or not HF_COMMIT_SHA_RE.match(resolved):
+        raise RuntimeError(f"unable to resolve commit SHA for {repo_id}@{revision}")
+    if resolved != revision:
+        raise RuntimeError(
+            f"configured revision {revision} != resolved revision {resolved}"
+        )
+    return resolved
+
+
 def _load_model() -> None:
-    global _model, _tokenizer, _ready
+    global _model, _tokenizer, _ready, _resolved_revision
     with _lock:
         if _ready:
             return
         if settings.stub_mode:
+            _resolved_revision = "stub"
             _ready = True
             return
+
+        configured = settings.model_revision
+        resolved = _resolve_commit_sha(settings.model_id, configured)
+        _resolved_revision = resolved
+
         from sentence_transformers import SentenceTransformer
 
-        revision = settings.model_revision or None
-        _model = SentenceTransformer(settings.model_id, revision=revision, device="cpu")
-        # Tokenizer must use the same revision as the model.
+        _model = SentenceTransformer(settings.model_id, revision=resolved, device="cpu")
         _tokenizer = _model.tokenizer
         _ready = True
 
@@ -95,6 +143,14 @@ def is_ready() -> bool:
 
 def device() -> str:
     return _device
+
+
+def resolved_revision() -> str | None:
+    return _resolved_revision
+
+
+def configured_revision() -> str:
+    return settings.configured_revision
 
 
 def warmup() -> None:

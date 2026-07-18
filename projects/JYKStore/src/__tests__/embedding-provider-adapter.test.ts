@@ -8,13 +8,16 @@ import {
   assertEmbeddingProviderProductionReady,
   assertSearchGenerationEmbeddingProvider,
   resolveEmbeddingProviderAdapter,
+  resolveEmbeddingProviderAdapterForDescriptor,
 } from "@/lib/embedding/embedding-provider-registry";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
 import { DEFAULT_E5_MODEL_ID } from "@/lib/embedding/e5-embedding-constants";
+import { assertPinnedModelRevision, isFullCommitSha } from "@/lib/embedding/e5-model-revision";
 import { resolveSearchGenerationEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
 
 const MODEL = DEFAULT_E5_MODEL_ID;
-const REVISION = "rev-abc123";
+/** Valid 40-char lowercase hex commit SHA used across adapter tests. */
+const REVISION = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 // --- local-hash adapter -----------------------------------------------------
 
@@ -96,17 +99,52 @@ test("assertSearchGenerationEmbeddingProvider blocks local-hash", () => {
   );
 });
 
-test("resolveSearchGenerationEmbeddingDescriptor pins revision from env", () => {
-  const descriptor = resolveSearchGenerationEmbeddingDescriptor({
-    JYKSTORE_EMBEDDING_PROVIDER: "local-e5",
-    JYKSTORE_EMBEDDING_WORKER_URL: "http://127.0.0.1:8010",
-    JYKSTORE_EMBEDDING_MODEL: MODEL,
-    JYKSTORE_EMBEDDING_DIMENSION: "384",
-    JYKSTORE_EMBEDDING_MODEL_REVISION: REVISION,
-  });
-  assert.equal(descriptor.embeddingProvider, "local-e5");
-  assert.equal(descriptor.embeddingDimension, 384);
-  assert.equal(descriptor.embeddingModelRevision, REVISION);
+test("assertPinnedModelRevision accepts 40-char SHA and rejects legacy/branch", () => {
+  assert.equal(isFullCommitSha(REVISION), true);
+  assertPinnedModelRevision(REVISION);
+  assert.throws(
+    () => assertPinnedModelRevision("legacy-unknown"),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "EMBEDDING_MODEL_REVISION_INVALID",
+  );
+  assert.throws(
+    () => assertPinnedModelRevision("main"),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "EMBEDDING_MODEL_REVISION_INVALID",
+  );
+});
+
+test("resolveEmbeddingProviderAdapterForDescriptor requires generation revision (no env fallback)", () => {
+  assert.throws(
+    () =>
+      resolveEmbeddingProviderAdapterForDescriptor(
+        { provider: "local-e5", model: MODEL, dimension: 384 },
+        {
+          JYKSTORE_EMBEDDING_PROVIDER: "local-e5",
+          JYKSTORE_EMBEDDING_WORKER_URL: "http://worker.test",
+          JYKSTORE_EMBEDDING_MODEL_REVISION: REVISION,
+        },
+      ),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "EMBEDDING_MODEL_REVISION_INVALID",
+  );
+  assert.throws(
+    () =>
+      resolveEmbeddingProviderAdapterForDescriptor(
+        {
+          provider: "local-e5",
+          model: MODEL,
+          dimension: 384,
+          modelRevision: "legacy-unknown",
+        },
+        {
+          JYKSTORE_EMBEDDING_PROVIDER: "local-e5",
+          JYKSTORE_EMBEDDING_WORKER_URL: "http://worker.test",
+        },
+      ),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "EMBEDDING_MODEL_REVISION_INVALID",
+  );
 });
 
 test("resolveEmbeddingProviderAdapter returns local-hash by default", () => {
@@ -170,6 +208,26 @@ function routedFetch(opts: RouteOpts = {}): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
+test("resolveSearchGenerationEmbeddingDescriptor probes worker and stores resolved revision", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = routedFetch() as typeof fetch;
+  try {
+    const descriptor = await resolveSearchGenerationEmbeddingDescriptor({
+      JYKSTORE_EMBEDDING_PROVIDER: "local-e5",
+      JYKSTORE_EMBEDDING_WORKER_URL: "http://worker.test",
+      JYKSTORE_EMBEDDING_MODEL: MODEL,
+      JYKSTORE_EMBEDDING_DIMENSION: "384",
+      JYKSTORE_EMBEDDING_MODEL_REVISION: REVISION,
+      JYKSTORE_EMBEDDING_WORKER_TOKEN: "tok",
+    });
+    assert.equal(descriptor.embeddingProvider, "local-e5");
+    assert.equal(descriptor.embeddingDimension, 384);
+    assert.equal(descriptor.embeddingModelRevision, REVISION);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("local-e5 adapter: embed adds query prefix, verifies /ready, and sends auth", async () => {
   const paths: string[] = [];
   let authSeen = "";
@@ -225,7 +283,28 @@ test("local-e5 adapter: blocks on revision mismatch", async () => {
     workerBaseUrl: "http://worker.test",
     dimension: 384,
     modelRevision: REVISION,
-    fetchImpl: routedFetch({ ready: { revision: "different" } }),
+    fetchImpl: routedFetch({ ready: { revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } }),
+  });
+  await assert.rejects(
+    () => adapter.embed({ text: "q" }),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "EMBEDDING_MODEL_REVISION_MISMATCH",
+  );
+});
+
+test("local-e5 adapter: blocks when embed response omits revision", async () => {
+  const adapter = createLocalE5EmbeddingAdapter({
+    workerBaseUrl: "http://worker.test",
+    dimension: 384,
+    modelRevision: REVISION,
+    fetchImpl: routedFetch({
+      onEmbed: () =>
+        jsonResponse({
+          model: MODEL,
+          dimension: 384,
+          vectors: [Array.from({ length: 384 }, () => 0.01)],
+        }),
+    }),
   });
   await assert.rejects(
     () => adapter.embed({ text: "q" }),

@@ -57,9 +57,10 @@ function buildV3Snapshot(): DoclingBundleReviewSubmitSnapshot {
     searchIndexGenerationId: "gen-1",
     searchGenerationFingerprint: "sgf-1",
     chunkGenerationId: "gen-1",
-    embeddingProvider: "local-hash",
-    embeddingModel: "local-hash-v1",
-    embeddingDimension: 256,
+    embeddingProvider: "local-e5",
+    embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
+    embeddingModelRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    embeddingDimension: 384,
     distanceMetric: "cosine",
     retrievalEvaluationStatus: "PASS",
   });
@@ -93,8 +94,21 @@ describe("review submit snapshot version 3 (P4.1)", () => {
     assert.equal(parsed.searchIndexGenerationId, "gen-1");
     assert.equal(parsed.searchGenerationFingerprint, "sgf-1");
     assert.equal(parsed.chunkGenerationId, "gen-1");
-    assert.equal(parsed.embeddingProvider, "local-hash");
-    assert.equal(parsed.embeddingDimension, 256);
+    assert.equal(parsed.embeddingProvider, "local-e5");
+    assert.equal(parsed.embeddingDimension, 384);
+    assert.equal(parsed.embeddingModelRevision, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  });
+
+  it("rejects v3 when embeddingModelRevision is missing or legacy-unknown", () => {
+    const missing = buildV3Snapshot();
+    missing.embeddingModelRevision = null;
+    assert.equal(isReviewSubmitSnapshotV3(missing), false);
+    const legacyRev = buildV3Snapshot();
+    legacyRev.embeddingModelRevision = "legacy-unknown";
+    assert.equal(isReviewSubmitSnapshotV3(legacyRev), false);
+    const branch = buildV3Snapshot();
+    branch.embeddingModelRevision = "main";
+    assert.equal(isReviewSubmitSnapshotV3(branch), false);
   });
 
   it("still parses legacy v2 snapshots for read compatibility", () => {
@@ -106,6 +120,7 @@ describe("review submit snapshot version 3 (P4.1)", () => {
       chunkGenerationId: null,
       embeddingProvider: null,
       embeddingModel: null,
+      embeddingModelRevision: null,
       embeddingDimension: null,
       distanceMetric: null,
     };

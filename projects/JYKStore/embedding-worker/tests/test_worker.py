@@ -106,18 +106,65 @@ def test_model_mismatch_rejected(client: TestClient):
     assert res.status_code == 400
 
 
+def _restore_test_settings(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_ENV", "test")
+    monkeypatch.setenv("E5_WORKER_STUB", "true")
+    monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)
+    monkeypatch.delenv("E5_MODEL_REVISION", raising=False)
+    import app.settings as settings_module
+
+    importlib.reload(settings_module)
+
+
 def test_production_stub_startup_fails(monkeypatch):
     monkeypatch.setenv("E5_WORKER_ENV", "production")
     monkeypatch.setenv("E5_WORKER_STUB", "true")
     import app.settings as settings_module
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="E5_WORKER_STUB"):
         importlib.reload(settings_module)
 
-    # restore module state for other tests
-    monkeypatch.setenv("E5_WORKER_ENV", "test")
-    monkeypatch.setenv("E5_WORKER_STUB", "true")
-    importlib.reload(settings_module)
+    _restore_test_settings(monkeypatch)
+
+
+def test_production_token_required(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_ENV", "production")
+    monkeypatch.setenv("E5_WORKER_STUB", "false")
+    monkeypatch.setenv("E5_MODEL_REVISION", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)
+    import app.settings as settings_module
+
+    with pytest.raises(RuntimeError, match="E5_WORKER_TOKEN"):
+        importlib.reload(settings_module)
+
+    _restore_test_settings(monkeypatch)
+
+
+def test_production_invalid_revision_rejected(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_ENV", "production")
+    monkeypatch.setenv("E5_WORKER_STUB", "false")
+    monkeypatch.setenv("E5_MODEL_REVISION", "main")
+    monkeypatch.setenv("E5_WORKER_TOKEN", "tok")
+    import app.settings as settings_module
+
+    with pytest.raises(RuntimeError, match="40-char"):
+        importlib.reload(settings_module)
+
+    _restore_test_settings(monkeypatch)
+
+
+def test_production_valid_sha_and_token_accepted(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_ENV", "production")
+    monkeypatch.setenv("E5_WORKER_STUB", "false")
+    monkeypatch.setenv("E5_MODEL_REVISION", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    monkeypatch.setenv("E5_WORKER_TOKEN", "tok")
+    import app.settings as settings_module
+
+    reloaded = importlib.reload(settings_module)
+    assert reloaded.settings.token == "tok"
+    assert reloaded.settings.model_revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    _restore_test_settings(monkeypatch)
 
 
 def test_auth_required_when_token_set(monkeypatch):
