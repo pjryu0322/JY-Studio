@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
-import { splitContentToChunks } from "@/lib/chunk-pipeline-service";
+import { buildPassageEmbeddingText } from "@/lib/embedding/e5-embedding-text";
+import {
+  buildLocalE5EmbeddingProfile,
+  createWorkerPassageTokenCounter,
+  type PassageTokenCounter,
+} from "@/lib/embedding/e5-tokenize-client";
 import {
   DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
@@ -11,14 +16,19 @@ import {
   planDoclingBodyKnowledgeUnits,
   type ExclusionReasonMap,
 } from "@/lib/docling-knowledge/docling-knowledge-unit-plan";
+import {
+  evaluatePassageTokenGate,
+  passageTokenGateStatus,
+  splitBodyContentByTokens,
+  splitTableRowsByTokens,
+  type PassageTokenGateSummary,
+} from "@/lib/docling-knowledge/token-aware-chunk-split";
 import { prisma } from "@/lib/prisma";
 import { buildChunkGenerationDualWrite } from "@/lib/search-generation/search-generation-binding";
 import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 const MAX_UNIT_CHARS = 6000;
-const MAX_CHUNK_CHARS = 1800;
 const MIN_CHUNK_CHARS = 40;
-const TABLE_ROWS_PER_CHUNK = 20;
 
 export {
   DOCLING_KU_PASS_THRESHOLDS,
@@ -90,6 +100,9 @@ export type DoclingKnowledgeBuildResult = {
   };
   sampleUnits: Array<{ title: string; unitType: string; preview: string }>;
   sampleChunks: Array<{ title: string; preview: string; length: number }>;
+  tokenGate: PassageTokenGateSummary;
+  tokenGateStatus: "PASS" | "WARNING" | "FAIL";
+  embeddingProfile: ReturnType<typeof buildLocalE5EmbeddingProfile>;
 };
 
 function asSections(value: unknown): NdSection[] {
@@ -315,6 +328,9 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
   pipelineRunId: string;
   indexGenerationId?: string;
   sourceDocumentId?: string | null;
+  /** Injectable tokenizer (tests). Defaults to live Local E5 Worker. */
+  countTokens?: PassageTokenCounter;
+  embeddingProfile?: ReturnType<typeof buildLocalE5EmbeddingProfile>;
 }): Promise<DoclingKnowledgeBuildResult> {
   const warnings: string[] = [];
   const byType: Record<string, number> = {};
@@ -333,6 +349,11 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
   const indexGenerationId = input.indexGenerationId ?? randomUUID().replace(/-/g, "").slice(0, 24);
   const fingerprint = input.fingerprint;
   const sourceDocumentId = input.sourceDocumentId ?? null;
+  const embeddingProfile = input.embeddingProfile ?? buildLocalE5EmbeddingProfile();
+  const countTokens = input.countTokens ?? createWorkerPassageTokenCounter({
+    model: embeddingProfile.model,
+    modelRevision: embeddingProfile.revision || null,
+  });
 
   type UnitDraft = {
     title: string;
@@ -604,23 +625,33 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
               .split("|")
               .map((c) => c.trim()) ?? [];
 
-      const groups: string[][][] = [];
-      for (let i = 0; i < rowCells.length; i += TABLE_ROWS_PER_CHUNK) {
-        groups.push(rowCells.slice(i, i + TABLE_ROWS_PER_CHUNK));
-      }
-      if (groups.length === 0) {
-        groups.push([[]]);
-      }
-      groups.forEach((group, index) => {
-        const content = formatTableChunk(unit.title, headerCells, group);
-        if (content.trim().length < MIN_CHUNK_CHARS && group.flat().join("").length === 0) {
+      const tablePieces = await splitTableRowsByTokens({
+        caption: unit.title,
+        headers: headerCells,
+        rows: rowCells,
+        title: unit.title,
+        section: unit.section,
+        tags: unit.tags,
+        countTokens,
+        formatTableChunk,
+        targetPassageTokens: embeddingProfile.targetPassageTokens,
+        maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+        splitSourceId: unit.id,
+      });
+      if (tablePieces.length > 1) mergedCount += tablePieces.length - 1;
+      tablePieces.forEach((piece, index) => {
+        if (piece.content.trim().length < MIN_CHUNK_CHARS && rowCells.length === 0) {
           excludedCount += 1;
-          bump(exclusionReasons, "short_table_chunk", content);
+          bump(exclusionReasons, "short_table_chunk", piece.content);
           return;
         }
-        chunkChars += content.length;
+        chunkChars += piece.content.length;
         if (!unit.sourceDocumentId && !sourceDocumentId) provenanceMissing += 1;
         {
+          const chunkTitle =
+            tablePieces.length > 1
+              ? clampTitle(`${unit.title} (${index + 1})`, 120)
+              : unit.title;
           const dual = buildChunkGenerationDualWrite(indexGenerationId, {
             ...unitMeta,
             generatedBy: "docling-knowledge-pipeline",
@@ -629,17 +660,26 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
             indexScope: "DRAFT",
             indexStatus: "BUILDING",
             pipelineRunId: input.pipelineRunId,
-            tableRowOffset: index * TABLE_ROWS_PER_CHUNK,
+            splitSourceId: piece.splitSourceId ?? unit.id,
+            splitIndex: piece.splitIndex,
+            splitCount: piece.splitCount,
+            overlapTokens: piece.overlapTokens,
+            embeddingProvider: embeddingProfile.provider,
+            embeddingModel: embeddingProfile.model,
+            embeddingModelRevision: embeddingProfile.revision,
+            embeddingDimension: embeddingProfile.dimension,
+            distanceMetric: embeddingProfile.distanceMetric,
+            tokenCount: piece.tokenCount,
+            targetPassageTokens: embeddingProfile.targetPassageTokens,
+            maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+            tokenizerValidatedAt: new Date().toISOString(),
           });
           chunkCreates.push({
             versionId: input.versionId,
             sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
             chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-            title:
-              groups.length > 1
-                ? clampTitle(`${unit.title} (${index + 1})`, 120)
-                : unit.title,
-            content,
+            title: chunkTitle,
+            content: piece.content,
             section: unit.section,
             tags: unit.tags,
             sortOrder: chunkCreates.length,
@@ -652,25 +692,35 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       continue;
     }
 
-    const parts = splitContentToChunks(unit.content, MAX_CHUNK_CHARS);
-    if (parts.length > 1) mergedCount += parts.length - 1;
     const unitStart =
       typeof unitMeta.sourceTextStart === "number" ? unitMeta.sourceTextStart : 0;
-    let cursor = 0;
-    parts.forEach((part, index) => {
-      if (part.trim().length < MIN_CHUNK_CHARS) {
+    const bodyPieces = await splitBodyContentByTokens({
+      content: unit.content,
+      title: unit.title,
+      section: unit.section,
+      tags: unit.tags,
+      countTokens,
+      targetPassageTokens: embeddingProfile.targetPassageTokens,
+      maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+      overlapTokens: embeddingProfile.overlapTokens,
+      splitSourceId: unit.id,
+      sourceTextStart: unitStart,
+    });
+    if (bodyPieces.length > 1) mergedCount += bodyPieces.length - 1;
+    bodyPieces.forEach((piece, index) => {
+      if (piece.content.trim().length < MIN_CHUNK_CHARS) {
         excludedCount += 1;
-        excludedChars += part.length;
-        bump(exclusionReasons, "short_chunk", part);
-        cursor += part.length;
+        excludedChars += piece.content.length;
+        bump(exclusionReasons, "short_chunk", piece.content);
         return;
       }
-      chunkChars += part.length;
+      chunkChars += piece.content.length;
       if (!unit.sourceDocumentId && !sourceDocumentId) provenanceMissing += 1;
-      const startOffset = unitStart + cursor;
-      const endOffset = startOffset + part.length;
-      cursor += part.length;
       {
+        const chunkTitle =
+          bodyPieces.length > 1
+            ? clampTitle(`${unit.title} (${index + 1})`, 120)
+            : unit.title;
         const dual = buildChunkGenerationDualWrite(indexGenerationId, {
           ...unitMeta,
           generatedBy: "docling-knowledge-pipeline",
@@ -679,18 +729,28 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           indexScope: "DRAFT",
           indexStatus: "BUILDING",
           pipelineRunId: input.pipelineRunId,
-          sourceTextStart: startOffset,
-          sourceTextEnd: endOffset,
+          sourceTextStart: piece.sourceTextStart ?? unitStart,
+          sourceTextEnd: piece.sourceTextEnd ?? unitStart + piece.content.length,
+          splitSourceId: piece.splitSourceId ?? unit.id,
+          splitIndex: piece.splitIndex,
+          splitCount: piece.splitCount,
+          overlapTokens: piece.overlapTokens,
+          embeddingProvider: embeddingProfile.provider,
+          embeddingModel: embeddingProfile.model,
+          embeddingModelRevision: embeddingProfile.revision,
+          embeddingDimension: embeddingProfile.dimension,
+          distanceMetric: embeddingProfile.distanceMetric,
+          tokenCount: piece.tokenCount,
+          targetPassageTokens: embeddingProfile.targetPassageTokens,
+          maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+          tokenizerValidatedAt: new Date().toISOString(),
         });
         chunkCreates.push({
           versionId: input.versionId,
           sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
           chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-          title:
-            parts.length > 1
-              ? clampTitle(`${unit.title} (${index + 1})`, 120)
-              : unit.title,
-          content: part,
+          title: chunkTitle,
+          content: piece.content,
           section: unit.section,
           tags: unit.tags,
           sortOrder: chunkCreates.length,
@@ -702,7 +762,101 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     });
   }
 
-  if (chunkCreates.length > 0) {
+  // Re-validate every final passage with the real tokenizer before createMany.
+  // Use the final stored title (including " (n)" suffixes) so gate matches embed input.
+  let passages = chunkCreates.map((c) =>
+    buildPassageEmbeddingText({
+      title: String(c.title),
+      section: typeof c.section === "string" ? c.section : null,
+      tags: Array.isArray(c.tags) ? (c.tags as string[]) : [],
+      content: String(c.content),
+    }),
+  );
+
+  // If multi-part title suffixes pushed any passage over target, shrink content to fit.
+  {
+    const recount = await countTokens(passages);
+    for (let i = 0; i < chunkCreates.length; i++) {
+      const n = recount[i] ?? 0;
+      if (n <= embeddingProfile.targetPassageTokens) continue;
+      const created = chunkCreates[i]!;
+      const meta = {
+        title: String(created.title),
+        section: typeof created.section === "string" ? created.section : null,
+        tags: Array.isArray(created.tags) ? (created.tags as string[]) : [],
+      };
+      const shrunk = await splitBodyContentByTokens({
+        content: String(created.content),
+        title: meta.title,
+        section: meta.section,
+        tags: meta.tags,
+        countTokens,
+        targetPassageTokens: embeddingProfile.targetPassageTokens,
+        maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+        overlapTokens: 0,
+        splitSourceId: String((created.metadata as Record<string, unknown> | undefined)?.knowledgeUnitId ?? ""),
+      });
+      if (shrunk[0]?.content) {
+        created.content = shrunk[0].content;
+        const md =
+          created.metadata && typeof created.metadata === "object"
+            ? { ...(created.metadata as Record<string, unknown>) }
+            : {};
+        md.tokenCount = shrunk[0].tokenCount;
+        created.metadata = md as Prisma.InputJsonValue;
+      }
+    }
+    passages = chunkCreates.map((c) =>
+      buildPassageEmbeddingText({
+        title: String(c.title),
+        section: typeof c.section === "string" ? c.section : null,
+        tags: Array.isArray(c.tags) ? (c.tags as string[]) : [],
+        content: String(c.content),
+      }),
+    );
+  }
+  let tokenGate: PassageTokenGateSummary;
+  try {
+    tokenGate = await evaluatePassageTokenGate({
+      passages,
+      countTokens,
+      targetPassageTokens: embeddingProfile.targetPassageTokens,
+      maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+      model: embeddingProfile.model,
+      revision: embeddingProfile.revision,
+    });
+  } catch (error) {
+    tokenGate = {
+      totalChunks: passages.length,
+      validatedChunks: 0,
+      maxTokenCount: 0,
+      averageTokenCount: 0,
+      withinTargetCount: 0,
+      targetExceededCount: 0,
+      hardLimitExceededCount: passages.length,
+      targetPassageTokens: embeddingProfile.targetPassageTokens,
+      maxSequenceTokens: embeddingProfile.maxSequenceTokens,
+      model: embeddingProfile.model,
+      revision: embeddingProfile.revision,
+    };
+    warnings.push(
+      error instanceof Error
+        ? `토큰 검증 실패: ${error.message.slice(0, 160)}`
+        : "토큰 검증 실패",
+    );
+  }
+  const tokenStatus = passageTokenGateStatus(tokenGate);
+  if (tokenStatus === "FAIL") {
+    warnings.push(
+      `검색 단위 토큰 한도 초과: max=${tokenGate.maxTokenCount}/${tokenGate.maxSequenceTokens}, hardExceeded=${tokenGate.hardLimitExceededCount}`,
+    );
+  } else if (tokenStatus === "WARNING") {
+    warnings.push(
+      `일부 검색 단위가 목표(${tokenGate.targetPassageTokens})를 초과했습니다 (max=${tokenGate.maxTokenCount}).`,
+    );
+  }
+
+  if (tokenStatus !== "FAIL" && chunkCreates.length > 0) {
     await prisma.knowledgeChunk.createMany({ data: chunkCreates });
   }
 
@@ -739,14 +893,16 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     criticalExcludedChars: criticalExcludedBodyChars,
   });
 
+  const effectiveChunkCount = tokenStatus === "FAIL" ? 0 : chunkCreates.length;
+
   return {
     unitCount: generationUnits.length,
-    chunkCount: chunkCreates.length,
+    chunkCount: effectiveChunkCount,
     excludedCount,
     mergedCount,
     shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
     shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
-    stepStatus,
+    stepStatus: tokenStatus === "FAIL" ? "FAIL" : stepStatus,
     warnings,
     byType,
     indexGenerationId,
@@ -778,6 +934,9 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       preview: clampTitle(String(c.content), 160),
       length: String(c.content).length,
     })),
+    tokenGate,
+    tokenGateStatus: tokenStatus,
+    embeddingProfile,
   };
 }
 

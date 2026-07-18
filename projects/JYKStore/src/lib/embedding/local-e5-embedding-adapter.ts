@@ -16,6 +16,7 @@ import {
   DEFAULT_E5_MODEL_ID,
   E5_DEVICE,
   E5_LIVE_BACKEND,
+  E5_MAX_SEQUENCE_TOKENS,
   LEGACY_MODEL_REVISION,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "@/lib/embedding/e5-embedding-constants";
@@ -64,6 +65,7 @@ export type WorkerReadyResponse = {
   maxSequenceTokens: number;
   normalized: boolean;
   device: string;
+  maxBatchSize?: number;
 };
 
 /** Extended adapter surface for Generation creation (probe /ready before INSERT). */
@@ -175,6 +177,8 @@ export function createLocalE5EmbeddingAdapter(
   const expectedRevision =
     modelRevision && modelRevision !== LEGACY_MODEL_REVISION ? modelRevision.trim() : null;
   const descriptor = { provider: LOCAL_E5_EMBEDDING_PROVIDER, model, dimension, modelRevision };
+  /** Effective batch size — capped by worker /ready.maxBatchSize when known. */
+  let effectiveBatchSize = batchSize;
 
   function authHeaders(base: Record<string, string> = {}): Record<string, string> {
     return token ? { ...base, Authorization: `Bearer ${token}` } : base;
@@ -221,6 +225,9 @@ export function createLocalE5EmbeddingAdapter(
         "EMBEDDING_WORKER_NOT_READY",
         `local-e5: unexpected worker device "${ready.device}".`,
       );
+    }
+    if (typeof ready.maxBatchSize === "number" && ready.maxBatchSize >= 1) {
+      effectiveBatchSize = Math.max(1, Math.min(batchSize, ready.maxBatchSize));
     }
   }
 
@@ -318,13 +325,17 @@ export function createLocalE5EmbeddingAdapter(
           if (detail?.code === "EMBEDDING_TOKEN_LIMIT_EXCEEDED") {
             throw new EmbeddingProviderError(
               "EMBEDDING_TOKEN_LIMIT_EXCEEDED",
-              `local-e5: input[${detail.index}] exceeds ${detail.maxSequenceTokens} tokens (${detail.tokenCount}).`,
+              `local-e5: input[${detail.index ?? 0}] exceeds ${detail.maxSequenceTokens ?? E5_MAX_SEQUENCE_TOKENS} tokens (${detail.tokenCount ?? "?"}).`,
               { retryable: false },
             );
           }
+          const reason =
+            typeof detail?.message === "string" && detail.message.trim()
+              ? detail.message.trim().slice(0, 160)
+              : "worker rejected the request (400).";
           throw new EmbeddingProviderError(
             "EMBEDDING_PROVIDER_REQUEST_FAILED",
-            "local-e5: worker rejected the request (400).",
+            `local-e5: ${reason}`,
             { retryable: false },
           );
         }
@@ -386,12 +397,33 @@ export function createLocalE5EmbeddingAdapter(
 
   async function extractErrorDetail(
     response: Response,
-  ): Promise<{ code?: string; index?: number; tokenCount?: number; maxSequenceTokens?: number } | null> {
+  ): Promise<{
+    code?: string;
+    index?: number;
+    tokenCount?: number;
+    maxSequenceTokens?: number;
+    message?: string;
+  } | null> {
     try {
       const body = (await response.json()) as { detail?: unknown };
       const detail = body?.detail;
-      if (detail && typeof detail === "object") {
-        return detail as { code?: string; index?: number; tokenCount?: number; maxSequenceTokens?: number };
+      if (typeof detail === "string") {
+        return { message: detail };
+      }
+      if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+        const obj = detail as Record<string, unknown>;
+        return {
+          code: typeof obj.code === "string" ? obj.code : undefined,
+          index: typeof obj.index === "number" ? obj.index : undefined,
+          tokenCount: typeof obj.tokenCount === "number" ? obj.tokenCount : undefined,
+          maxSequenceTokens:
+            typeof obj.maxSequenceTokens === "number" ? obj.maxSequenceTokens : undefined,
+          message: typeof obj.message === "string" ? obj.message : undefined,
+        };
+      }
+      if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0] as { msg?: string; message?: string };
+        return { message: first.msg ?? first.message ?? "validation error" };
       }
     } catch {
       // ignore parse failures — treat as a generic 400.
@@ -435,8 +467,8 @@ export function createLocalE5EmbeddingAdapter(
       await ensureWorkerReady(input.signal);
 
       const vectors: number[][] = [];
-      for (let offset = 0; offset < input.texts.length; offset += batchSize) {
-        const slice = input.texts.slice(offset, offset + batchSize);
+      for (let offset = 0; offset < input.texts.length; offset += effectiveBatchSize) {
+        const slice = input.texts.slice(offset, offset + effectiveBatchSize);
         const result = await postVectors(
           "/embed/passages",
           { model, texts: slice, normalize: true },

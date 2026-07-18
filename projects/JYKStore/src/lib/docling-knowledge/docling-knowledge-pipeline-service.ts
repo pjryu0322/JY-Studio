@@ -1120,12 +1120,31 @@ export async function executeDoclingKnowledgePipeline(input: {
       input.runId,
       "CHUNKING",
       "FAIL",
-      "검색용 Chunk를 생성하지 못했습니다. 지식 단위 내용을 확인한 뒤 다시 생성해 주세요.",
-      { chunkCount: 0, code: "CHUNK_GENERATION_FAILED" },
+      built.tokenGateStatus === "FAIL"
+        ? "일부 검색 단위를 안전한 크기로 분할하지 못했습니다."
+        : "검색용 Chunk를 생성하지 못했습니다. 지식 단위 내용을 확인한 뒤 다시 생성해 주세요.",
+      {
+        chunkCount: 0,
+        code:
+          built.tokenGateStatus === "FAIL"
+            ? "PASSAGE_TOKEN_LIMIT_EXCEEDED"
+            : "CHUNK_GENERATION_FAILED",
+        tokenGate: built.tokenGate,
+        tokenGateStatus: built.tokenGateStatus,
+        embeddingProfile: built.embeddingProfile,
+        maxTokenCount: built.tokenGate.maxTokenCount,
+        hardLimitExceededCount: built.tokenGate.hardLimitExceededCount,
+      },
       lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(input.packId, input.runId, "Chunk generation failed", binding, "CHUNK_GENERATION_FAILED");
+    await failRun(
+      input.packId,
+      input.runId,
+      built.tokenGateStatus === "FAIL" ? "Passage token gate failed" : "Chunk generation failed",
+      binding,
+      built.tokenGateStatus === "FAIL" ? "PASSAGE_TOKEN_LIMIT_EXCEEDED" : "CHUNK_GENERATION_FAILED",
+    );
     return;
   }
 
@@ -1142,12 +1161,18 @@ export async function executeDoclingKnowledgePipeline(input: {
     lengths.length > 0
       ? Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length)
       : 0;
+  const chunkStepStatus =
+    built.tokenGateStatus === "WARNING" || built.coverage.provenanceMissing > 0
+      ? "WARNING"
+      : "PASS";
   await markStep(
     input.packId,
     input.runId,
     "CHUNKING",
-    built.coverage.provenanceMissing > 0 ? "WARNING" : "PASS",
-    `검색 Chunk ${built.chunkCount}개를 생성했습니다.`,
+    chunkStepStatus,
+    built.tokenGateStatus === "WARNING"
+      ? `검색 Chunk ${built.chunkCount}개를 생성했습니다. 일부 단위가 목표 토큰을 초과합니다.`
+      : `검색 Chunk ${built.chunkCount}개를 생성했습니다.`,
     {
       chunkCount: built.chunkCount,
       averageLength: avg,
@@ -1159,9 +1184,28 @@ export async function executeDoclingKnowledgePipeline(input: {
       sampleChunks: built.sampleChunks,
       coverage: built.coverage,
       indexStatus: "BUILDING",
+      tokenGate: built.tokenGate,
+      tokenGateStatus: built.tokenGateStatus,
+      embeddingProfile: built.embeddingProfile,
+      maxTokenCount: built.tokenGate.maxTokenCount,
+      withinTargetCount: built.tokenGate.withinTargetCount,
+      targetExceededCount: built.tokenGate.targetExceededCount,
+      hardLimitExceededCount: built.tokenGate.hardLimitExceededCount,
     },
     lockOwner,
   );
+
+  // Publish chunkCount so search-data worker may claim after structure PASS.
+  // Knowledge pipeline INDEXING still embeds; worker requires chunkCount > 0.
+  await prisma.searchIndexGeneration.updateMany({
+    where: { id: indexGenerationId, status: { in: ["PENDING", "EMBEDDING"] } },
+    data: { chunkCount: built.chunkCount },
+  });
+
+  if (built.tokenGateStatus === "WARNING" || built.tokenGateStatus === "FAIL") {
+    // Token Gate must be PASS before search validation unlock / embedding claim.
+    // WARNING keeps structure incomplete (chunk step not PASS).
+  }
 
   if (!(await heartbeat("검색 인덱스 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");

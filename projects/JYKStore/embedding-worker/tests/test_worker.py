@@ -39,6 +39,7 @@ def test_ready_schema_reports_stub(client: TestClient):
     assert data["device"] == "cpu"
     assert data["modelSource"] == "stub"
     assert data["offline"] is False
+    assert data["maxBatchSize"] >= 1
 
 
 def test_korean_query_embedding(client: TestClient):
@@ -215,6 +216,92 @@ def test_auth_required_when_token_set(monkeypatch):
         assert bad.status_code == 401
 
         ok = authed.get("/ready", headers={"Authorization": "Bearer secret-token"})
+        assert ok.status_code == 200
+
+    monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)
+    importlib.reload(settings_module)
+    importlib.reload(main_module)
+
+
+def test_tokenize_passages_counts_and_order(client: TestClient):
+    texts = ["passage: 짧은 본문", "passage: " + ("가" * 40), "passage: hello world"]
+    res = client.post("/tokenize/passages", json={"model": MODEL, "texts": texts})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["model"] == MODEL
+    assert data["maxSequenceTokens"] == 512
+    assert len(data["items"]) == 3
+    for i, item in enumerate(data["items"]):
+        assert item["index"] == i
+        assert isinstance(item["tokenCount"], int)
+        assert item["tokenCount"] >= 1
+        assert item["withinLimit"] is True
+
+
+def test_tokenize_query_requires_prefix(client: TestClient):
+    res = client.post("/tokenize/query", json={"model": MODEL, "texts": ["no prefix"]})
+    assert res.status_code == 400
+
+
+def test_tokenize_passages_over_limit(client: TestClient):
+    huge = "passage: " + ("가" * 3000)
+    res = client.post("/tokenize/passages", json={"model": MODEL, "texts": [huge]})
+    assert res.status_code == 200
+    item = res.json()["items"][0]
+    assert item["withinLimit"] is False
+    assert item["tokenCount"] > 512
+    assert "가가가" not in str(res.json())
+
+
+def test_tokenize_matches_embed_token_limit_decision(client: TestClient):
+    huge = "passage: " + ("가" * 3000)
+    tok = client.post("/tokenize/passages", json={"model": MODEL, "texts": [huge]})
+    emb = client.post("/embed/passages", json={"model": MODEL, "texts": [huge], "normalize": True})
+    assert tok.status_code == 200
+    assert tok.json()["items"][0]["withinLimit"] is False
+    assert emb.status_code == 400
+    assert emb.json()["detail"]["code"] == "EMBEDDING_TOKEN_LIMIT_EXCEEDED"
+
+
+def test_tokenize_model_mismatch(client: TestClient):
+    res = client.post(
+        "/tokenize/passages",
+        json={"model": "other/model", "texts": ["passage: a"]},
+    )
+    assert res.status_code == 400
+
+
+def test_tokenize_empty_rejected(client: TestClient):
+    res = client.post("/tokenize/passages", json={"model": MODEL, "texts": ["passage:   "]})
+    assert res.status_code == 400
+
+
+def test_tokenize_batch_over_limit_rejected(client: TestClient):
+    texts = [f"passage: {i}" for i in range(33)]
+    res = client.post("/tokenize/passages", json={"model": MODEL, "texts": texts})
+    assert res.status_code == 400
+
+
+def test_tokenize_auth_required_when_token_set(monkeypatch):
+    monkeypatch.setenv("E5_WORKER_TOKEN", "secret-token")
+    import app.settings as settings_module
+    import app.main as main_module
+
+    importlib.reload(settings_module)
+    importlib.reload(main_module)
+    embed = importlib.import_module("app.model")
+    embed.warmup()
+
+    with TestClient(main_module.app) as authed:
+        missing = authed.post(
+            "/tokenize/passages", json={"model": MODEL, "texts": ["passage: a"]}
+        )
+        assert missing.status_code == 401
+        ok = authed.post(
+            "/tokenize/passages",
+            json={"model": MODEL, "texts": ["passage: a"]},
+            headers={"Authorization": "Bearer secret-token"},
+        )
         assert ok.status_code == 200
 
     monkeypatch.delenv("E5_WORKER_TOKEN", raising=False)

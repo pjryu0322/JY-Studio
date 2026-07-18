@@ -111,7 +111,14 @@ function friendlyDetails(stageId: string, details: Record<string, unknown> | nul
       }
     }
   } else if (stageId === "RETRIEVAL_CHUNK") {
-    push("Chunk 수", details.chunkCount);
+    push("검색 단위", details.chunkCount ?? details.retrievalChunkCount);
+    push("최대 토큰", details.maxTokenCount);
+    push("목표 토큰", (details.tokenGate as { targetPassageTokens?: number } | undefined)?.targetPassageTokens);
+    push("한도 토큰", (details.tokenGate as { maxSequenceTokens?: number } | undefined)?.maxSequenceTokens ?? 512);
+    push("초과 단위", details.hardLimitExceededCount ?? (details.tokenGate as { hardLimitExceededCount?: number } | undefined)?.hardLimitExceededCount);
+    push("목표 초과", details.targetExceededCount ?? (details.tokenGate as { targetExceededCount?: number } | undefined)?.targetExceededCount);
+    const profile = details.embeddingProfile as { model?: string; revision?: string } | undefined;
+    push("모델", profile?.model);
     push("평균 길이", details.averageLength);
     push("최소 길이", details.minLength);
     push("최대 길이", details.maxLength);

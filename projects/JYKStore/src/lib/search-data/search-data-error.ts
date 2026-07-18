@@ -96,10 +96,16 @@ const BY_CODE: Record<string, SearchDataFailureGuidance> = {
   },
   EMBEDDING_TOKEN_LIMIT_EXCEEDED: {
     message:
-      "일부 검색 단위가 모델 입력 제한을 초과했습니다. 데이터 구조화를 확인해 주세요.",
+      "일부 검색 단위가 모델 입력 한도를 초과했습니다. 데이터 구조화를 다시 실행해 주세요.",
     retryable: false,
     supportRequired: false,
     preferStructure: true,
+  },
+  INCOMPLETE: {
+    message:
+      "일부 검색데이터가 저장되지 않았습니다. 검색데이터를 다시 생성해 주세요.",
+    retryable: true,
+    supportRequired: false,
   },
   VECTOR_COUNT_MISMATCH: {
     message:

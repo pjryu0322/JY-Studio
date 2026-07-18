@@ -9,7 +9,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from app import model as embed_model
-from app.schemas import EmbedRequest, EmbedResponse, ReadyResponse
+from app.schemas import (
+    EmbedRequest,
+    EmbedResponse,
+    ReadyResponse,
+    TokenizeItem,
+    TokenizeRequest,
+    TokenizeResponse,
+)
 from app.settings import settings
 
 
@@ -98,6 +105,7 @@ def ready() -> ReadyResponse:
         device=embed_model.device(),
         modelSource=embed_model.model_source(),
         offline=embed_model.offline_mode(),
+        maxBatchSize=settings.max_batch_size,
     )
 
 
@@ -167,3 +175,68 @@ async def embed_query(request: Request, body: EmbedRequest) -> EmbedResponse:
 @app.post("/embed/passages", response_model=EmbedResponse, dependencies=[Depends(require_auth)])
 async def embed_passages(request: Request, body: EmbedRequest) -> EmbedResponse:
     return await _embed("passage", request, body)
+
+
+def _tokenize(kind: str, body: TokenizeRequest) -> TokenizeResponse:
+    """Count tokens with the same tokenizer used by /embed/* (truncation=false)."""
+    if body.model != settings.model_id:
+        raise HTTPException(status_code=400, detail="model mismatch")
+    if len(body.texts) < 1 or len(body.texts) > settings.max_batch_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"texts count must be between 1 and {settings.max_batch_size}",
+        )
+    if not embed_model.is_ready():
+        raise HTTPException(status_code=503, detail="model not ready")
+
+    items: list[TokenizeItem] = []
+    for index, text in enumerate(body.texts):
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail=f"input[{index}] empty text")
+        if len(text.encode("utf-8")) > settings.max_text_bytes:
+            raise HTTPException(status_code=400, detail=f"input[{index}] text too large")
+        try:
+            if kind == "query":
+                embed_model.assert_query_prefix(text)
+                body_after_prefix = text.strip()[len("query:") :].strip()
+            else:
+                embed_model.assert_passage_prefix(text)
+                body_after_prefix = text.strip()[len("passage:") :].strip()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not body_after_prefix:
+            raise HTTPException(status_code=400, detail=f"input[{index}] empty text")
+        token_count = embed_model.count_tokens(text)
+        items.append(
+            TokenizeItem(
+                index=index,
+                tokenCount=token_count,
+                withinLimit=token_count <= settings.max_sequence_tokens,
+            )
+        )
+
+    revision = embed_model.resolved_revision() or settings.configured_revision
+    return TokenizeResponse(
+        model=settings.model_id,
+        revision=revision,
+        maxSequenceTokens=settings.max_sequence_tokens,
+        items=items,
+    )
+
+
+@app.post(
+    "/tokenize/query",
+    response_model=TokenizeResponse,
+    dependencies=[Depends(require_auth)],
+)
+def tokenize_query(body: TokenizeRequest) -> TokenizeResponse:
+    return _tokenize("query", body)
+
+
+@app.post(
+    "/tokenize/passages",
+    response_model=TokenizeResponse,
+    dependencies=[Depends(require_auth)],
+)
+def tokenize_passages(body: TokenizeRequest) -> TokenizeResponse:
+    return _tokenize("passage", body)

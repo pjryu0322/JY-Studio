@@ -89,6 +89,16 @@ export function isStructureStagesPassed(input: StructurePassInput): boolean {
   const chunkCount = chunkCountFromStep(chunk);
   if (chunk.details && "chunkCount" in chunk.details && chunkCount < 1) return false;
 
+  // Token Gate FAIL must not unlock structure completion / search validation.
+  if (
+    chunk.details &&
+    (chunk.details.tokenGateStatus === "FAIL" ||
+      (typeof chunk.details.hardLimitExceededCount === "number" &&
+        chunk.details.hardLimitExceededCount > 0))
+  ) {
+    return false;
+  }
+
   return true;
 }
 

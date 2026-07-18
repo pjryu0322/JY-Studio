@@ -189,7 +189,7 @@ export function resolveProviderRegistrationReadiness(
       reason: !input.sourceMaterialsReady
         ? "자료 등록 확인을 완료해 주세요."
         : !input.structurePassed
-          ? "Retrieval Chunk 생성이 완료되지 않았습니다."
+          ? "데이터 구조화를 완료하면 검색데이터를 생성할 수 있습니다."
           : !input.pipelineCurrent
             ? "등록 자료가 변경되어 구조화 결과를 다시 생성해야 합니다."
             : null,

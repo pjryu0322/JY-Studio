@@ -750,6 +750,7 @@ export async function claimNextSearchDataGeneration(): Promise<ClaimedSearchData
       WHERE j."status" = 'PENDING'::"SearchIndexGenerationStatus"
         AND j."scope" = 'DRAFT'::"SearchIndexGenerationScope"
         AND j."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
+        AND j."chunkCount" > 0
       ORDER BY j."createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -790,11 +791,24 @@ export async function processSearchDataGenerationJob(
 
   const structureOk = await isDoclingStructurePassed(claimed.packId);
   if (!structureOk) {
-    await markSearchGenerationFailed(claimed.id, {
-      failureCode: "SEARCH_DATA_BINDING_STALE",
-      failureMessage: "structure not passed",
-      expectedAttempt: claimed.attempt,
-    }).catch(() => undefined);
+    // Structure still running or incomplete — release claim; do not fail the generation.
+    await prisma.searchIndexGeneration.updateMany({
+      where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
+      data: { status: "PENDING", startedAt: null },
+    });
+    return;
+  }
+
+  const pipelineRun = await prisma.pipelineRun.findUnique({
+    where: { id: claimed.pipelineRunId },
+    select: { status: true },
+  });
+  if (pipelineRun && (pipelineRun.status === "RUNNING" || pipelineRun.status === "PENDING")) {
+    // Knowledge pipeline still owns INDEXING — avoid racing the search-data worker.
+    await prisma.searchIndexGeneration.updateMany({
+      where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
+      data: { status: "PENDING", startedAt: null },
+    });
     return;
   }
 

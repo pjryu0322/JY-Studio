@@ -9,7 +9,7 @@ import {
 } from "@/lib/embedding-dto";
 import type { EmbeddingDescriptor, EmbeddingProviderAdapter } from "@/lib/embedding/embedding-provider-adapter";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
-import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import { EmbeddingProviderError, isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
 import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
 import {
   buildPassageEmbeddingText,
@@ -356,10 +356,10 @@ export async function rebuildPackEmbeddings(input: {
   if (descriptor.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
     const health = await adapter.healthCheck();
     if (!health.ok) {
-      throw new PayloadServiceError(
-        "INCOMPLETE",
+      throw new EmbeddingProviderError(
+        "EMBEDDING_WORKER_NOT_READY",
         health.message ?? "local-e5 Embedding Worker가 준비되지 않았습니다.",
-        502,
+        { retryable: true },
       );
     }
     for (const chunk of filtered) {
@@ -381,13 +381,10 @@ export async function rebuildPackEmbeddings(input: {
         texts: toEmbed.map((item) => buildEmbeddingText(item.chunk, descriptor.provider)),
       });
     } catch (error) {
-      // Token-limit is a content problem — propagate the typed error so the pipeline can
-      // mark the generation FAILED with EMBEDDING_TOKEN_LIMIT_EXCEEDED (not a transient 502).
-      if (isEmbeddingProviderError(error) && error.code === "EMBEDDING_TOKEN_LIMIT_EXCEEDED") {
-        throw error;
-      }
+      // Preserve typed embedding errors (token limit, model mismatch, worker readiness, …).
+      // INCOMPLETE is reserved for vector-count mismatch only.
       if (isEmbeddingProviderError(error)) {
-        throw new PayloadServiceError("INCOMPLETE", error.message, 502);
+        throw error;
       }
       throw error;
     }
