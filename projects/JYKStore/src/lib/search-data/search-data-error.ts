@@ -13,6 +13,10 @@ export type SearchDataFailureGuidance = {
 
 const ADMIN =
   "검색 모델을 사용할 수 없습니다. 관리자에게 문의 바랍니다.";
+const CONFIG_MISMATCH =
+  "검색 모델 설정이 일치하지 않습니다. 관리자에게 문의 바랍니다.";
+const WORKER_TRANSIENT =
+  "검색 모델이 일시적으로 응답하지 않습니다. 잠시 후 검색데이터를 다시 생성해 주세요.";
 const RUNTIME =
   "검색 저장소를 사용할 수 없습니다. 관리자에게 문의 바랍니다.";
 const TRANSIENT =
@@ -40,13 +44,53 @@ const BY_CODE: Record<string, SearchDataFailureGuidance> = {
     retryable: false,
     supportRequired: true,
   },
+  EMBEDDING_WORKER_NOT_READY: {
+    message: WORKER_TRANSIENT,
+    retryable: true,
+    supportRequired: false,
+  },
+  EMBEDDING_PROVIDER_TIMEOUT: {
+    message: WORKER_TRANSIENT,
+    retryable: true,
+    supportRequired: false,
+  },
+  EMBEDDING_PROVIDER_RATE_LIMITED: {
+    message: WORKER_TRANSIENT,
+    retryable: true,
+    supportRequired: false,
+  },
+  EMBEDDING_WORKER_STUB_ACTIVE: {
+    message: CONFIG_MISMATCH,
+    retryable: false,
+    supportRequired: true,
+  },
+  EMBEDDING_MODEL_MISMATCH: {
+    message: CONFIG_MISMATCH,
+    retryable: false,
+    supportRequired: true,
+  },
   EMBEDDING_MODEL_REVISION_MISMATCH: {
-    message: ADMIN,
+    message: CONFIG_MISMATCH,
+    retryable: false,
+    supportRequired: true,
+  },
+  EMBEDDING_DIMENSION_MISMATCH: {
+    message: CONFIG_MISMATCH,
+    retryable: false,
+    supportRequired: true,
+  },
+  EMBEDDING_NORMALIZATION_MISMATCH: {
+    message: CONFIG_MISMATCH,
     retryable: false,
     supportRequired: true,
   },
   EMBEDDING_CONFIG_INVALID: {
-    message: ADMIN,
+    message: CONFIG_MISMATCH,
+    retryable: false,
+    supportRequired: true,
+  },
+  EMBEDDING_MODEL_REVISION_INVALID: {
+    message: CONFIG_MISMATCH,
     retryable: false,
     supportRequired: true,
   },

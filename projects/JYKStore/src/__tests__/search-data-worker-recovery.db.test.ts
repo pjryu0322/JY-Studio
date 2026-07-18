@@ -214,12 +214,79 @@ describe("search-data worker recovery (skipped without DATABASE_URL)", { skip: !
         recovered = await recoverOneStaleSearchDataGeneration(60);
       }
       assert.ok(recovered && recovered.id === seeded.genId, "expected our generation to be recovered");
+      assert.equal(recovered!.previousAttempt, 2);
       assert.equal(recovered!.attempt, 3);
 
       const ours = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
       assert.equal(ours?.status, "PENDING");
       assert.equal(ours?.embeddedCount, 0);
       assert.equal(ours?.failureCode, null);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  it("concurrent recover claims the same generation only once", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const seeded = await seedDraftEmbedding(suffix);
+    try {
+      const old = new Date(Date.now() - 10 * 60 * 1000);
+      await prisma.$executeRaw`
+        UPDATE "SearchIndexGeneration"
+        SET "updatedAt" = ${old}, "status" = 'EMBEDDING'::"SearchIndexGenerationStatus", attempt = 2
+        WHERE id = ${seeded.genId}
+      `;
+
+      const [a, b] = await Promise.all([
+        recoverOneStaleSearchDataGeneration(60),
+        recoverOneStaleSearchDataGeneration(60),
+      ]);
+      const oursHits = [a, b].filter((r) => r && r.id === seeded.genId);
+      // Drain unrelated stale jobs then ensure ours ended PENDING with attempt 3
+      let drain = await recoverOneStaleSearchDataGeneration(60);
+      for (let i = 0; i < 20 && drain; i += 1) {
+        drain = await recoverOneStaleSearchDataGeneration(60);
+      }
+      const ours = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
+      assert.equal(ours?.status, "PENDING");
+      assert.equal(ours?.attempt, 3);
+      assert.ok(oursHits.length <= 1 || oursHits.every((h) => h!.attempt === 3));
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  it("previous attempt cannot fail a recovered generation", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const seeded = await seedDraftEmbedding(suffix);
+    try {
+      const old = new Date(Date.now() - 10 * 60 * 1000);
+      await prisma.$executeRaw`
+        UPDATE "SearchIndexGeneration"
+        SET "updatedAt" = ${old}, "status" = 'EMBEDDING'::"SearchIndexGenerationStatus", attempt = 2
+        WHERE id = ${seeded.genId}
+      `;
+      let recovered = await recoverOneStaleSearchDataGeneration(60);
+      for (let i = 0; i < 30 && recovered && recovered.id !== seeded.genId; i += 1) {
+        recovered = await recoverOneStaleSearchDataGeneration(60);
+      }
+      assert.ok(recovered?.id === seeded.genId);
+
+      const { markSearchGenerationFailed } = await import(
+        "../lib/search-generation/search-generation-service.ts"
+      );
+      await assert.rejects(
+        () =>
+          markSearchGenerationFailed(seeded.genId, {
+            failureCode: "INDEX_BUILD_FAILED",
+            expectedAttempt: 2,
+          }),
+        /충돌|TRANSITION|attempt/i,
+      );
+
+      const ours = await prisma.searchIndexGeneration.findUnique({ where: { id: seeded.genId } });
+      assert.equal(ours?.status, "PENDING");
+      assert.equal(ours?.attempt, 3);
     } finally {
       await cleanup(seeded);
     }

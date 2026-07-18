@@ -18,6 +18,7 @@ import {
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "@/lib/embedding/e5-embedding-constants";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
+import { isFullCommitSha } from "@/lib/embedding/e5-model-revision";
 import {
   EmbeddingProviderError,
   isEmbeddingProviderError,
@@ -35,6 +36,7 @@ import {
   markSearchGenerationIndexing,
 } from "@/lib/search-generation/search-generation-service";
 import {
+  assertGenerationDescriptorMatchesRuntime,
   resolveSearchGenerationEmbeddingDescriptor,
   type SearchGenerationEmbeddingDescriptor,
 } from "@/lib/search-generation/search-generation-types";
@@ -49,25 +51,78 @@ const SEARCH_DATA_LOCK_KEY = (packId: string) => `search-data:${packId}`;
 const DEFAULT_STALE_SECONDS = 300;
 const PINNED_E5_REVISION = "fcfc26bf355882620c48df58be112275bd756f50";
 
-/** Enqueue-only descriptor — no Worker /ready probe (preflight runs in the worker). */
+/**
+ * Enqueue-only descriptor — no Worker /ready probe (preflight runs in the worker).
+ * Rejects non-local-e5 provider, invalid revision SHA, and non-384 dimensions.
+ */
 export function provisionalEnqueueLocalE5Descriptor(
   env: NodeJS.ProcessEnv = process.env,
 ): SearchGenerationEmbeddingDescriptor {
   const config = readEmbeddingProviderConfig(env);
+  const providerEnv = env.JYKSTORE_EMBEDDING_PROVIDER?.trim().toLowerCase();
+  if (
+    (providerEnv && providerEnv !== LOCAL_E5_EMBEDDING_PROVIDER) ||
+    (config.provider !== LOCAL_E5_EMBEDDING_PROVIDER && Boolean(providerEnv))
+  ) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "검색데이터 생성은 local-e5 provider만 지원합니다.",
+      { retryable: false },
+    );
+  }
+  if (config.provider !== LOCAL_E5_EMBEDDING_PROVIDER && !providerEnv) {
+    // Unset defaults to local-hash in readEmbeddingProviderConfig — require explicit local-e5.
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "JYKSTORE_EMBEDDING_PROVIDER=local-e5 가 필요합니다.",
+      { retryable: false },
+    );
+  }
+
+  const model =
+    (config.provider === LOCAL_E5_EMBEDDING_PROVIDER ? config.model : null)?.trim() ||
+    env.JYKSTORE_EMBEDDING_MODEL?.trim() ||
+    DEFAULT_E5_MODEL_ID;
+  if (!model) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "embedding model is required",
+      { retryable: false },
+    );
+  }
+
+  const rawRevision =
+    config.modelRevision?.trim() || env.JYKSTORE_EMBEDDING_MODEL_REVISION?.trim() || "";
+  let revision = PINNED_E5_REVISION;
+  if (rawRevision) {
+    if (!isFullCommitSha(rawRevision)) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_MODEL_REVISION_INVALID",
+        "JYKSTORE_EMBEDDING_MODEL_REVISION must be a 40-char commit SHA.",
+        { retryable: false },
+      );
+    }
+    revision = rawRevision;
+  }
+
+  const dimension =
+    config.provider === LOCAL_E5_EMBEDDING_PROVIDER
+      ? config.dimension
+      : Number.parseInt(env.JYKSTORE_EMBEDDING_DIMENSION ?? "", 10) ||
+        DEFAULT_E5_EMBEDDING_DIMENSION;
+  if (dimension !== DEFAULT_E5_EMBEDDING_DIMENSION) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_DIMENSION_MISMATCH",
+      `embedding dimension must be ${DEFAULT_E5_EMBEDDING_DIMENSION}`,
+      { retryable: false },
+    );
+  }
+
   return {
     embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
-    embeddingModel:
-      config.provider === LOCAL_E5_EMBEDDING_PROVIDER
-        ? config.model
-        : env.JYKSTORE_EMBEDDING_MODEL?.trim() || DEFAULT_E5_MODEL_ID,
-    embeddingModelRevision:
-      config.modelRevision?.trim() ||
-      env.JYKSTORE_EMBEDDING_MODEL_REVISION?.trim() ||
-      PINNED_E5_REVISION,
-    embeddingDimension:
-      config.provider === LOCAL_E5_EMBEDDING_PROVIDER
-        ? config.dimension
-        : DEFAULT_E5_EMBEDDING_DIMENSION,
+    embeddingModel: model,
+    embeddingModelRevision: revision,
+    embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
     distanceMetric: E5_DISTANCE_METRIC,
   };
 }
@@ -557,71 +612,114 @@ export type ClaimedSearchDataGeneration = {
 
 /**
  * Recover one stale EMBEDDING DRAFT generation → PENDING (attempt++).
- * Returns true when a row was recovered.
+ * Vector/Embedding cleanup and PENDING publish are one PostgreSQL transaction.
  */
 export async function recoverOneStaleSearchDataGeneration(
   staleSeconds: number = searchDataStaleSeconds(),
-): Promise<{ id: string; attempt: number; packId: string } | null> {
+): Promise<{
+  id: string;
+  packId: string;
+  previousAttempt: number;
+  attempt: number;
+} | null> {
   const threshold = new Date(Date.now() - staleSeconds * 1000);
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; attempt: number; packId: string }>
-  >`
-    UPDATE "SearchIndexGeneration" AS g
-    SET
-      "attempt" = g."attempt" + 1,
-      "status" = 'PENDING'::"SearchIndexGenerationStatus",
-      "embeddedCount" = 0,
-      "failedCount" = 0,
-      "failureCode" = NULL,
-      "failureMessage" = NULL,
-      "startedAt" = NULL,
-      "updatedAt" = NOW()
-    WHERE g.id = (
-      SELECT j.id
-      FROM "SearchIndexGeneration" AS j
-      WHERE j."status" = 'EMBEDDING'::"SearchIndexGenerationStatus"
-        AND j."scope" = 'DRAFT'::"SearchIndexGenerationScope"
-        AND j."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
-        AND j."updatedAt" < ${threshold}
-      ORDER BY j."updatedAt" ASC
-      FOR UPDATE SKIP LOCKED
-      LIMIT 1
-    )
-    RETURNING g.id, g.attempt, g."packId"
-  `;
-  const row = rows[0];
-  if (!row) return null;
+  let lockedId: string | null = null;
+  let lockedAttempt: number | null = null;
 
   try {
-    await prisma.$executeRaw`
-      DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${row.id}
-    `;
-    await prisma.knowledgeChunkEmbedding.deleteMany({
-      where: { searchIndexGenerationId: row.id },
+    const result = await prisma.$transaction(async (tx) => {
+      const staleRows = await tx.$queryRaw<
+        Array<{ id: string; packId: string; attempt: number }>
+      >`
+        SELECT
+          g.id,
+          g."packId",
+          g.attempt
+        FROM "SearchIndexGeneration" AS g
+        WHERE g."status" = 'EMBEDDING'::"SearchIndexGenerationStatus"
+          AND g."scope" = 'DRAFT'::"SearchIndexGenerationScope"
+          AND g."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
+          AND g."updatedAt" < ${threshold}
+        ORDER BY g."updatedAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `;
+      const stale = staleRows[0];
+      if (!stale) return null;
+      lockedId = stale.id;
+      lockedAttempt = stale.attempt;
+
+      await tx.$executeRaw`
+        DELETE FROM "SearchIndexVector"
+        WHERE "searchIndexGenerationId" = ${stale.id}
+      `;
+      await tx.knowledgeChunkEmbedding.deleteMany({
+        where: { searchIndexGenerationId: stale.id },
+      });
+
+      const updated = await tx.searchIndexGeneration.updateMany({
+        where: {
+          id: stale.id,
+          status: "EMBEDDING",
+          scope: "DRAFT",
+          attempt: stale.attempt,
+        },
+        data: {
+          status: "PENDING",
+          attempt: { increment: 1 },
+          embeddedCount: 0,
+          failedCount: 0,
+          failureCode: null,
+          failureMessage: null,
+          startedAt: null,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new Error("SEARCH_DATA_RECOVERY_CONFLICT");
+      }
+
+      return {
+        id: stale.id,
+        packId: stale.packId,
+        previousAttempt: stale.attempt,
+        attempt: stale.attempt + 1,
+      };
     });
-  } catch {
-    await markSearchGenerationFailed(row.id, {
-      failureCode: "SEARCH_DATA_RECOVERY_FAILED",
-      failureMessage: "cleanup after stale recovery failed",
-      expectedAttempt: row.attempt,
+
+    if (!result) return null;
+
+    await recordProviderAudit({
+      action: AuditAction.PROVIDER_PACK_UPDATE,
+      entityType: "KnowledgePack",
+      entityId: result.packId,
+      actorUserId: null,
+      metadata: {
+        event: "SEARCH_DATA_GENERATION_RECOVERED",
+        packId: result.packId,
+        searchIndexGenerationId: result.id,
+        previousAttempt: result.previousAttempt,
+        attempt: result.attempt,
+        staleSeconds,
+      },
     }).catch(() => undefined);
+
+    return result;
+  } catch (error) {
+    if (lockedId != null && lockedAttempt != null) {
+      await markSearchGenerationFailed(lockedId, {
+        failureCode: "SEARCH_DATA_RECOVERY_FAILED",
+        failureMessage: "stale recovery transaction failed",
+        expectedAttempt: lockedAttempt,
+      }).catch(() => undefined);
+    }
+    if (
+      error instanceof Error &&
+      error.message === "SEARCH_DATA_RECOVERY_CONFLICT"
+    ) {
+      return null;
+    }
     return null;
   }
-
-  await recordProviderAudit({
-    action: AuditAction.PROVIDER_PACK_UPDATE,
-    entityType: "KnowledgePack",
-    entityId: row.packId,
-    actorUserId: null,
-    metadata: {
-      event: "SEARCH_DATA_GENERATION_RECOVERED",
-      packId: row.packId,
-      searchIndexGenerationId: row.id,
-      attempt: row.attempt,
-    },
-  }).catch(() => undefined);
-
-  return row;
 }
 
 /**
@@ -768,19 +866,7 @@ export async function processSearchDataGenerationJob(
   try {
     await assertPgvectorRuntimeReady();
 
-    const descriptor = await resolveSearchGenerationEmbeddingDescriptor();
-    if (descriptor.embeddingProvider !== LOCAL_E5_EMBEDDING_PROVIDER) {
-      throw new EmbeddingProviderError(
-        "EMBEDDING_CONFIG_INVALID",
-        "Local E5 provider required",
-      );
-    }
-    if (descriptor.embeddingDimension !== 384) {
-      throw new EmbeddingProviderError(
-        "EMBEDDING_CONFIG_INVALID",
-        "dimension must be 384",
-      );
-    }
+    const runtime = await resolveSearchGenerationEmbeddingDescriptor();
 
     const generation = await prisma.searchIndexGeneration.findUnique({
       where: { id: claimed.id },
@@ -792,21 +878,11 @@ export async function processSearchDataGenerationJob(
       return;
     }
 
-    // Align stored descriptor with probed worker values when possible.
-    if (
-      generation.embeddingModel !== descriptor.embeddingModel ||
-      generation.embeddingModelRevision !== descriptor.embeddingModelRevision ||
-      generation.embeddingDimension !== descriptor.embeddingDimension
-    ) {
-      await prisma.searchIndexGeneration.updateMany({
-        where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
-        data: {
-          embeddingModel: descriptor.embeddingModel,
-          embeddingModelRevision: descriptor.embeddingModelRevision,
-          embeddingDimension: descriptor.embeddingDimension,
-        },
-      });
-    }
+    // Immutable Generation descriptor — never mutate; fail-closed on mismatch.
+    assertGenerationDescriptorMatchesRuntime({
+      generation,
+      runtime,
+    });
 
     await completePipelineStep({
       runId: claimed.pipelineRunId,

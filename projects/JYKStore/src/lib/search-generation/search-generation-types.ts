@@ -122,6 +122,59 @@ export async function resolveSearchGenerationEmbeddingDescriptor(
   };
 }
 
+/**
+ * Fail-closed: Generation descriptor is immutable after create.
+ * Never mutates DB — throws typed EmbeddingProviderError on mismatch.
+ */
+export function assertGenerationDescriptorMatchesRuntime(input: {
+  generation: Pick<
+    SearchIndexGeneration,
+    | "embeddingProvider"
+    | "embeddingModel"
+    | "embeddingModelRevision"
+    | "embeddingDimension"
+    | "distanceMetric"
+  >;
+  runtime: SearchGenerationEmbeddingDescriptor;
+}): void {
+  const { generation, runtime } = input;
+  if (generation.embeddingProvider !== runtime.embeddingProvider) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "Search Generation provider does not match Local E5 runtime.",
+      { retryable: false },
+    );
+  }
+  if (generation.embeddingModel !== runtime.embeddingModel) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_MODEL_MISMATCH",
+      "Search Generation model does not match Local E5 runtime.",
+      { retryable: false },
+    );
+  }
+  if (generation.embeddingModelRevision !== runtime.embeddingModelRevision) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_MODEL_REVISION_MISMATCH",
+      "Search Generation revision does not match Local E5 runtime.",
+      { retryable: false },
+    );
+  }
+  if (generation.embeddingDimension !== runtime.embeddingDimension) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_DIMENSION_MISMATCH",
+      "Search Generation dimension does not match Local E5 runtime.",
+      { retryable: false },
+    );
+  }
+  if (generation.distanceMetric !== runtime.distanceMetric) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "Search Generation distance metric does not match Local E5 runtime.",
+      { retryable: false },
+    );
+  }
+}
+
 /** Input identifying a generation's binding to a specific pipeline output. */
 export type SearchGenerationBindingInput = {
   packId: string;

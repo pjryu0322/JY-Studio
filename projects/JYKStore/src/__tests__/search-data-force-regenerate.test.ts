@@ -41,13 +41,25 @@ describe("forceRegenerate wiring", () => {
     assert.match(service, /already_complete/);
     assert.match(service, /SEARCH_DATA_GENERATION_FORCE_ENQUEUED/);
     assert.match(service, /provisionalEnqueueLocalE5Descriptor/);
-    // Enqueue path must not call resolve (worker probe) — only provisional.
+    assert.match(service, /assertGenerationDescriptorMatchesRuntime/);
+    assert.doesNotMatch(service, /embeddingModel:\s*descriptor\.embeddingModel/);
     const enqueueSlice = service.slice(
       service.indexOf("export async function startSearchDataGeneration"),
       service.indexOf("export type ClaimedSearchDataGeneration"),
     );
     assert.doesNotMatch(enqueueSlice, /resolveSearchGenerationEmbeddingDescriptor/);
     assert.doesNotMatch(enqueueSlice, /assertPgvectorRuntimeReady/);
+  });
+
+  it("recovers stale EMBEDDING inside a single transaction", () => {
+    const recoverSlice = service.slice(
+      service.indexOf("export async function recoverOneStaleSearchDataGeneration"),
+      service.indexOf("export async function claimNextSearchDataGeneration"),
+    );
+    assert.match(recoverSlice, /prisma\.\$transaction/);
+    assert.match(recoverSlice, /FOR UPDATE SKIP LOCKED/);
+    assert.match(recoverSlice, /DELETE FROM "SearchIndexVector"/);
+    assert.match(recoverSlice, /status:\s*"PENDING"/);
   });
 });
 
