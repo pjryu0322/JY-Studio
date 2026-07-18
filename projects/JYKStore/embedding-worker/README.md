@@ -43,6 +43,8 @@ The JYKStore Node adapter verifies `ready`, `stub=false`, `backend`, `model`, `r
 | `E5_WORKER_STUB`       | `false`                                   | **must be `false` in production** (startup fails) |
 | `E5_MODEL_ID`          | `dragonkue/multilingual-e5-small-ko-v2`   |                                              |
 | `E5_MODEL_REVISION`    | (empty)                                   | **40-char HF commit SHA** — required for all live (non-stub) runs |
+| `E5_MODEL_DIR`         | (empty)                                   | Absolute path to an installed revision directory (required for live) |
+| `E5_MODEL_OFFLINE`     | `false`                                   | Live worker must set `true` (no Hub download at startup) |
 | `E5_WORKER_TOKEN`      | (empty)                                   | internal bearer token — **required in production**; constant-time compare |
 | `E5_MAX_BATCH_SIZE`    | `32`                                       | per-request text cap                         |
 | `E5_MAX_TEXT_BYTES`    | `20000`                                    | per-text byte cap                            |
@@ -76,13 +78,39 @@ Point JYKStore at `JYKSTORE_EMBEDDING_WORKER_URL=http://127.0.0.1:8010`.
 
 ## Run — real model
 
-PowerShell:
+Install the model once to a persistent Windows directory (not the HF cache, not git):
+
+```powershell
+# from projects/JYKStore
+$env:E5_MODEL_ID="dragonkue/multilingual-e5-small-ko-v2"
+$env:E5_MODEL_REVISION="<40-char commit SHA>"   # optional; install resolves latest when omitted
+npm run embedding-model:install
+npm run embedding-model:status
+npm run embedding-model:verify
+```
+
+Default install root: `C:\JYKStore\models\multilingual-e5-small-ko-v2\<revision>\`.
+
+Then start the live worker offline against that directory:
 
 ```powershell
 $env:E5_WORKER_ENV="development"; $env:E5_WORKER_STUB="false"
-$env:E5_MODEL_REVISION="<commit-sha>"; $env:E5_WORKER_TOKEN="<token>"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+$env:E5_MODEL_ID="dragonkue/multilingual-e5-small-ko-v2"
+$env:E5_MODEL_REVISION="<commit-sha>"
+$env:E5_MODEL_DIR="C:\JYKStore\models\multilingual-e5-small-ko-v2\<commit-sha>"
+$env:E5_MODEL_OFFLINE="true"
+$env:E5_WORKER_TOKEN="<token>"
+npm run embedding-worker:start:live
 ```
+
+Or with uvicorn directly after setting the same env vars:
+
+```powershell
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8011
+```
+
+Live startup loads **only** `E5_MODEL_DIR` with `local_files_only=True`. It does not call
+`snapshot_download` or Hub `model_info`.
 
 ## Docker (production)
 
