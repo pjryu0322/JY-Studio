@@ -59,7 +59,11 @@ async function assertPgvectorRuntimeReady(): Promise<void> {
   const table = await prisma.$queryRaw<Array<{ reg: string | null }>>`
     SELECT to_regclass('"SearchIndexVector"')::text AS reg
   `;
-  assert.equal(table[0]?.reg, "SearchIndexVector", "SearchIndexVector table must exist");
+  // to_regclass::text quote_ident's mixed-case names → "SearchIndexVector"
+  assert.ok(
+    table[0]?.reg === "SearchIndexVector" || table[0]?.reg === '"SearchIndexVector"',
+    "SearchIndexVector table must exist",
+  );
 }
 
 function spyAdapter(queryVector: number[]): {
