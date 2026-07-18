@@ -114,18 +114,26 @@ export async function retrieveContextsForVersion(input: {
   const useHybrid = input.retrievalMode === "hybrid" && tokens.length > 0;
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
+  let hybridScored = scored;
   if (useHybrid) {
     const hybrid = await applyHybridVectorRanking({
       scored,
       searchQuery,
       searchIndexGenerationId: input.searchIndexGenerationId,
+      versionId: input.versionId,
+      filters: input.filters,
+      topK: input.topK,
+      indexGenerationId: input.indexGenerationId,
+      excludeDraftScope: input.excludeDraftScope,
+      tokens,
     });
+    hybridScored = hybrid.scored;
     embeddingProvider = hybrid.embeddingProvider;
     embeddingModel = hybrid.embeddingModel;
   }
 
   const selected = selectRetrievalCandidates({
-    scored,
+    scored: hybridScored,
     hasFilters,
     hasQuery,
     topK: input.topK,
@@ -142,7 +150,7 @@ export async function retrieveContextsForVersion(input: {
     embeddingProvider,
     embeddingModel,
     scanned,
-    filteredCount: collected.length,
+    filteredCount: hybridScored.length,
     collectionMode,
   });
 }

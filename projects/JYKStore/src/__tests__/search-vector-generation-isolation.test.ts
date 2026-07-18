@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSearchVectorQuerySql } from "@/lib/search-vector/search-vector-query";
+import { buildSearchVectorQuerySql, cosineDistanceToSimilarity } from "@/lib/search-vector/search-vector-query";
 import {
   handlePgvectorUnavailable,
   isPgvectorRequired,
@@ -9,6 +9,7 @@ import {
   toVectorLiteral,
 } from "@/lib/search-vector/search-vector-runtime";
 import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import { clampedCosineSimilarity } from "@/lib/vector-similarity";
 
 const BASE_INPUT = {
   provider: "local-hash",
@@ -149,4 +150,12 @@ test("buildSearchVectorQuerySql casts through vector(n) when dimension is set", 
   });
   assert.match(sql.sql, /::vector\(384\)/);
   assert.doesNotMatch(sql.sql, /::vector\(\$/);
+});
+
+test("cosineDistanceToSimilarity matches Node cosine within 1e-6", () => {
+  const a = [1, 0, 0, 0];
+  const b = [0.6, 0.8, 0, 0];
+  const sim = clampedCosineSimilarity(a, b);
+  const fromDistance = cosineDistanceToSimilarity(1 - sim);
+  assert.ok(Math.abs(fromDistance - sim) < 1e-6);
 });

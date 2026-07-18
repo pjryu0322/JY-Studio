@@ -301,4 +301,83 @@ describe("search-vector pgvector runtime (skipped without DATABASE_URL)", { skip
         isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",
     );
   });
+
+  it("ranks vector-only semantic neighbors ahead of unrelated keyword-like rows", async () => {
+    await assertPgvectorRuntimeReady();
+    const suffix = randomUUID().slice(0, 8);
+    const seeded = await seedGenerationPair(suffix);
+    const query = unitVector(7, DEFAULT_E5_EMBEDDING_DIMENSION);
+    const semantic = unitVector(7, DEFAULT_E5_EMBEDDING_DIMENSION);
+    const distractor = unitVector(42, DEFAULT_E5_EMBEDDING_DIMENSION);
+
+    const keywordChunk = await prisma.knowledgeChunk.create({
+      data: {
+        id: `sv-kw-${suffix}`,
+        versionId: seeded.version.id,
+        chunkType: "retrieval",
+        title: "keyword only",
+        content: "행을 정렬하는 방법 키워드만 포함",
+        tags: [],
+        chunkGenerationId: seeded.production.generation.chunkGenerationId,
+        metadata: {
+          indexGenerationId: seeded.production.generation.chunkGenerationId,
+          product: "chart",
+        },
+        isActive: true,
+      },
+    });
+    const semanticChunk = await prisma.knowledgeChunk.create({
+      data: {
+        id: `sv-sem-${suffix}`,
+        versionId: seeded.version.id,
+        chunkType: "retrieval",
+        title: "semantic neighbor",
+        content: "Grid의 sort API를 사용하면 컬럼 기준으로 행을 정렬할 수 있습니다.",
+        tags: [],
+        chunkGenerationId: seeded.production.generation.chunkGenerationId,
+        metadata: {
+          indexGenerationId: seeded.production.generation.chunkGenerationId,
+          product: "grid",
+        },
+        isActive: true,
+      },
+    });
+
+    for (const [chunk, vector] of [
+      [keywordChunk, distractor],
+      [semanticChunk, semantic],
+    ] as const) {
+      const write = await upsertSearchIndexVector(
+        {
+          searchIndexGenerationId: seeded.production.generation.id,
+          chunkId: chunk.id,
+          provider: LOCAL_E5_EMBEDDING_PROVIDER,
+          model: DEFAULT_E5_MODEL_ID,
+          dimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+          contentHash: contentHash(chunk.content),
+          vector,
+        },
+        prisma,
+        { NODE_ENV: "test", JYKSTORE_REQUIRE_PGVECTOR: "true" },
+      );
+      assert.deepEqual(write, { ok: true, skipped: false });
+    }
+
+    const hits = await querySearchIndexVectorsByGeneration(
+      {
+        searchIndexGenerationId: seeded.production.generation.id,
+        provider: LOCAL_E5_EMBEDDING_PROVIDER,
+        model: DEFAULT_E5_MODEL_ID,
+        queryVector: query,
+        dimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+        limit: 10,
+      },
+      prisma,
+      { NODE_ENV: "test", JYKSTORE_REQUIRE_PGVECTOR: "true" },
+    );
+    assert.ok(hits);
+    assert.ok(hits.length >= 2);
+    assert.equal(hits[0]?.chunkId, semanticChunk.id);
+    assert.ok((hits[0]?.score ?? 0) > (hits.find((h) => h.chunkId === keywordChunk.id)?.score ?? -1));
+  });
 });

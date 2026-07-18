@@ -105,9 +105,13 @@ function toSnippet(content: string): string {
   return `${normalized.slice(0, SEARCH_VECTOR_SNIPPET_MAX_LENGTH)}…`;
 }
 
-function distanceToScore(distance: number): number {
-  // Cosine distance is 0 (identical) .. 2 (opposite); map to a 0..1 similarity score.
-  const similarity = 1 - distance / 2;
+/**
+ * pgvector `<=>` with `vector_cosine_ops` returns cosine distance = `1 - cosine_similarity`.
+ * Convert to clamped similarity in [0, 1] (negative similarities map to 0).
+ */
+export function cosineDistanceToSimilarity(distance: number): number {
+  if (!Number.isFinite(distance)) return 0;
+  const similarity = 1 - distance;
   if (Number.isNaN(similarity)) return 0;
   return Math.max(0, Math.min(1, similarity));
 }
@@ -129,7 +133,7 @@ export async function querySearchIndexVectorsByGeneration(
     >(sql);
     return rows.map((row) => ({
       chunkId: row.chunkId,
-      score: distanceToScore(row.distance),
+      score: cosineDistanceToSimilarity(row.distance),
       title: row.title,
       snippet: toSnippet(row.content),
     }));

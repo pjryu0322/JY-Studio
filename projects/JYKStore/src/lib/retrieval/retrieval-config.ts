@@ -5,6 +5,14 @@ export const CANDIDATE_PAGE_SIZE = 500;
 export const MAX_CANDIDATE_SCAN = 5000;
 export const MAX_FILTERED_CANDIDATES = 1000;
 
+// P5.2.1: pgvector Cosine Top-K candidate pool (independent of keyword scan).
+export const VECTOR_CANDIDATE_MULTIPLIER = 5;
+export const VECTOR_CANDIDATE_MIN = 20;
+export const VECTOR_CANDIDATE_MAX = 200;
+
+/** Deduped keyword ∪ vector candidate cap after union. */
+export const MAX_HYBRID_CANDIDATES = MAX_FILTERED_CANDIDATES + VECTOR_CANDIDATE_MAX;
+
 // P14: hybrid ranking 가중치. keyword/metadata score에 vector similarity를 결합한다.
 export const HYBRID_WEIGHTS = {
   keyword: 1,
@@ -14,3 +22,12 @@ export const HYBRID_WEIGHTS = {
 
 // 공개 pack status 기준(PUBLISHED / VERIFIED). Retrieval API의 기존 기준을 재사용한다.
 export { PUBLIC_PACK_STATUSES };
+
+/** Resolves how many pgvector Top-K hits to fetch for one hybrid request. */
+export function resolveVectorCandidateTopK(topK: number): number {
+  const safeTopK = Number.isFinite(topK) ? Math.max(1, Math.trunc(topK)) : 1;
+  return Math.min(
+    Math.max(safeTopK * VECTOR_CANDIDATE_MULTIPLIER, VECTOR_CANDIDATE_MIN),
+    VECTOR_CANDIDATE_MAX,
+  );
+}
