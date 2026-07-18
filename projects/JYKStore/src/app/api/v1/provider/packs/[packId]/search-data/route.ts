@@ -48,9 +48,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { packId } = await context.params;
 
   let action: "generate" | "validate" = "generate";
+  let forceRegenerate = false;
   try {
-    const body = (await request.json()) as { action?: string };
+    const body = (await request.json()) as { action?: string; forceRegenerate?: unknown };
     if (body?.action === "validate") action = "validate";
+    forceRegenerate = body?.forceRegenerate === true;
   } catch {
     action = "generate";
   }
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             userId,
             clientId,
             packId: packId?.trim() ?? "",
+            forceRegenerate,
           });
 
     if ("error" in result) {

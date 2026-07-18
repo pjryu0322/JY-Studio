@@ -12,11 +12,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { clientId, userId } = auth;
   const { packId } = await context.params;
 
+  let forceRegenerate = false;
+  try {
+    const body = (await request.json()) as { forceRegenerate?: unknown };
+    forceRegenerate = body?.forceRegenerate === true;
+  } catch {
+    forceRegenerate = false;
+  }
+
   try {
     const result = await startSearchDataGeneration({
       userId,
       clientId,
       packId: packId?.trim() ?? "",
+      forceRegenerate,
     });
     if ("error" in result) {
       const status =

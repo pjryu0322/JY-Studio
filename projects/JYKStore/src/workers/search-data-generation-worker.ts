@@ -1,13 +1,16 @@
 /**
- * Search-data generation worker: claims PENDING Local E5 Draft generations
+ * Search-data generation worker: recovers stale EMBEDDING jobs, claims PENDING,
  * and runs Passage embedding + SearchIndexVector writes.
  *
  *   npm run worker:search-data
+ *   npm run dev:search-worker  (via npm run dev)
  */
 import { randomUUID } from "node:crypto";
 import {
   claimNextSearchDataGeneration,
   processSearchDataGenerationJob,
+  recoverOneStaleSearchDataGeneration,
+  searchDataStaleSeconds,
 } from "@/lib/search-data/search-data-generation-service";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
@@ -24,14 +27,23 @@ async function sleep(ms: number): Promise<void> {
 }
 
 export async function runSearchDataGenerationWorkerOnce(): Promise<boolean> {
+  // 1) Recover stale EMBEDDING → PENDING
+  const recovered = await recoverOneStaleSearchDataGeneration(searchDataStaleSeconds());
+  if (recovered) return true;
+
+  // 2) Claim PENDING → EMBEDDING
   const claimed = await claimNextSearchDataGeneration();
   if (!claimed) return false;
+
+  // 3–10) Binding recheck, preflight, embed, INDEXING
   await processSearchDataGenerationJob(claimed);
   return true;
 }
 
 async function main(): Promise<void> {
-  console.log(`[search-data-worker] started id=${WORKER_ID} pollMs=${POLL_INTERVAL_MS}`);
+  console.log(
+    `[search-data-worker] started id=${WORKER_ID} pollMs=${POLL_INTERVAL_MS} staleSeconds=${searchDataStaleSeconds()}`,
+  );
   for (;;) {
     try {
       const worked = await runSearchDataGenerationWorkerOnce();

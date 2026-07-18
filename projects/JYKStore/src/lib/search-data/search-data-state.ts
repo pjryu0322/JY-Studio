@@ -138,6 +138,11 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
     return "VALIDATING";
   }
 
+  // Binding stale is surfaced as STALE (structure CTA), not CREATE_FAILED.
+  if (g && g.status === "FAILED" && g.failureCode === "SEARCH_DATA_BINDING_STALE") {
+    return "STALE";
+  }
+
   // Real generation failure always wins over quality validation.
   if (g && g.status === "FAILED") {
     return "CREATE_FAILED";

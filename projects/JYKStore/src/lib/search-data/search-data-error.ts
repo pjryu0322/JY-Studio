@@ -88,6 +88,19 @@ const BY_CODE: Record<string, SearchDataFailureGuidance> = {
     retryable: false,
     supportRequired: true,
   },
+  SEARCH_DATA_RECOVERY_FAILED: {
+    message:
+      "검색데이터 생성 작업을 복구하지 못했습니다. 관리자에게 문의 바랍니다.",
+    retryable: false,
+    supportRequired: true,
+  },
+  SEARCH_DATA_BINDING_STALE: {
+    message:
+      "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 다시 확인해 주세요.",
+    retryable: false,
+    supportRequired: false,
+    preferStructure: true,
+  },
   INDEX_BUILD_FAILED: {
     message: GENERIC,
     retryable: false,

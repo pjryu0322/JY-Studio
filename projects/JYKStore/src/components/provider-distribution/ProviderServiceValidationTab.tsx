@@ -544,12 +544,12 @@ export function ProviderServiceValidationTab({
     return null;
   }, [status]);
 
-  async function handleGenerate() {
+  async function handleGenerate(forceRegenerate = false) {
     if (!editable || searchBusy) return;
     setSearchBusy(true);
     setError(null);
     try {
-      await generateProviderSearchDataApi(packId);
+      await generateProviderSearchDataApi(packId, { forceRegenerate });
       // 202 enqueue → poll authoritative status (do not surface card failures as global alert).
       const next = await loadSearchData();
       setSearchData(next);
@@ -685,7 +685,7 @@ export function ProviderServiceValidationTab({
             <button
               type="button"
               disabled={!editable || !sd.canGenerate || searchBusy}
-              onClick={() => void handleGenerate()}
+              onClick={() => void handleGenerate(false)}
               className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
             >
               {searchBusy ? "생성 중…" : "검색데이터 생성"}
@@ -729,7 +729,7 @@ export function ProviderServiceValidationTab({
               <button
                 type="button"
                 disabled={!editable || searchBusy}
-                onClick={() => void handleGenerate()}
+                onClick={() => void handleGenerate(true)}
                 className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 검색데이터 다시 생성
@@ -782,7 +782,7 @@ export function ProviderServiceValidationTab({
               <button
                 type="button"
                 disabled={!editable || searchBusy}
-                onClick={() => void handleGenerate()}
+                onClick={() => void handleGenerate(true)}
                 className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 검색데이터 다시 생성

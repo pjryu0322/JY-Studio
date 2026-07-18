@@ -267,6 +267,7 @@ export type SearchDataGenerateAcceptedDto = {
  */
 export async function generateProviderSearchDataApi(
   packId: string,
+  options?: { forceRegenerate?: boolean },
 ): Promise<SearchDataGenerateAcceptedDto | SearchDataStatusDto> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/search-data/generate`,
@@ -274,7 +275,7 @@ export async function generateProviderSearchDataApi(
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ forceRegenerate: Boolean(options?.forceRegenerate) }),
     },
   );
   if (!response.ok) {

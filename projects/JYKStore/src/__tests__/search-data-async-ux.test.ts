@@ -24,12 +24,15 @@ describe("search-data async enqueue + failure UX", () => {
     assert.match(generateRoute, /status:\s*202/);
     assert.match(service, /accepted:\s*true/);
     assert.match(service, /claimNextSearchDataGeneration/);
+    assert.match(service, /recoverOneStaleSearchDataGeneration/);
     assert.match(pkg, /worker:search-data/);
+    assert.match(pkg, /dev:search-worker/);
   });
 
   it("does not mutate process.env for pgvector in generate path", () => {
     assert.doesNotMatch(service, /process\.env\.JYKSTORE_REQUIRE_PGVECTOR\s*=/);
     assert.match(service, /requirePgvector:\s*true/);
+    assert.match(service, /provisionalEnqueueLocalE5Descriptor/);
   });
 
   it("does not failDraftIndexGeneration on quality evaluation FAIL", () => {
