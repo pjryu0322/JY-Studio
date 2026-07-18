@@ -1,5 +1,5 @@
 /**
- * P5.1.2 — Admin approval transaction atomicity (PostgreSQL).
+ * P5.1.3 — Admin approval transaction atomicity (PostgreSQL).
  * Runs only when DATABASE_URL is set; otherwise SKIP (never fake PASS).
  */
 import assert from "node:assert/strict";
@@ -7,17 +7,28 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { PackStatus, Prisma } from "@prisma/client";
+import { PackStatus, Prisma, AuditAction } from "@prisma/client";
+import { approvePackReview, rejectPackReview } from "../lib/admin-review-service.ts";
 import { assertApprovalSearchGenerationInTx } from "../lib/distribution/approval-search-generation-evidence.ts";
 import { buildDoclingBundleReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
+import { computeReviewSubmitSnapshotFingerprint } from "../lib/distribution/review-submit-snapshot-fingerprint.ts";
 import { assertCurrentServiceValidationEvidence } from "../lib/distribution/service-validation-service.ts";
 import {
   createKnowledgeRunBinding,
   serializeKnowledgeRunBinding,
 } from "../lib/docling-knowledge/docling-knowledge-run-binding.ts";
-import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "../lib/docling-knowledge/docling-knowledge-stages.ts";
+import {
+  DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
+  DOCLING_RETRIEVAL_CHUNK_TYPE,
+} from "../lib/docling-knowledge/docling-knowledge-stages.ts";
+import {
+  computeNormalizedDocumentFingerprint,
+  NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
+} from "../lib/docling-import/normalized-document-fingerprint.ts";
 import { PackReviewStatus } from "../lib/pack-review-status.ts";
+import { InMemoryObjectStorage } from "../lib/object-storage/in-memory-object-storage.ts";
+import { setObjectStorageForTests } from "../lib/object-storage/object-storage-factory.ts";
 import { promoteSearchGeneration } from "../lib/search-generation/search-generation-service.ts";
 import { prisma } from "../lib/prisma.ts";
 
@@ -44,13 +55,23 @@ const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SHA_OTHER = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const testedAt = new Date("2026-07-18T00:00:00.000Z");
 
-async function seedApprovalReadyPack(suffix: string) {
+async function seedApprovalReadyPack(
+  suffix: string,
+  options: { fullIntegrity?: boolean } = {},
+) {
   const packId = `appr-pack-${suffix}`;
   const generationId = `appr-gen-${suffix}`;
+  const sourceChecksum = "a".repeat(64);
+  const jsonChecksum = "b".repeat(64);
   const category =
     (await prisma.packCategory.findFirst({ select: { categoryId: true } })) ??
     (await prisma.packCategory.create({
-      data: { categoryId: `appr-cat-${suffix}`, name: "Appr Cat", description: "t" },
+      data: {
+        categoryId: `appr-cat-${suffix}`,
+        name: "Appr Cat",
+        description: "t",
+        icon: "book",
+      },
     }));
   const user = await prisma.user.create({
     data: { email: `appr-${suffix}@example.com`, name: "Appr", accountRole: "PROVIDER" },
@@ -87,11 +108,77 @@ async function seedApprovalReadyPack(suffix: string) {
       versionSummary: "vs",
     },
   });
+  const bundle = await prisma.doclingImportBundle.create({
+    data: {
+      id: `appr-b-${suffix}`,
+      packId,
+      versionId: version.id,
+      status: "REVIEW_READY",
+      storageStatus: "ACTIVE",
+      isActive: true,
+    },
+  });
+  const sourceBytes = new TextEncoder().encode("PDF-BYTES!!");
+  const jsonBytes = new TextEncoder().encode('{"schema_name":"DoclingDocument"}');
+  const sourceFile = await prisma.knowledgePackFile.create({
+    data: {
+      packId,
+      versionId: version.id,
+      role: "SOURCE_ORIGINAL",
+      originalFileName: "doc.pdf",
+      mimeType: "application/pdf",
+      fileExtension: "pdf",
+      fileSize: BigInt(sourceBytes.byteLength),
+      checksumSha256: sourceChecksum,
+      storageKey: `test/${suffix}/doc.pdf`,
+      bundleId: bundle.id,
+      isImmutable: true,
+    },
+  });
+  const jsonFile = await prisma.knowledgePackFile.create({
+    data: {
+      packId,
+      versionId: version.id,
+      role: "DOCLING_JSON",
+      originalFileName: "doc.json",
+      mimeType: "application/json",
+      fileExtension: "json",
+      fileSize: BigInt(jsonBytes.byteLength),
+      checksumSha256: jsonChecksum,
+      storageKey: `test/${suffix}/doc.json`,
+      bundleId: bundle.id,
+      isImmutable: true,
+    },
+  });
+
+  const ndId = `appr-nd-${suffix}`;
+  const fingerprint = options.fullIntegrity
+    ? computeNormalizedDocumentFingerprint({
+        adapterType: "DOCLING",
+        adapterVersion: "test",
+        sourceSchemaName: null,
+        sourceSchemaVersion: null,
+        title: null,
+        language: null,
+        sections: [],
+        tables: [],
+        figures: [],
+        readingOrder: [],
+        warnings: [],
+        sourceFileId: sourceFile.id,
+        jsonPayloadFileId: jsonFile.id,
+        markdownPayloadFileId: null,
+        sourceChecksum,
+        jsonChecksum,
+        markdownChecksum: null,
+      })
+    : `appr-fp-${suffix}`;
+
   const binding = createKnowledgeRunBinding({
     versionId: version.id,
-    normalizedDocumentId: `appr-nd-${suffix}`,
-    fingerprint: `appr-fp-${suffix}`,
-    bundleId: `appr-b-${suffix}`,
+    normalizedDocumentId: ndId,
+    fingerprint,
+    bundleId: bundle.id,
     indexGenerationId: generationId,
   });
   const pipeline = await prisma.pipelineRun.create({
@@ -111,55 +198,25 @@ async function seedApprovalReadyPack(suffix: string) {
       { runId: pipeline.id, packId, step: "READY_FOR_REVIEW", status: "PASS" },
     ],
   });
-  const bundle = await prisma.doclingImportBundle.create({
-    data: {
-      id: binding.bundleId,
-      packId,
-      versionId: version.id,
-      status: "REVIEW_READY",
-      storageStatus: "ACTIVE",
-      isActive: true,
-    },
-  });
-  const sourceFile = await prisma.knowledgePackFile.create({
-    data: {
-      packId,
-      versionId: version.id,
-      role: "SOURCE_ORIGINAL",
-      originalFileName: "doc.pdf",
-      mimeType: "application/pdf",
-      fileExtension: "pdf",
-      fileSize: BigInt(10),
-      checksumSha256: "a".repeat(64),
-      storageKey: `test/${suffix}/doc.pdf`,
-      bundleId: bundle.id,
-    },
-  });
-  const jsonFile = await prisma.knowledgePackFile.create({
-    data: {
-      packId,
-      versionId: version.id,
-      role: "DOCLING_JSON",
-      originalFileName: "doc.json",
-      mimeType: "application/json",
-      fileExtension: "json",
-      fileSize: BigInt(10),
-      checksumSha256: "b".repeat(64),
-      storageKey: `test/${suffix}/doc.json`,
-      bundleId: bundle.id,
-    },
-  });
   await prisma.normalizedDocument.create({
     data: {
-      id: binding.normalizedDocumentId,
+      id: ndId,
       bundleId: bundle.id,
       packId,
       versionId: version.id,
+      adapterType: "DOCLING",
       adapterVersion: "test",
-      fingerprint: binding.fingerprint,
+      fingerprint,
+      fingerprintVersion: NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
       isActive: true,
       sourceFileId: sourceFile.id,
       jsonPayloadFileId: jsonFile.id,
+      sourcePayloadChecksum: sourceChecksum,
+      sectionsJson: [],
+      tablesJson: [],
+      figuresJson: [],
+      readingOrderJson: [],
+      warningsJson: [],
     },
   });
   await prisma.packDistributionMetadata.create({
@@ -183,9 +240,9 @@ async function seedApprovalReadyPack(suffix: string) {
       packId,
       versionId: version.id,
       pipelineRunId: pipeline.id,
-      normalizedDocumentId: binding.normalizedDocumentId,
+      normalizedDocumentId: ndId,
       chunkGenerationId: generationId,
-      fingerprint: binding.fingerprint!,
+      fingerprint,
       embeddingProvider: "local-e5",
       embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
       embeddingModelRevision: SHA,
@@ -200,6 +257,29 @@ async function seedApprovalReadyPack(suffix: string) {
     },
   });
 
+  if (options.fullIntegrity) {
+    await prisma.knowledgeChunk.create({
+      data: {
+        versionId: version.id,
+        chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+        title: "chunk",
+        content: "content",
+        tags: [],
+        sortOrder: 0,
+        isActive: true,
+        chunkGenerationId: generationId,
+        metadata: {
+          indexGenerationId: generationId,
+          pipelineRunId: pipeline.id,
+          fingerprint,
+          indexScope: "DRAFT",
+          indexStatus: "DRAFT",
+          draftIndex: true,
+        },
+      },
+    });
+  }
+
   const runIds: Record<string, string> = {};
   const confIds: Record<string, string> = {};
   let downloadTestId = "";
@@ -213,8 +293,8 @@ async function seedApprovalReadyPack(suffix: string) {
         pipelineRunId: pipeline.id,
         indexGenerationId: generation.id,
         searchIndexGenerationId: generation.id,
-        normalizedDocumentId: binding.normalizedDocumentId,
-        fingerprint: binding.fingerprint,
+        normalizedDocumentId: ndId,
+        fingerprint,
         resultFingerprint: channel === "DOWNLOAD" ? null : `rf-${channel}-${suffix}`,
         testedAt,
         testedByUserId: user.id,
@@ -257,6 +337,7 @@ async function seedApprovalReadyPack(suffix: string) {
         downloadOkConfirmed: true,
         fileMatchConfirmed: true,
         confirmedByUserId: user.id,
+        confirmedAt: testedAt,
       },
     });
     confIds[channel] = conf.id;
@@ -271,10 +352,10 @@ async function seedApprovalReadyPack(suffix: string) {
     providerConfirmationId: confIds[channel]!,
     confirmedAt: testedAt.toISOString(),
     pipelineRunId: pipeline.id,
-    normalizedDocumentId: binding.normalizedDocumentId,
+    normalizedDocumentId: ndId,
     indexGenerationId: generation.id,
     searchIndexGenerationId: generation.id,
-    fingerprint: binding.fingerprint,
+    fingerprint,
     ...(channel === "DOWNLOAD"
       ? { downloadTestId }
       : { resultFingerprint: `rf-${channel}-${suffix}` }),
@@ -286,11 +367,11 @@ async function seedApprovalReadyPack(suffix: string) {
     sourceFileId: sourceFile.id,
     jsonPayloadFileId: jsonFile.id,
     markdownPayloadFileId: null,
-    checksums: { source: "a".repeat(64), json: "b".repeat(64), markdown: null },
+    checksums: { source: sourceChecksum, json: jsonChecksum, markdown: null },
     doclingSchemaVersion: "1.1",
     adapterVersion: "test",
-    normalizedDocumentId: binding.normalizedDocumentId,
-    fingerprint: binding.fingerprint!,
+    normalizedDocumentId: ndId,
+    fingerprint,
     warningCount: 0,
     sourceTitle: "Source",
     licenseName: "MIT",
@@ -316,10 +397,9 @@ async function seedApprovalReadyPack(suffix: string) {
     embeddingDimension: generation.embeddingDimension,
     distanceMetric: generation.distanceMetric,
     retrievalEvaluationStatus: "PASS",
-    normalizedDocumentFingerprint: binding.fingerprint!,
+    normalizedDocumentFingerprint: fingerprint,
   });
 
-  // P5.1.2: DB submitSnapshot is the approval authority — store the real snapshot.
   const review = await prisma.packReview.create({
     data: {
       packId,
@@ -328,15 +408,40 @@ async function seedApprovalReadyPack(suffix: string) {
     },
   });
 
+  let storage: InMemoryObjectStorage | null = null;
+  if (options.fullIntegrity) {
+    storage = new InMemoryObjectStorage();
+    await storage.putSmallObject({
+      objectKey: sourceFile.storageKey,
+      bytes: sourceBytes,
+      checksumSha256: sourceChecksum,
+      packId,
+      versionId: version.id,
+      payloadId: sourceFile.id,
+    });
+    await storage.putSmallObject({
+      objectKey: jsonFile.storageKey,
+      bytes: jsonBytes,
+      checksumSha256: jsonChecksum,
+      packId,
+      versionId: version.id,
+      payloadId: jsonFile.id,
+    });
+  }
+
   return {
     packId,
     generation,
     review,
     snapshot,
+    snapshotFingerprint: computeReviewSubmitSnapshotFingerprint(snapshot),
     userId: user.id,
     versionId: version.id,
     runIds,
     downloadTestId,
+    storage,
+    sourceFileId: sourceFile.id,
+    jsonFileId: jsonFile.id,
   };
 }
 
@@ -355,6 +460,9 @@ async function cleanup(packId: string) {
   }
   await prisma.serviceValidationRun.deleteMany({ where: { packId } });
   await prisma.packReview.deleteMany({ where: { packId } });
+  await prisma.knowledgeChunk.deleteMany({
+    where: { version: { packId } },
+  });
   await prisma.searchIndexGeneration.deleteMany({ where: { packId } });
   await prisma.pipelineStepLog.deleteMany({ where: { packId } });
   await prisma.pipelineRun.deleteMany({ where: { packId } });
@@ -363,10 +471,15 @@ async function cleanup(packId: string) {
   await prisma.doclingImportBundle.deleteMany({ where: { packId } });
   await prisma.packDistributionMetadata.deleteMany({ where: { packId } });
   await prisma.knowledgePackVersion.deleteMany({ where: { packId } });
+  await prisma.auditLog.deleteMany({
+    where: {
+      OR: [{ entityId: packId }, { entityType: "DoclingImportBundle" }],
+    },
+  });
   await prisma.knowledgePack.deleteMany({ where: { packId } });
 }
 
-describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
+describe("approval transaction atomicity (P5.1.3)", { skip: !hasDb }, () => {
   it("assertApprovalSearchGenerationInTx succeeds from DB submitSnapshot (no external snapshot)", async () => {
     const suffix = `${Date.now()}-ok`;
     const seeded = await seedApprovalReadyPack(suffix);
@@ -375,6 +488,7 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         const evidence = await assertApprovalSearchGenerationInTx(tx, {
           packId: seeded.packId,
           reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
         });
         assert.equal(evidence.generation.id, seeded.generation.id);
         assert.equal(evidence.snapshot.searchIndexGenerationId, seeded.generation.id);
@@ -398,9 +512,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
           }),
         (error: unknown) =>
           error instanceof PayloadServiceError &&
@@ -428,9 +543,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
           }),
         (error: unknown) => error instanceof PayloadServiceError,
       );
@@ -462,6 +578,7 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
             await assertApprovalSearchGenerationInTx(tx, {
               packId: seeded.packId,
               reviewId: seeded.review.id,
+              expectedSnapshotFingerprint: computeReviewSubmitSnapshotFingerprint(bad),
             });
           }),
         (error: unknown) =>
@@ -484,9 +601,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             const evidence = await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
             await assertCurrentServiceValidationEvidence({
               client: tx,
               packId: seeded.packId,
@@ -524,9 +642,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             const evidence = await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
             await assertCurrentServiceValidationEvidence({
               client: tx,
               packId: seeded.packId,
@@ -551,9 +670,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
             await promoteSearchGeneration(seeded.generation.id, tx, {
               generationFingerprint: seeded.generation.generationFingerprint,
               embeddingProvider: seeded.generation.embeddingProvider,
@@ -563,7 +683,7 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
               distanceMetric: seeded.generation.distanceMetric,
             });
             // Simulate concurrent reject: pack left REVIEWING in this tx's snapshot
-            // but we force conflict by requiring REVIEWING after flipping outside — instead
+            // but we force conflict by requiring REVIEWING after flipping outside ??instead
             // mutate via nested raw path: updateMany with impossible status.
             await tx.knowledgePack.update({
               where: { packId: seeded.packId },
@@ -576,7 +696,7 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
             if (packTransition.count !== 1) {
               throw new PayloadServiceError(
                 "APPROVAL_TRANSITION_CONFLICT",
-                "검수 상태가 변경되어 승인할 수 없습니다.",
+                "寃???곹깭媛 蹂寃쎈릺???뱀씤?????놁뒿?덈떎.",
                 409,
               );
             }
@@ -608,9 +728,10 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
         () =>
           prisma.$transaction(async (tx) => {
             await assertApprovalSearchGenerationInTx(tx, {
-              packId: seeded.packId,
-              reviewId: seeded.review.id,
-            });
+          packId: seeded.packId,
+          reviewId: seeded.review.id,
+          expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+        });
           }),
         (error: unknown) =>
           error instanceof PayloadServiceError &&
@@ -755,12 +876,185 @@ describe("approval transaction atomicity (P5.1.2)", { skip: !hasDb }, () => {
       await cleanup(seeded.packId);
     }
   });
+
+  it("fingerprint mismatch blocks when DB snapshot changed after integrity verify", async () => {
+    const suffix = `${Date.now()}-fp`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      const changed = {
+        ...seeded.snapshot,
+        embeddingModelRevision: SHA_OTHER,
+      };
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { submitSnapshot: changed as unknown as Prisma.InputJsonValue },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+              expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError && error.code === "APPROVAL_SNAPSHOT_MISMATCH",
+      );
+      const pack = await prisma.knowledgePack.findUnique({ where: { packId: seeded.packId } });
+      const gen = await prisma.searchIndexGeneration.findUnique({
+        where: { id: seeded.generation.id },
+      });
+      assert.equal(pack?.status, PackStatus.REVIEWING);
+      assert.equal(gen?.status, "READY");
+      assert.equal(gen?.scope, "DRAFT");
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("null searchIndexGenerationId on run fails service evidence", async () => {
+    const suffix = `${Date.now()}-nullgen`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      await prisma.serviceValidationRun.update({
+        where: { id: seeded.runIds.API },
+        data: { searchIndexGenerationId: null },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            const evidence = await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+              expectedSnapshotFingerprint: seeded.snapshotFingerprint,
+            });
+            await assertCurrentServiceValidationEvidence({
+              client: tx,
+              packId: seeded.packId,
+              versionId: evidence.versionId,
+              snapshot: evidence.snapshot,
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError &&
+          error.code === "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("missing API resultFingerprint in snapshot fails preparation entry", async () => {
+    const suffix = `${Date.now()}-norf`;
+    const seeded = await seedApprovalReadyPack(suffix);
+    try {
+      const bad = {
+        ...seeded.snapshot,
+        preparationValidation: {
+          ...seeded.snapshot.preparationValidation!,
+          API: {
+            ...seeded.snapshot.preparationValidation!.API!,
+            resultFingerprint: null,
+          },
+        },
+      };
+      await prisma.packReview.update({
+        where: { id: seeded.review.id },
+        data: { submitSnapshot: bad as unknown as Prisma.InputJsonValue },
+      });
+      await assert.rejects(
+        () =>
+          prisma.$transaction(async (tx) => {
+            await assertApprovalSearchGenerationInTx(tx, {
+              packId: seeded.packId,
+              reviewId: seeded.review.id,
+              expectedSnapshotFingerprint: computeReviewSubmitSnapshotFingerprint(bad as never),
+            });
+          }),
+        (error: unknown) =>
+          error instanceof PayloadServiceError && error.code === "APPROVAL_SNAPSHOT_MISMATCH",
+      );
+    } finally {
+      await cleanup(seeded.packId);
+    }
+  });
+
+  it("approvePackReview vs rejectPackReview: exactly one wins", async () => {
+    const suffix = `${Date.now()}-e2e`;
+    const seeded = await seedApprovalReadyPack(suffix, { fullIntegrity: true });
+    assert.ok(seeded.storage);
+    setObjectStorageForTests(seeded.storage);
+    try {
+      const results = await Promise.allSettled([
+        approvePackReview({
+          packId: seeded.packId,
+          reviewerUserId: seeded.userId,
+          reviewerClientId: "test-approve",
+          storage: seeded.storage!,
+        }),
+        rejectPackReview({
+          packId: seeded.packId,
+          reviewerUserId: seeded.userId,
+          reviewerClientId: "test-reject",
+          rejectionReason: "concurrency-test",
+        }),
+      ]);
+
+      const outcomes = results.map((r) => {
+        if (r.status !== "fulfilled") return { kind: "throw" as const };
+        const v = r.value;
+        if ("error" in v && v.error) {
+          return { kind: "error" as const, error: v.error };
+        }
+        return { kind: "ok" as const };
+      });
+      const oks = outcomes.filter((o) => o.kind === "ok");
+      assert.equal(oks.length, 1, `expected 1 success, got ${JSON.stringify(outcomes)}`);
+      assert.ok(
+        outcomes.some((o) => o.kind === "error"),
+        `expected conflict side, got ${JSON.stringify(outcomes)}`,
+      );
+
+      const pack = await prisma.knowledgePack.findUnique({ where: { packId: seeded.packId } });
+      const review = await prisma.packReview.findUnique({ where: { id: seeded.review.id } });
+      const gen = await prisma.searchIndexGeneration.findUnique({
+        where: { id: seeded.generation.id },
+      });
+      const approveAudits = await prisma.auditLog.count({
+        where: { entityId: seeded.packId, action: AuditAction.ADMIN_PACK_APPROVE },
+      });
+      const rejectAudits = await prisma.auditLog.count({
+        where: { entityId: seeded.packId, action: AuditAction.ADMIN_PACK_REJECT },
+      });
+
+      if (pack?.status === PackStatus.PUBLISHED || pack?.status === PackStatus.VERIFIED) {
+        assert.equal(review?.status, PackReviewStatus.APPROVED);
+        assert.equal(gen?.status, "PROMOTED");
+        assert.equal(gen?.scope, "PRODUCTION");
+        assert.equal(approveAudits, 1);
+        assert.equal(rejectAudits, 0);
+      } else {
+        assert.equal(pack?.status, PackStatus.DRAFT);
+        assert.equal(review?.status, PackReviewStatus.REJECTED);
+        assert.equal(gen?.status, "READY");
+        assert.equal(gen?.scope, "DRAFT");
+        assert.equal(rejectAudits, 1);
+        assert.equal(approveAudits, 0);
+      }
+    } finally {
+      setObjectStorageForTests(null);
+      await cleanup(seeded.packId);
+    }
+  });
+
+
 });
 
 describe("approval transaction atomicity (skipped without DATABASE_URL)", {
   skip: hasDb,
 }, () => {
-  it("reports skip — PostgreSQL not configured", () => {
+  it("reports skip ??PostgreSQL not configured", () => {
     assert.equal(hasDb, false);
   });
 });

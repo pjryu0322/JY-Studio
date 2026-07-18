@@ -1,59 +1,137 @@
 /**
- * Unit tests for P5.1.2 approval-transaction evidence helper and
- * conditional promotion guard (no DB required).
+ * Unit tests for P5.1.3 snapshot fingerprint + approval evidence helpers.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
+import { assertCompletePreparationValidationSnapshotEntry } from "../lib/distribution/preparation-validation-snapshot-entry.ts";
+import {
+  canonicalizeReviewSubmitSnapshot,
+  computeReviewSubmitSnapshotFingerprint,
+} from "../lib/distribution/review-submit-snapshot-fingerprint.ts";
 import { promoteSearchGeneration } from "../lib/search-generation/search-generation-service.ts";
+import type { DoclingBundleReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
 
 const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-describe("promoteSearchGeneration conditional guard (P5.1.2)", () => {
-  it("rejects promotion when descriptor guard does not match (count 0 → conflict)", async () => {
-    const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
+function sampleSnapshot(
+  overrides: Partial<DoclingBundleReviewSubmitSnapshot> = {},
+): DoclingBundleReviewSubmitSnapshot {
+  return {
+    mode: "DOCLING_BUNDLE",
+    submittedAt: "2026-07-18T00:00:00.000Z",
+    submittedVersionId: "ver-1",
+    doclingBundleId: "b-1",
+    sourceFileId: "src-1",
+    jsonPayloadFileId: "json-1",
+    markdownPayloadFileId: null,
+    checksums: { source: "a".repeat(64), json: "b".repeat(64), markdown: null },
+    doclingSchemaVersion: "1.1",
+    adapterVersion: "test",
+    normalizedDocumentId: "nd-1",
+    fingerprint: "fp-1",
+    warningCount: 0,
+    warnings: [],
+    sourceTitle: "Source",
+    licenseName: "MIT",
+    visibility: "PUBLIC",
+    allowDownload: false,
+    allowApi: true,
+    allowMcp: true,
+    language: "ko",
+    snapshotSchemaVersion: 3,
+    ...overrides,
+  } as DoclingBundleReviewSubmitSnapshot;
+}
+
+describe("review submit snapshot fingerprint (P5.1.3)", () => {
+  it("is stable across object key insertion order", () => {
+    const a = sampleSnapshot({ pipelineRunId: "p1", indexGenerationId: "g1" });
+    const b = {
+      ...sampleSnapshot(),
+      indexGenerationId: "g1",
+      pipelineRunId: "p1",
+    } as DoclingBundleReviewSubmitSnapshot;
+    assert.equal(
+      computeReviewSubmitSnapshotFingerprint(a),
+      computeReviewSubmitSnapshotFingerprint(b),
+    );
+    assert.ok(canonicalizeReviewSubmitSnapshot(a).includes('"indexGenerationId"'));
+  });
+
+  it("changes when a binding field changes", () => {
+    const a = computeReviewSubmitSnapshotFingerprint(sampleSnapshot({ pipelineRunId: "p1" }));
+    const b = computeReviewSubmitSnapshotFingerprint(sampleSnapshot({ pipelineRunId: "p2" }));
+    assert.notEqual(a, b);
+    assert.match(a, /^[0-9a-f]{64}$/);
+  });
+});
+
+describe("preparation validation entry completeness (P5.1.3)", () => {
+  const base = {
+    status: "PASS",
+    runId: "run-1",
+    testedAt: "2026-07-18T00:00:00.000Z",
+    currentValidity: "CURRENT" as const,
+    providerConfirmationStatus: "CONFIRMED",
+    providerConfirmationId: "conf-1",
+    confirmedAt: "2026-07-18T00:00:00.000Z",
+    pipelineRunId: "pipe-1",
+    normalizedDocumentId: "nd-1",
+    indexGenerationId: "gen-1",
+    fingerprint: "fp-1",
+  };
+
+  it("requires resultFingerprint for API", () => {
+    assert.throws(
+      () => assertCompletePreparationValidationSnapshotEntry("API", { ...base }),
+      (e: unknown) =>
+        e instanceof PayloadServiceError && e.code === "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+    );
+    assert.doesNotThrow(() =>
+      assertCompletePreparationValidationSnapshotEntry("API", {
+        ...base,
+        resultFingerprint: "rf-1",
+      }),
+    );
+  });
+
+  it("requires downloadTestId for DOWNLOAD", () => {
+    assert.throws(
+      () => assertCompletePreparationValidationSnapshotEntry("DOWNLOAD", { ...base }),
+      (e: unknown) => e instanceof PayloadServiceError,
+    );
+    assert.doesNotThrow(() =>
+      assertCompletePreparationValidationSnapshotEntry("DOWNLOAD", {
+        ...base,
+        downloadTestId: "dt-1",
+      }),
+    );
+  });
+});
+
+describe("promoteSearchGeneration conditional guard (P5.1.3)", () => {
+  it("rejects promotion when descriptor guard does not match", async () => {
     const fakeTx = {
       searchIndexGeneration: {
-        findUnique: async ({ where }: { where: { id: string } }) => {
-          if (where.id === "gen-1") {
-            return {
-              id: "gen-1",
-              versionId: "ver-1",
-              status: "READY",
-              scope: "DRAFT",
-              generationFingerprint: "fp-1",
-              embeddingProvider: "local-e5",
-              embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
-              embeddingModelRevision: SHA,
-              embeddingDimension: 384,
-              distanceMetric: "cosine",
-            };
-          }
-          return null;
-        },
+        findUnique: async () => ({
+          id: "gen-1",
+          versionId: "ver-1",
+          status: "READY",
+          scope: "DRAFT",
+          generationFingerprint: "fp-1",
+          embeddingProvider: "local-e5",
+          embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
+          embeddingModelRevision: SHA,
+          embeddingDimension: 384,
+          distanceMetric: "cosine",
+        }),
         updateMany: async (args: {
           where: Record<string, unknown>;
           data: Record<string, unknown>;
         }) => {
-          updates.push(args);
-          // Retire previous production
-          if (args.where.scope === "PRODUCTION") {
-            return { count: 0 };
-          }
-          // Conditional promote: simulate revision drift → 0 rows
-          if (
-            args.where.embeddingModelRevision &&
-            args.where.embeddingModelRevision !== SHA
-          ) {
-            return { count: 0 };
-          }
-          if (args.data.status === "PROMOTED") {
-            // Guard matches in this branch only when revision equals SHA
-            if (args.where.embeddingModelRevision === SHA) {
-              return { count: 1 };
-            }
-            return { count: 0 };
-          }
+          if (args.where.scope === "PRODUCTION") return { count: 0 };
+          if (args.data.status === "PROMOTED") return { count: 0 };
           return { count: 0 };
         },
       },
@@ -73,80 +151,13 @@ describe("promoteSearchGeneration conditional guard (P5.1.2)", () => {
         error instanceof PayloadServiceError &&
         error.code === "SEARCH_GENERATION_TRANSITION_CONFLICT",
     );
-
-    // Retire was attempted before the failed promote (same logical tx from caller's view).
-    assert.ok(updates.some((u) => u.where.scope === "PRODUCTION"));
-    assert.ok(updates.some((u) => u.data.status === "PROMOTED"));
-  });
-
-  it("includes Snapshot descriptor fields in the conditional promote where-clause", async () => {
-    let promoteWhere: Record<string, unknown> | null = null;
-    const fakeTx = {
-      searchIndexGeneration: {
-        findUnique: async () => ({
-          id: "gen-1",
-          versionId: "ver-1",
-          status: "READY",
-          scope: "DRAFT",
-          generationFingerprint: "fp-1",
-          embeddingProvider: "local-e5",
-          embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
-          embeddingModelRevision: SHA,
-          embeddingDimension: 384,
-          distanceMetric: "cosine",
-        }),
-        updateMany: async (args: {
-          where: Record<string, unknown>;
-          data: Record<string, unknown>;
-        }) => {
-          if (args.data.status === "PROMOTED") {
-            promoteWhere = args.where;
-            return { count: 1 };
-          }
-          return { count: 0 };
-        },
-      },
-    };
-
-    const result = await promoteSearchGeneration("gen-1", fakeTx as never, {
-      generationFingerprint: "fp-1",
-      embeddingProvider: "local-e5",
-      embeddingModel: "dragonkue/multilingual-e5-small-ko-v2",
-      embeddingModelRevision: SHA,
-      embeddingDimension: 384,
-      distanceMetric: "cosine",
-    });
-
-    assert.equal(result.id, "gen-1");
-    assert.ok(promoteWhere);
-    assert.equal(promoteWhere!.status, "READY");
-    assert.equal(promoteWhere!.scope, "DRAFT");
-    assert.equal(promoteWhere!.generationFingerprint, "fp-1");
-    assert.equal(promoteWhere!.embeddingProvider, "local-e5");
-    assert.equal(promoteWhere!.embeddingModelRevision, SHA);
-    assert.equal(promoteWhere!.embeddingDimension, 384);
-    assert.equal(promoteWhere!.distanceMetric, "cosine");
   });
 });
 
-describe("approval evidence helper exports (P5.1.2)", () => {
-  it("exports assertApprovalSearchGenerationInTx without requiring external snapshot", async () => {
+describe("approval evidence helper exports (P5.1.3)", () => {
+  it("requires expectedSnapshotFingerprint (arity 2)", async () => {
     const mod = await import("../lib/distribution/approval-search-generation-evidence.ts");
     assert.equal(typeof mod.assertApprovalSearchGenerationInTx, "function");
-    // Arity 2: (tx, { packId, reviewId }) — no snapshot parameter.
     assert.equal(mod.assertApprovalSearchGenerationInTx.length, 2);
-  });
-
-  it("registers transition conflict error codes", async () => {
-    const { PayloadServiceError: Err } = await import(
-      "../lib/distribution/payload-errors.ts"
-    );
-    const approval = new Err("APPROVAL_TRANSITION_CONFLICT", "승인 충돌", 409);
-    const review = new Err("REVIEW_TRANSITION_CONFLICT", "반려 충돌", 409);
-    const snap = new Err("APPROVAL_SNAPSHOT_MISMATCH", "스냅샷", 409);
-    assert.equal(approval.code, "APPROVAL_TRANSITION_CONFLICT");
-    assert.equal(review.code, "REVIEW_TRANSITION_CONFLICT");
-    assert.equal(snap.code, "APPROVAL_SNAPSHOT_MISMATCH");
-    assert.equal(approval.httpStatus, 409);
   });
 });

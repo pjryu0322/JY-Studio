@@ -47,6 +47,12 @@ import {
   computeResultFingerprint,
   isLegacySharedConfirmationMissingFingerprint,
 } from "@/lib/distribution/service-validation-share";
+import {
+  assertCompletePreparationValidationSnapshotEntry,
+  type PreparationValidationSnapshotEntry,
+} from "@/lib/distribution/preparation-validation-snapshot-entry";
+
+export type { PreparationValidationSnapshotEntry } from "@/lib/distribution/preparation-validation-snapshot-entry";
 
 export type ProviderConfirmationStatusDto =
   | "NOT_REVIEWED"
@@ -1072,22 +1078,6 @@ export type ServiceValidationSubmitSnapshotEntry = {
   confirmedAt: string | null;
 };
 
-export type PreparationValidationSnapshotEntry = {
-  status: string;
-  runId: string;
-  testedAt: string | null;
-  currentValidity: "CURRENT";
-  providerConfirmationStatus: string;
-  providerConfirmationId: string;
-  confirmedAt: string;
-  pipelineRunId: string | null;
-  normalizedDocumentId: string | null;
-  indexGenerationId: string | null;
-  fingerprint: string | null;
-  resultFingerprint?: string | null;
-  downloadTestId?: string | null;
-};
-
 async function assertPreparationChannelPassed(input: {
   packId: string;
   versionId: string;
@@ -1226,6 +1216,7 @@ export async function assertPreparationServiceValidationsPassed(input: {
       pipelineRunId: input.pipelineRunId,
       normalizedDocumentId: input.normalizedDocumentId,
     });
+    assertCompletePreparationValidationSnapshotEntry(channel, snapshot[channel]);
   }
   if (snapshot.API && snapshot.MCP) {
     const apiRun = await prisma.serviceValidationRun.findUnique({
@@ -1494,10 +1485,11 @@ export async function assertCurrentServiceValidationEvidence(input: {
     input.snapshot.preparationValidation ?? input.snapshot.serviceValidation ?? {};
   for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
     const snap = snapValidation[channel];
-    if (!snap?.runId) {
-      throw evidenceMismatch();
-    }
+    assertCompletePreparationValidationSnapshotEntry(channel, snap);
+
     const run = await db.serviceValidationRun.findUnique({ where: { id: snap.runId } });
+    const runTestedAt = run?.testedAt?.toISOString() ?? null;
+    const snapshotTestedAt = snap.testedAt ?? null;
     if (
       !run ||
       run.packId !== input.packId ||
@@ -1505,27 +1497,31 @@ export async function assertCurrentServiceValidationEvidence(input: {
       run.channel !== channel ||
       run.status !== "PASS" ||
       run.pipelineRunId !== latest.id ||
+      !run.indexGenerationId ||
+      !run.searchIndexGenerationId ||
       run.indexGenerationId !== binding.indexGenerationId ||
       run.indexGenerationId !== approvedGenerationId ||
-      (run.searchIndexGenerationId != null &&
-        run.searchIndexGenerationId !== approvedGenerationId) ||
+      run.searchIndexGenerationId !== approvedGenerationId ||
+      run.indexGenerationId !== run.searchIndexGenerationId ||
       run.fingerprint !== binding.fingerprint ||
       run.normalizedDocumentId !== binding.normalizedDocumentId ||
-      (snap.testedAt && run.testedAt && run.testedAt.toISOString() !== snap.testedAt)
+      !runTestedAt ||
+      !snapshotTestedAt ||
+      runTestedAt !== snapshotTestedAt
     ) {
       throw evidenceMismatch();
     }
     if (run.invalidatedAt) {
       throw evidenceMismatch();
     }
-    if (
-      "resultFingerprint" in snap &&
-      snap.resultFingerprint != null &&
-      run.resultFingerprint !== snap.resultFingerprint
-    ) {
-      throw evidenceMismatch();
-    }
     if (channel === "API" || channel === "MCP") {
+      if (
+        !snap.resultFingerprint ||
+        !run.resultFingerprint ||
+        snap.resultFingerprint !== run.resultFingerprint
+      ) {
+        throw evidenceMismatch();
+      }
       const itemCount = await db.serviceValidationResultItem.count({
         where: { runId: run.id },
       });
@@ -1534,30 +1530,38 @@ export async function assertCurrentServiceValidationEvidence(input: {
       }
     }
     if (channel === "DOWNLOAD") {
+      if (!snap.downloadTestId) {
+        throw evidenceMismatch();
+      }
       const downloadTest = await db.serviceValidationDownloadTest.findUnique({
         where: { runId: run.id },
       });
-      if (!downloadTest?.responseReady) {
-        throw evidenceMismatch();
-      }
       if (
-        "downloadTestId" in snap &&
-        snap.downloadTestId &&
-        snap.downloadTestId !== downloadTest.id
+        !downloadTest ||
+        downloadTest.id !== snap.downloadTestId ||
+        downloadTest.runId !== run.id ||
+        downloadTest.responseReady !== true
       ) {
         throw evidenceMismatch();
       }
     }
-    const confirmation = await db.serviceValidationProviderConfirmation.findUnique({
-      where: { runId: run.id },
-    });
-    if (!confirmation || confirmation.status !== "CONFIRMED") {
+
+    if (
+      !snap.providerConfirmationId ||
+      snap.providerConfirmationStatus !== "CONFIRMED" ||
+      !snap.confirmedAt
+    ) {
       throw evidenceMismatch();
     }
+    const confirmation = await db.serviceValidationProviderConfirmation.findUnique({
+      where: { id: snap.providerConfirmationId },
+    });
     if (
-      "providerConfirmationId" in snap &&
-      snap.providerConfirmationId &&
-      snap.providerConfirmationId !== confirmation.id
+      !confirmation ||
+      confirmation.runId !== run.id ||
+      confirmation.status !== "CONFIRMED" ||
+      !confirmation.confirmedAt ||
+      confirmation.confirmedAt.toISOString() !== snap.confirmedAt
     ) {
       throw evidenceMismatch();
     }

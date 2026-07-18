@@ -1,6 +1,7 @@
 /**
- * P5.1.2: Re-validate approval evidence inside the admin approval transaction.
+ * P5.1.3: Re-validate approval evidence inside the admin approval transaction.
  * Authority data is ALWAYS the DB PackReview.submitSnapshot (never a memory object).
+ * External Object Storage checks are bound via expectedSnapshotFingerprint.
  */
 
 import type { Prisma, SearchIndexGeneration } from "@prisma/client";
@@ -10,16 +11,24 @@ import {
   type DoclingBundleReviewSubmitSnapshot,
 } from "@/lib/distribution/distribution-submit-snapshot";
 import { PayloadServiceError, type PayloadErrorCode } from "@/lib/distribution/payload-errors";
+import { computeReviewSubmitSnapshotFingerprint } from "@/lib/distribution/review-submit-snapshot-fingerprint";
+import { assertCompletePreparationValidationSnapshotEntry } from "@/lib/distribution/preparation-validation-snapshot-entry";
+import type { ServiceChannel } from "@/lib/distribution/service-channel-policy";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { PackReviewStatus } from "@/lib/pack-review-status";
+import { resolveReviewPackageMode } from "@/lib/review/review-package-mode";
 import {
   embeddingDescriptorsEqual,
   validateOperationalEmbeddingDescriptor,
 } from "@/lib/search-generation/search-generation-descriptor";
 
+const PREPARATION_CHANNELS: ServiceChannel[] = ["API", "MCP", "DOWNLOAD"];
+
 export type ApprovalSearchGenerationContext = {
   /** Parsed from DB PackReview.submitSnapshot — the sole authority for approval. */
   snapshot: DoclingBundleReviewSubmitSnapshot;
+  snapshotFingerprint: string;
+  packageMode: "DOCLING_BUNDLE";
   generation: SearchIndexGeneration;
   versionId: string;
   normalizedDocumentId: string;
@@ -38,15 +47,21 @@ function mismatch(code: PayloadErrorCode = "SEARCH_GENERATION_MISMATCH"): never 
 /**
  * Re-read PackReview.submitSnapshot from DB and verify all approval evidence inside `tx`.
  * Do NOT pass an external snapshot — the DB row is the authority.
+ * `expectedSnapshotFingerprint` must match the fingerprint of the snapshot used for
+ * external Object Storage integrity verification.
  */
 export async function assertApprovalSearchGenerationInTx(
   tx: Prisma.TransactionClient,
   input: {
     packId: string;
     reviewId: string;
+    expectedSnapshotFingerprint: string;
   },
 ): Promise<ApprovalSearchGenerationContext> {
-  const { packId, reviewId } = input;
+  const { packId, reviewId, expectedSnapshotFingerprint } = input;
+  if (!expectedSnapshotFingerprint?.trim()) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
 
   const pack = await tx.knowledgePack.findUnique({
     where: { packId },
@@ -79,6 +94,15 @@ export async function assertApprovalSearchGenerationInTx(
     mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
   const snapshot = parsed;
+
+  const snapshotFingerprint = computeReviewSubmitSnapshotFingerprint(snapshot);
+  if (snapshotFingerprint !== expectedSnapshotFingerprint) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
+
+  if (resolveReviewPackageMode(snapshot) !== "DOCLING_BUNDLE") {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
 
   const latestVersion = await tx.knowledgePackVersion.findFirst({
     where: { packId },
@@ -119,6 +143,21 @@ export async function assertApprovalSearchGenerationInTx(
     snapshot.searchIndexGenerationId !== snapshot.indexGenerationId
   ) {
     mismatch();
+  }
+
+  const prep = snapshot.preparationValidation;
+  if (!prep) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
+  for (const channel of PREPARATION_CHANNELS) {
+    try {
+      assertCompletePreparationValidationSnapshotEntry(channel, prep[channel]);
+    } catch (error) {
+      if (error instanceof PayloadServiceError) {
+        mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+      }
+      throw error;
+    }
   }
 
   const passRun = await tx.pipelineRun.findUnique({
@@ -201,16 +240,10 @@ export async function assertApprovalSearchGenerationInTx(
     mismatch("SEARCH_GENERATION_DESCRIPTOR_DRIFT");
   }
 
-  // Full service-validation evidence is asserted by the caller via
-  // assertCurrentServiceValidationEvidence({ client: tx, snapshot }).
-  // Keep a minimal run-id presence check here so Generation binding stays coherent.
-  const prep = snapshot.preparationValidation;
-  if (!prep?.API?.runId || !prep?.MCP?.runId || !prep?.DOWNLOAD?.runId) {
-    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
-  }
-
   return {
     snapshot,
+    snapshotFingerprint,
+    packageMode: "DOCLING_BUNDLE",
     generation,
     versionId: latestVersion.id,
     normalizedDocumentId: activeNd.id,

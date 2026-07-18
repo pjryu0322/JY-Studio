@@ -607,6 +607,8 @@ export async function approvePackReview(input: {
   reviewerUserId?: string | null;
   memo?: string;
   publishAsVerified?: boolean;
+  /** Optional Object Storage backend (tests inject InMemoryObjectStorage). */
+  storage?: import("@/lib/distribution/payload-storage").PayloadStorage;
 }) {
   const packId = input.packId.trim();
   const detailBefore = await getAdminReviewDetail(packId);
@@ -624,6 +626,7 @@ export async function approvePackReview(input: {
   }
 
   const approveSnapshot = detailBefore.latestReview?.submitSnapshot ?? null;
+  let verifiedSnapshotFingerprint: string | null = null;
   if (isDoclingBundleReviewSnapshot(approveSnapshot)) {
     try {
       await assertDoclingReviewIntegrityOrThrow({
@@ -631,7 +634,12 @@ export async function approvePackReview(input: {
         snapshot: approveSnapshot,
         verifyObjectStorage: "FULL",
         actorUserId: input.reviewerUserId,
+        storage: input.storage,
       });
+      const { computeReviewSubmitSnapshotFingerprint } = await import(
+        "@/lib/distribution/review-submit-snapshot-fingerprint"
+      );
+      verifiedSnapshotFingerprint = computeReviewSubmitSnapshotFingerprint(approveSnapshot);
       const { assertCurrentServiceValidationEvidence } = await import(
         "@/lib/distribution/service-validation-service"
       );
@@ -735,12 +743,13 @@ export async function approvePackReview(input: {
 
   if (packageMode === "DOCLING_BUNDLE" && isDoclingBundleReviewSnapshot(approveSnapshot)) {
     // UX pre-check only — final approval is decided solely by the in-transaction
-    // DB snapshot + assertApprovalSearchGenerationInTx + service evidence + conditional transitions.
+    // DB snapshot fingerprint + assertApprovalSearchGenerationInTx + service evidence.
     if (
       !approveSnapshot.pipelineRunId ||
       !approveSnapshot.indexGenerationId ||
       !approveSnapshot.searchIndexGenerationId ||
       !approveSnapshot.chunkGenerationId ||
+      !verifiedSnapshotFingerprint ||
       (approveSnapshot.snapshotSchemaVersion ?? 1) < 3
     ) {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
@@ -758,12 +767,24 @@ export async function approvePackReview(input: {
       );
       const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
       const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      const { resolveReviewPackageMode: resolveModeInTx } = await import(
+        "@/lib/review/review-package-mode"
+      );
 
       await prisma.$transaction(async (tx) => {
         const evidence = await assertApprovalSearchGenerationInTx(tx, {
           packId,
           reviewId: accepted.id,
+          expectedSnapshotFingerprint: verifiedSnapshotFingerprint!,
         });
+
+        if (resolveModeInTx(evidence.snapshot) !== "DOCLING_BUNDLE") {
+          throw new PayloadServiceError(
+            "APPROVAL_SNAPSHOT_MISMATCH",
+            "제출 이후 검수 증적 또는 상태가 변경되었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+            409,
+          );
+        }
 
         await assertCurrentServiceValidationEvidence({
           client: tx,
@@ -843,6 +864,7 @@ export async function approvePackReview(input: {
             indexGenerationId: evidence.generation.id,
             searchIndexGenerationId: evidence.generation.id,
             embeddingModelRevision: evidence.generation.embeddingModelRevision,
+            snapshotFingerprint: evidence.snapshotFingerprint,
           },
         });
       });
