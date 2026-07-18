@@ -159,6 +159,8 @@ export async function rebuildPackEmbeddings(input: {
   chunkGenerationId?: string;
   /** When true with indexGenerationId, include inactive BUILDING chunks. */
   includeInactiveForGeneration?: boolean;
+  /** Force hard-fail when pgvector is unavailable (does not mutate process.env). */
+  requirePgvector?: boolean;
   onChunkProcessed?: (processedCount: number) => void | Promise<void>;
 }): Promise<EmbeddingRebuildResultDto | null> {
   const pack = await prisma.knowledgePack.findUnique({
@@ -448,15 +450,22 @@ export async function rebuildPackEmbeddings(input: {
     }
 
     if (searchIndexGenerationId) {
-      const write = await upsertSearchIndexVector({
-        searchIndexGenerationId,
-        chunkId: chunk.id,
-        provider: descriptor.provider,
-        model: descriptor.model,
-        dimension: descriptor.dimension,
-        contentHash,
-        vector,
-      });
+      const vectorEnv = input.requirePgvector
+        ? { ...process.env, JYKSTORE_REQUIRE_PGVECTOR: "true" }
+        : process.env;
+      const write = await upsertSearchIndexVector(
+        {
+          searchIndexGenerationId,
+          chunkId: chunk.id,
+          provider: descriptor.provider,
+          model: descriptor.model,
+          dimension: descriptor.dimension,
+          contentHash,
+          vector,
+        },
+        prisma,
+        vectorEnv,
+      );
       if (write.skipped) vectorSyncWarning = write.reason;
     }
 

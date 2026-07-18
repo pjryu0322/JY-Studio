@@ -24,6 +24,11 @@ assert.ok(
 assert.ok((pkg.scripts["dev:minio"] ?? "").includes("dev-minio"), "dev:minio starts local MinIO");
 assert.ok((pkg.scripts["dev:web"] ?? "").includes("3004"), "web stays on 3004");
 assert.ok((pkg.scripts["dev:worker"] ?? "").includes("docling-processing-worker"));
+assert.ok(
+  (pkg.scripts["worker:search-data"] ?? "").includes("search-data-generation-worker"),
+  "worker:search-data must start search-data generation worker",
+);
 
 console.log("smoke:dev-processes OK");
 console.log("Manual check: npm run dev → Ctrl+C ends minio, web, and worker (no orphan).");
+console.log("Manual check: npm run worker:search-data for Local E5 search-data enqueue processing.");

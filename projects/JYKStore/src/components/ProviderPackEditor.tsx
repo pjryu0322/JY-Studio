@@ -21,6 +21,8 @@ import {
   doclingBundlePublicToMaterialContext,
   isDoclingSourceMaterialsReady,
 } from "@/lib/docling-import/docling-source-materials-readiness";
+import type { SearchDataUiState } from "@/lib/search-data/search-data-state";
+import { searchDataTabStatusLabel } from "@/lib/search-data/search-data-state";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { PackLanguageCode } from "@/lib/pack-language";
 import {
@@ -36,6 +38,7 @@ import {
   fetchProviderKnowledgePipelineApi,
   fetchProviderPack,
   fetchProviderPackDistributionApi,
+  fetchProviderSearchDataStatusApi,
   fetchProviderServiceValidationApi,
   submitProviderPackApi,
   updateProviderPackApi,
@@ -74,6 +77,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     useState<DoclingKnowledgePipelineStatusDto | null>(null);
   const [serviceValidation, setServiceValidation] =
     useState<ServiceValidationStatusDto | null>(null);
+  const [searchDataUiState, setSearchDataUiState] = useState<SearchDataUiState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -125,16 +129,18 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setSaveSuccessMessage(null);
       setBasicFieldErrors({});
 
-      const [distRes, doclingRes, knowledgeRes, serviceRes] = await Promise.all([
+      const [distRes, doclingRes, knowledgeRes, serviceRes, searchDataRes] = await Promise.all([
         fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
         fetchProviderDoclingImportApi(packId).catch(() => ({ bundle: null })),
         fetchProviderKnowledgePipelineApi(packId).catch(() => null),
         fetchProviderServiceValidationApi(packId).catch(() => null),
+        fetchProviderSearchDataStatusApi(packId).catch(() => null),
       ]);
       setDistribution(distRes.distribution);
       setDoclingBundle(doclingRes.bundle);
       if (knowledgeRes) setKnowledgeStatus(knowledgeRes);
       if (serviceRes) setServiceValidation(serviceRes);
+      if (searchDataRes) setSearchDataUiState(searchDataRes.state);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -340,12 +346,22 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const tabStepStatuses = useMemo(() => {
     if (registrationReadiness) {
-      return tabStepStatusesFromRegistrationReadiness(registrationReadiness);
+      const base = tabStepStatusesFromRegistrationReadiness(registrationReadiness);
+      if (searchDataUiState) {
+        return {
+          ...base,
+          serviceValidation: {
+            status: searchDataUiState === "VALIDATED" ? "COMPLETED" : "IN_PROGRESS",
+            statusLabel: searchDataTabStatusLabel(searchDataUiState),
+          },
+        };
+      }
+      return base;
     }
     return {} as Partial<
       Record<ProviderPackTabId, { status: string; statusLabel: string }>
     >;
-  }, [registrationReadiness]);
+  }, [registrationReadiness, searchDataUiState]);
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
@@ -633,6 +649,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               onGoToDistributionReview={() => selectTab("distributionReview")}
               onGoToKnowledge={() => selectTab("knowledge")}
               onStatusChange={setServiceValidation}
+              onSearchDataStateChange={setSearchDataUiState}
             />
           )}
         </div>

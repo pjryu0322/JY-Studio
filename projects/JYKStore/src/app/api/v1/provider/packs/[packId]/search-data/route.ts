@@ -86,6 +86,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status },
       );
     }
+    if ("accepted" in result && result.accepted) {
+      return jsonWithClientIdCookie({ clientId, ...result }, clientId, { status: 202 });
+    }
     return jsonWithClientIdCookie({ clientId, ...result }, clientId);
   } catch (error) {
     logSafeRouteError({

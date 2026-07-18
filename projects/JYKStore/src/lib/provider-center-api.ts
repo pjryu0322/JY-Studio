@@ -253,9 +253,21 @@ export async function fetchProviderSearchDataStatusApi(
   return (await response.json()) as SearchDataStatusDto;
 }
 
+export type SearchDataGenerateAcceptedDto = {
+  accepted: true;
+  state: "CREATING";
+  searchIndexGenerationId: string;
+  processedCount: number;
+  chunkCount: number;
+};
+
+/**
+ * Enqueues search-data generation (HTTP 202). Poll status for progress.
+ * When the generation is already complete, may return a full status payload (200).
+ */
 export async function generateProviderSearchDataApi(
   packId: string,
-): Promise<SearchDataStatusDto> {
+): Promise<SearchDataGenerateAcceptedDto | SearchDataStatusDto> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/search-data/generate`,
     {
@@ -268,7 +280,7 @@ export async function generateProviderSearchDataApi(
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
   }
-  return (await response.json()) as SearchDataStatusDto;
+  return (await response.json()) as SearchDataGenerateAcceptedDto | SearchDataStatusDto;
 }
 
 export async function validateProviderSearchDataApi(

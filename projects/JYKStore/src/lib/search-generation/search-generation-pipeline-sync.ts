@@ -30,7 +30,10 @@ export async function createSearchGenerationForPipeline(input: {
   fingerprint: string;
   chunkGenerationId: string;
   descriptor?: Awaited<ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>>;
+  attempt?: number;
+  client?: SyncClient;
 }): Promise<SearchIndexGeneration> {
+  const client = input.client ?? prisma;
   const descriptor = input.descriptor ?? (await resolveSearchGenerationEmbeddingDescriptor());
   const provisionalFingerprint = computeSearchGenerationFingerprint({
     packId: input.packId,
@@ -43,19 +46,23 @@ export async function createSearchGenerationForPipeline(input: {
     chunks: [],
   });
 
-  await markSearchGenerationStale(input.versionId, prisma, { exceptId: input.id });
+  await markSearchGenerationStale(input.versionId, client, { exceptId: input.id });
 
-  return createDraftSearchGeneration({
-    id: input.id,
-    packId: input.packId,
-    versionId: input.versionId,
-    pipelineRunId: input.pipelineRunId,
-    normalizedDocumentId: input.normalizedDocumentId,
-    chunkGenerationId: input.chunkGenerationId,
-    fingerprint: input.fingerprint,
-    ...descriptor,
-    generationFingerprint: provisionalFingerprint,
-  });
+  return createDraftSearchGeneration(
+    {
+      id: input.id,
+      packId: input.packId,
+      versionId: input.versionId,
+      pipelineRunId: input.pipelineRunId,
+      normalizedDocumentId: input.normalizedDocumentId,
+      chunkGenerationId: input.chunkGenerationId,
+      fingerprint: input.fingerprint,
+      ...descriptor,
+      generationFingerprint: provisionalFingerprint,
+      attempt: input.attempt ?? 0,
+    },
+    client,
+  );
 }
 
 async function resolveReadyFingerprint(

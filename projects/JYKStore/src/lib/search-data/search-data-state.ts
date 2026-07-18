@@ -3,6 +3,8 @@
  * Legacy local-hash pipeline PASS is never treated as current Local E5 search data.
  */
 
+import { mapSearchDataFailureCode } from "@/lib/search-data/search-data-error";
+
 export type SearchDataUiState =
   | "NOT_CREATED"
   | "CREATING"
@@ -24,6 +26,10 @@ export type SearchDataStatusResponse = {
   modelLabel?: string;
   dimension?: number;
   message?: string;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  retryable?: boolean;
+  supportRequired?: boolean;
   canGenerate: boolean;
   canValidate: boolean;
   canRunServiceValidation: boolean;
@@ -41,6 +47,8 @@ export type SearchDataStatusResponse = {
     vectorCount?: number;
     indexScope?: string | null;
     indexStatus?: string | null;
+    attempt?: number | null;
+    failureCode?: string | null;
     legacyLocalHashPresent?: boolean;
   };
   /** Retrieval evaluation summary when available. */
@@ -72,6 +80,9 @@ export type SearchDataStatusInput = {
     pipelineRunId: string;
     normalizedDocumentId: string;
     fingerprint: string;
+    attempt?: number;
+    failureCode?: string | null;
+    failureMessage?: string | null;
   } | null;
   vectorCount: number;
   /** INDEXING/SEARCH_EVALUATING pipeline step status for current binding (optional). */
@@ -104,16 +115,15 @@ function isLocalE5Complete(input: SearchDataStatusInput): boolean {
 }
 
 /**
- * Priority (§20):
- * STALE → CREATING → CREATE_FAILED → NOT_CREATED → vector mismatch →
- * VALIDATING → VALIDATION_FAILED → VALIDATED → CREATED
+ * Priority (§20 / hardening):
+ * STALE → CREATING → eval RUNNING → Generation FAILED → NOT_CREATED →
+ * vector mismatch → VALIDATION_FAILED → VALIDATED → CREATED
  */
 export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDataUiState {
   if (!input.pipelineCurrent && input.structurePassed) {
     return "STALE";
   }
   if (!input.structurePassed || !input.pipelineCurrent) {
-    // Structure incomplete — treat as not ready to create (UI uses structure CTA).
     return "STALE";
   }
 
@@ -128,6 +138,7 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
     return "VALIDATING";
   }
 
+  // Real generation failure always wins over quality validation.
   if (g && g.status === "FAILED") {
     return "CREATE_FAILED";
   }
@@ -149,14 +160,17 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
   }
 
   if (!isLocalE5Complete(input)) {
-    // Provider exists but counts mismatch — treat as create failure / incomplete.
     if (g!.status === "READY" || g!.status === "INDEXING") {
       return "CREATE_FAILED";
     }
     return "NOT_CREATED";
   }
 
-  if (input.evaluationStepStatus === "FAIL") {
+  // Quality fail/warning with intact Local E5 vectors → VALIDATION_FAILED (not CREATE_FAILED).
+  if (
+    input.evaluationStepStatus === "FAIL" ||
+    input.evaluationStepStatus === "WARNING"
+  ) {
     return "VALIDATION_FAILED";
   }
 
@@ -172,7 +186,6 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
   }
 
   if (g!.status === "READY" || g!.status === "INDEXING") {
-    // Embeddings complete; quality validation not yet PASS.
     if (input.evaluationStepStatus === "PASS" && g!.status === "READY") {
       return "VALIDATED";
     }
@@ -180,6 +193,25 @@ export function computeSearchDataUiState(input: SearchDataStatusInput): SearchDa
   }
 
   return "CREATED";
+}
+
+/** Tab badge / statusLabel for the 검색검증 step. */
+export function searchDataTabStatusLabel(state: SearchDataUiState): string {
+  switch (state) {
+    case "NOT_CREATED":
+      return "시작 전";
+    case "CREATING":
+    case "VALIDATING":
+      return "진행 중";
+    case "CREATE_FAILED":
+    case "VALIDATION_FAILED":
+    case "STALE":
+      return "보완 필요";
+    case "CREATED":
+      return "검증 필요";
+    case "VALIDATED":
+      return "완료";
+  }
 }
 
 export function buildSearchDataStatusResponse(
@@ -194,7 +226,9 @@ export function buildSearchDataStatusResponse(
     input.packStatusIsDraft &&
     input.structurePassed &&
     input.pipelineCurrent &&
-    (state === "NOT_CREATED" || state === "CREATE_FAILED" || state === "VALIDATION_FAILED");
+    (state === "NOT_CREATED" ||
+      state === "CREATE_FAILED" ||
+      state === "VALIDATION_FAILED");
   const canValidate =
     input.packStatusIsDraft &&
     (state === "CREATED" || state === "VALIDATION_FAILED") &&
@@ -205,35 +239,44 @@ export function buildSearchDataStatusResponse(
     g?.status === "READY" &&
     Boolean(input.serviceChannelsReady ?? true);
 
+  const failureCode =
+    state === "CREATE_FAILED" ? (g?.failureCode ?? null) : null;
+  const guidance =
+    state === "CREATE_FAILED" ? mapSearchDataFailureCode(failureCode) : null;
+
   let message = input.message;
   if (!message) {
-    switch (state) {
-      case "STALE":
-        message = input.structurePassed
-          ? "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 다시 실행해 주세요."
-          : "데이터 구조화가 완료되지 않았습니다.";
-        break;
-      case "NOT_CREATED":
-        message = "현재 구조화 결과로 생성된 검색데이터가 없습니다.";
-        break;
-      case "CREATING":
-        message = "검색데이터를 생성하는 중입니다.";
-        break;
-      case "CREATE_FAILED":
-        message = "검색데이터 생성에 실패했습니다.";
-        break;
-      case "CREATED":
-        message = "검색데이터 생성이 완료되었습니다.";
-        break;
-      case "VALIDATING":
-        message = "검색 품질을 검증하는 중입니다.";
-        break;
-      case "VALIDATION_FAILED":
-        message = "검색 품질이 기준을 충족하지 못했습니다.";
-        break;
-      case "VALIDATED":
-        message = "검색 품질 검증이 완료되었습니다.";
-        break;
+    if (state === "CREATE_FAILED" && guidance) {
+      message = guidance.message;
+    } else {
+      switch (state) {
+        case "STALE":
+          message = input.structurePassed
+            ? "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 다시 실행해 주세요."
+            : "데이터 구조화가 완료되지 않았습니다.";
+          break;
+        case "NOT_CREATED":
+          message = "현재 구조화 결과로 생성된 검색데이터가 없습니다.";
+          break;
+        case "CREATING":
+          message = "검색데이터를 생성하는 중입니다.";
+          break;
+        case "CREATE_FAILED":
+          message = "검색데이터 생성에 실패했습니다.";
+          break;
+        case "CREATED":
+          message = "검색데이터 생성이 완료되었습니다.";
+          break;
+        case "VALIDATING":
+          message = "검색 품질을 검증하는 중입니다.";
+          break;
+        case "VALIDATION_FAILED":
+          message = "검색 품질이 기준을 충족하지 못했습니다.";
+          break;
+        case "VALIDATED":
+          message = "검색 품질 검증이 완료되었습니다.";
+          break;
+      }
     }
   }
 
@@ -247,6 +290,10 @@ export function buildSearchDataStatusResponse(
     modelLabel: g?.embeddingModel ? modelLabel(g.embeddingModel) : undefined,
     dimension: g?.embeddingDimension,
     message,
+    failureCode,
+    failureMessage: state === "CREATE_FAILED" ? (g?.failureMessage ?? null) : null,
+    retryable: guidance?.retryable,
+    supportRequired: guidance?.supportRequired,
     canGenerate,
     canValidate,
     canRunServiceValidation,
@@ -263,6 +310,8 @@ export function buildSearchDataStatusResponse(
       vectorCount: input.vectorCount,
       indexScope: g?.scope ?? null,
       indexStatus: g?.status ?? null,
+      attempt: g?.attempt ?? null,
+      failureCode: g?.failureCode ?? null,
       legacyLocalHashPresent: Boolean(input.legacyLocalHashPresent),
     },
     validationSummary:

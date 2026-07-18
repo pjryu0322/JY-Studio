@@ -1,14 +1,11 @@
-import { AuditAction, PackStatus } from "@prisma/client";
+import { AuditAction, PackStatus, type SearchIndexGeneration } from "@prisma/client";
 import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
 import {
   DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { runDoclingRetrievalEvaluation } from "@/lib/docling-knowledge/docling-knowledge-eval";
-import {
-  activateDraftIndexGeneration,
-  failDraftIndexGeneration,
-} from "@/lib/docling-knowledge/docling-nd-knowledge-builder";
+import { activateDraftIndexGeneration } from "@/lib/docling-knowledge/docling-nd-knowledge-builder";
 import {
   getDoclingKnowledgePipelineStatus,
   isDoclingStructurePassed,
@@ -20,6 +17,7 @@ import {
   isEmbeddingProviderError,
 } from "@/lib/embedding/embedding-provider-errors";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { markServiceValidationsStaleForVersion } from "@/lib/distribution/mark-service-validations-stale";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -27,16 +25,25 @@ import { prisma } from "@/lib/prisma";
 import { completePipelineStep } from "@/lib/pipeline-service";
 import { createSearchGenerationForPipeline } from "@/lib/search-generation/search-generation-pipeline-sync";
 import {
-  markSearchGenerationEmbedding,
+  markSearchGenerationFailed,
   markSearchGenerationIndexing,
 } from "@/lib/search-generation/search-generation-service";
 import { resolveSearchGenerationEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
+import { mapSearchDataFailureCode } from "@/lib/search-data/search-data-error";
 import {
   buildSearchDataStatusResponse,
   type SearchDataStatusResponse,
 } from "@/lib/search-data/search-data-state";
 
 const SEARCH_DATA_LOCK_KEY = (packId: string) => `search-data:${packId}`;
+
+export type SearchDataGenerateAccepted = {
+  accepted: true;
+  state: "CREATING";
+  searchIndexGenerationId: string;
+  processedCount: number;
+  chunkCount: number;
+};
 
 async function assertPgvectorRuntimeReady(): Promise<void> {
   const ext = await prisma.$queryRaw<Array<{ extversion: string }>>`
@@ -87,6 +94,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return value as Record<string, unknown>;
   }
   return null;
+}
+
+function failureResponse(code: string, overrideMessage?: string) {
+  const guidance = mapSearchDataFailureCode(code);
+  return {
+    error: "INVALID" as const,
+    message: overrideMessage ?? guidance.message,
+    code,
+  };
 }
 
 /**
@@ -151,6 +167,7 @@ export async function getSearchDataStatus(input: {
     ? await prisma.searchIndexGeneration.findUnique({ where: { id: indexGenerationId } })
     : null;
 
+  // Include FAILED Local E5 generations so CREATE_FAILED survives refresh.
   const isCurrentLocalE5 =
     generation &&
     binding &&
@@ -188,8 +205,6 @@ export async function getSearchDataStatus(input: {
         ? evalDetails.passedCases
         : null;
 
-  // Only treat INDEXING PASS as current when Local E5 generation is complete —
-  // otherwise legacy PASS must not drive CREATED/VALIDATED.
   const indexingStatusForUi =
     isCurrentLocalE5 && indexingStep?.status === "RUNNING"
       ? "RUNNING"
@@ -227,6 +242,9 @@ export async function getSearchDataStatus(input: {
           pipelineRunId: isCurrentLocalE5.pipelineRunId,
           normalizedDocumentId: isCurrentLocalE5.normalizedDocumentId,
           fingerprint: isCurrentLocalE5.fingerprint,
+          attempt: isCurrentLocalE5.attempt,
+          failureCode: isCurrentLocalE5.failureCode,
+          failureMessage: isCurrentLocalE5.failureMessage,
         }
       : null,
     vectorCount,
@@ -239,19 +257,9 @@ export async function getSearchDataStatus(input: {
   });
 }
 
-async function resetGenerationForRebuild(generationId: string): Promise<void> {
-  await prisma.$executeRaw`
-    DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${generationId}
-  `.catch(() => undefined);
-  await prisma.knowledgeChunkEmbedding
-    .deleteMany({ where: { searchIndexGenerationId: generationId } })
-    .catch(() => undefined);
-  await prisma.searchIndexGeneration.delete({ where: { id: generationId } }).catch(() => undefined);
-}
-
 /**
- * Creates Local E5 Draft SearchIndexGeneration + Passage embeddings + SearchIndexVector
- * for the current structure binding (does not re-run Docling structure).
+ * Enqueues Local E5 Draft SearchIndexGeneration as PENDING (HTTP 202).
+ * Embedding runs in search-data-generation-worker.
  */
 export async function startSearchDataGeneration(input: {
   userId: string;
@@ -259,6 +267,7 @@ export async function startSearchDataGeneration(input: {
   packId: string;
 }): Promise<
   | { error: "NOT_FOUND" | "PROFILE_REQUIRED" | "INVALID"; message: string; code?: string }
+  | SearchDataGenerateAccepted
   | SearchDataStatusResponse
 > {
   const owned = await loadOwnedPack(input);
@@ -345,61 +354,92 @@ export async function startSearchDataGeneration(input: {
 
   try {
     await assertPgvectorRuntimeReady();
-    process.env.JYKSTORE_REQUIRE_PGVECTOR = process.env.JYKSTORE_REQUIRE_PGVECTOR || "true";
+    const descriptor = await resolveSearchGenerationEmbeddingDescriptor();
 
-    // Serialize create/reset under advisory lock, then embed outside the lock.
-    await prisma.$transaction(async (tx) => {
+    const enqueueResult = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SEARCH_DATA_LOCK_KEY(input.packId)}))`;
+
       const locked = await tx.searchIndexGeneration.findUnique({
         where: { id: indexGenerationId },
       });
+
       if (
         locked &&
         locked.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER &&
-        ["PENDING", "EMBEDDING", "INDEXING"].includes(locked.status)
+        ["PENDING", "EMBEDDING"].includes(locked.status)
       ) {
-        return;
+        return {
+          kind: "already_running" as const,
+          generation: locked,
+        };
       }
+
+      if (
+        locked &&
+        locked.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER &&
+        locked.embeddingDimension === 384 &&
+        (locked.status === "READY" || locked.status === "INDEXING")
+      ) {
+        const vectors = await tx.$queryRaw<Array<{ n: bigint }>>`
+          SELECT COUNT(*)::bigint AS n
+          FROM "SearchIndexVector"
+          WHERE "searchIndexGenerationId" = ${indexGenerationId}
+        `;
+        const vectorCount = Number(vectors[0]?.n ?? 0);
+        if (vectorCount === chunkCount && locked.embeddedCount >= chunkCount && locked.failedCount === 0) {
+          return { kind: "already_complete" as const, generation: locked };
+        }
+      }
+
+      const nextAttempt = (locked?.attempt ?? 0) + 1;
+
       if (locked) {
         await tx.$executeRaw`
           DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${indexGenerationId}
-        `.catch(() => undefined);
-        await tx.knowledgeChunkEmbedding
-          .deleteMany({ where: { searchIndexGenerationId: indexGenerationId } })
-          .catch(() => undefined);
-        await tx.searchIndexGeneration
-          .delete({ where: { id: indexGenerationId } })
-          .catch(() => undefined);
+        `;
+        await tx.knowledgeChunkEmbedding.deleteMany({
+          where: { searchIndexGenerationId: indexGenerationId },
+        });
+        await tx.searchIndexGeneration.delete({ where: { id: indexGenerationId } });
       }
+
+      const created = await createSearchGenerationForPipeline({
+        id: indexGenerationId,
+        packId: input.packId,
+        versionId: version.id,
+        pipelineRunId: latest.id,
+        normalizedDocumentId: binding.normalizedDocumentId,
+        fingerprint: binding.fingerprint,
+        chunkGenerationId: indexGenerationId,
+        descriptor,
+        attempt: nextAttempt,
+        client: tx,
+      });
+
+      // Ensure chunkCount is visible to status polling before worker runs.
+      await tx.searchIndexGeneration.update({
+        where: { id: created.id },
+        data: { chunkCount, embeddedCount: 0, failedCount: 0 },
+      });
+
+      await markServiceValidationsStaleForVersion(version.id, tx);
+
+      return { kind: "enqueued" as const, generation: created };
     });
 
-    // Re-check after lock (another request may have started).
-    const afterLock = await prisma.searchIndexGeneration.findUnique({
-      where: { id: indexGenerationId },
-    });
-    if (
-      afterLock &&
-      afterLock.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER &&
-      ["PENDING", "EMBEDDING", "INDEXING"].includes(afterLock.status)
-    ) {
+    if (enqueueResult.kind === "already_complete") {
       return getSearchDataStatus(input) as Promise<SearchDataStatusResponse>;
     }
-    if (
-      afterLock &&
-      afterLock.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER &&
-      afterLock.embeddingDimension === 384 &&
-      (afterLock.status === "READY" || afterLock.status === "INDEXING")
-    ) {
-      const vectors = await countVectorsForGeneration(afterLock.id);
-      if (vectors === chunkCount && afterLock.embeddedCount >= chunkCount) {
-        return getSearchDataStatus(input) as Promise<SearchDataStatusResponse>;
-      }
-      await resetGenerationForRebuild(indexGenerationId);
-    } else if (afterLock) {
-      await resetGenerationForRebuild(indexGenerationId);
-    }
 
-    const descriptor = await resolveSearchGenerationEmbeddingDescriptor();
+    if (enqueueResult.kind === "already_running") {
+      return {
+        accepted: true,
+        state: "CREATING",
+        searchIndexGenerationId: enqueueResult.generation.id,
+        processedCount: enqueueResult.generation.embeddedCount,
+        chunkCount: enqueueResult.generation.chunkCount || chunkCount,
+      };
+    }
 
     await recordProviderAudit({
       action: AuditAction.PROVIDER_PACK_UPDATE,
@@ -407,183 +447,308 @@ export async function startSearchDataGeneration(input: {
       entityId: input.packId,
       actorUserId: input.userId,
       metadata: {
-        event: "SEARCH_DATA_GENERATION_STARTED",
+        event: "SEARCH_DATA_GENERATION_ENQUEUED",
         packId: input.packId,
         versionId: version.id,
         normalizedDocumentId: binding.normalizedDocumentId,
         chunkGenerationId: indexGenerationId,
         searchIndexGenerationId: indexGenerationId,
         chunkCount,
+        attempt: enqueueResult.generation.attempt,
       },
     });
 
-    await createSearchGenerationForPipeline({
-      id: indexGenerationId,
-      packId: input.packId,
-      versionId: version.id,
-      pipelineRunId: latest.id,
-      normalizedDocumentId: binding.normalizedDocumentId,
-      fingerprint: binding.fingerprint,
-      chunkGenerationId: indexGenerationId,
-      descriptor,
-    });
-
-    await markSearchGenerationEmbedding(indexGenerationId);
-    const embeddings = await rebuildPackEmbeddings({
-      packId: input.packId,
-      versionId: version.id,
-      force: true,
-      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-      indexGenerationId,
-      searchIndexGenerationId: indexGenerationId,
-      pipelineRunId: latest.id,
-      fingerprint: binding.fingerprint,
-      normalizedDocumentId: binding.normalizedDocumentId,
-      chunkGenerationId: indexGenerationId,
-      includeInactiveForGeneration: true,
-    });
-
-    if (!embeddings) {
-      await failDraftIndexGeneration({
-        versionId: version.id,
-        indexGenerationId,
-        failureCode: "INDEX_BUILD_FAILED",
-        failureMessage: "embedding rebuild returned null",
-      }).catch(() => undefined);
-      await recordProviderAudit({
-        action: AuditAction.PROVIDER_PACK_UPDATE,
-        entityType: "KnowledgePack",
-        entityId: input.packId,
-        actorUserId: input.userId,
-        metadata: {
-          event: "SEARCH_DATA_GENERATION_FAILED",
-          failureCode: "INDEX_BUILD_FAILED",
-          searchIndexGenerationId: indexGenerationId,
-        },
-      });
-      return {
-        error: "INVALID",
-        message: "검색데이터 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-        code: "INDEX_BUILD_FAILED",
-      };
-    }
-
-    const embedded =
-      embeddings.createdCount + embeddings.updatedCount + embeddings.skippedCount;
-    await markSearchGenerationIndexing(indexGenerationId, {
-      embeddedCount: embedded,
-      chunkCount: embeddings.processedCount,
-      failedCount: 0,
-    });
-
-    const vectorCount = await countVectorsForGeneration(indexGenerationId);
-    if (vectorCount !== chunkCount || embedded < chunkCount) {
-      await failDraftIndexGeneration({
-        versionId: version.id,
-        indexGenerationId,
-        failureCode: "VECTOR_COUNT_MISMATCH",
-        failureMessage: `vectors=${vectorCount} chunks=${chunkCount} embedded=${embedded}`,
-      }).catch(() => undefined);
-      await recordProviderAudit({
-        action: AuditAction.PROVIDER_PACK_UPDATE,
-        entityType: "KnowledgePack",
-        entityId: input.packId,
-        actorUserId: input.userId,
-        metadata: {
-          event: "SEARCH_DATA_GENERATION_FAILED",
-          failureCode: "VECTOR_COUNT_MISMATCH",
-          chunkCount,
-          vectorCount,
-          searchIndexGenerationId: indexGenerationId,
-        },
-      });
-      return {
-        error: "INVALID",
-        message: "검색데이터 저장이 완료되지 않았습니다. 다시 생성해 주세요.",
-        code: "VECTOR_COUNT_MISMATCH",
-      };
-    }
-
-    // Align pipeline INDEXING step so status UI / service validation binding stay coherent.
-    await completePipelineStep({
-      runId: latest.id,
-      step: "INDEXING",
-      status: "PASS",
-      message: `검색데이터 ${vectorCount}건을 생성했습니다.`,
-      details: {
-        draft: true,
-        indexGenerationId,
-        searchIndexGenerationId: indexGenerationId,
-        indexScope: "DRAFT",
-        embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
-        processedCount: embeddings.processedCount,
-        vectorCount,
-      },
-    });
-
-    await recordProviderAudit({
-      action: AuditAction.PROVIDER_PACK_UPDATE,
-      entityType: "KnowledgePack",
-      entityId: input.packId,
-      actorUserId: input.userId,
-      metadata: {
-        event: "SEARCH_DATA_GENERATION_COMPLETED",
-        packId: input.packId,
-        versionId: version.id,
-        normalizedDocumentId: binding.normalizedDocumentId,
-        chunkGenerationId: indexGenerationId,
-        searchIndexGenerationId: indexGenerationId,
-        chunkCount,
-        vectorCount,
-      },
-    });
-
-    return getSearchDataStatus(input) as Promise<SearchDataStatusResponse>;
+    return {
+      accepted: true,
+      state: "CREATING",
+      searchIndexGenerationId: enqueueResult.generation.id,
+      processedCount: 0,
+      chunkCount,
+    };
   } catch (error) {
     const code = isEmbeddingProviderError(error)
       ? error.code
       : error instanceof PayloadServiceError
         ? error.code
-        : "INDEX_BUILD_FAILED";
-    let message = "검색데이터 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
-    if (code === "SEARCH_RUNTIME_UNAVAILABLE") {
-      message = "검색 저장소를 사용할 수 없습니다. 관리자에게 문의 바랍니다.";
-    } else if (
-      code === "EMBEDDING_PROVIDER_NOT_CONFIGURED" ||
-      code === "EMBEDDING_PROVIDER_REQUEST_FAILED" ||
-      code === "EMBEDDING_MODEL_REVISION_MISMATCH"
-    ) {
-      message = "검색 모델을 사용할 수 없습니다. 관리자에게 문의 바랍니다.";
-    } else if (code === "EMBEDDING_TOKEN_LIMIT_EXCEEDED") {
-      message = "일부 검색 단위가 모델 입력 제한을 초과했습니다.";
+        : "SEARCH_DATA_CLEANUP_FAILED";
+    const mapped =
+      code === "SEARCH_DATA_CLEANUP_FAILED" ||
+      (error instanceof Error &&
+        /delete|foreign key|constraint|deadlock|timeout/i.test(error.message))
+        ? "SEARCH_DATA_CLEANUP_FAILED"
+        : code;
+    return failureResponse(mapped);
+  }
+}
+
+export type ClaimedSearchDataGeneration = {
+  id: string;
+  packId: string;
+  versionId: string;
+  pipelineRunId: string;
+  attempt: number;
+  chunkGenerationId: string;
+  normalizedDocumentId: string;
+  fingerprint: string;
+  chunkCount: number;
+};
+
+/**
+ * Atomically claim one PENDING Local E5 DRAFT generation (PENDING → EMBEDDING).
+ */
+export async function claimNextSearchDataGeneration(): Promise<ClaimedSearchDataGeneration | null> {
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      packId: string;
+      versionId: string;
+      pipelineRunId: string;
+      attempt: number;
+      chunkGenerationId: string;
+      normalizedDocumentId: string;
+      fingerprint: string;
+      chunkCount: number;
+    }>
+  >`
+    UPDATE "SearchIndexGeneration" AS g
+    SET
+      "status" = 'EMBEDDING'::"SearchIndexGenerationStatus",
+      "startedAt" = COALESCE(g."startedAt", NOW()),
+      "updatedAt" = NOW()
+    WHERE g.id = (
+      SELECT j.id
+      FROM "SearchIndexGeneration" AS j
+      WHERE j."status" = 'PENDING'::"SearchIndexGenerationStatus"
+        AND j."scope" = 'DRAFT'::"SearchIndexGenerationScope"
+        AND j."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
+      ORDER BY j."createdAt" ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING
+      g.id,
+      g."packId",
+      g."versionId",
+      g."pipelineRunId",
+      g.attempt,
+      g."chunkGenerationId",
+      g."normalizedDocumentId",
+      g.fingerprint,
+      g."chunkCount"
+  `;
+  const row = rows[0];
+  return row ?? null;
+}
+
+/**
+ * Worker job: embed + write vectors for a claimed generation attempt.
+ */
+export async function processSearchDataGenerationJob(
+  claimed: ClaimedSearchDataGeneration,
+): Promise<void> {
+  const pack = await prisma.knowledgePack.findUnique({
+    where: { packId: claimed.packId },
+    select: { status: true },
+  });
+  if (!pack || pack.status !== PackStatus.DRAFT) {
+    await markSearchGenerationFailed(claimed.id, {
+      failureCode: "PACK_NOT_DRAFT",
+      failureMessage: "pack is not DRAFT",
+      expectedAttempt: claimed.attempt,
+    }).catch(() => undefined);
+    return;
+  }
+
+  const structureOk = await isDoclingStructurePassed(claimed.packId);
+  if (!structureOk) {
+    await markSearchGenerationFailed(claimed.id, {
+      failureCode: "STRUCTURE_REQUIRED",
+      failureMessage: "structure not passed",
+      expectedAttempt: claimed.attempt,
+    }).catch(() => undefined);
+    return;
+  }
+
+  try {
+    await assertPgvectorRuntimeReady();
+
+    const descriptor = await resolveSearchGenerationEmbeddingDescriptor();
+    if (descriptor.embeddingProvider !== LOCAL_E5_EMBEDDING_PROVIDER) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_CONFIG_INVALID",
+        "Local E5 provider required",
+      );
+    }
+    if (descriptor.embeddingDimension !== 384) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_CONFIG_INVALID",
+        "dimension must be 384",
+      );
     }
 
-    await failDraftIndexGeneration({
-      versionId: version.id,
-      indexGenerationId,
+    const generation = await prisma.searchIndexGeneration.findUnique({
+      where: { id: claimed.id },
+    });
+    if (!generation || generation.attempt !== claimed.attempt) {
+      return;
+    }
+    if (generation.status !== "EMBEDDING") {
+      return;
+    }
+
+    await completePipelineStep({
+      runId: claimed.pipelineRunId,
+      step: "INDEXING",
+      status: "RUNNING",
+      message: "검색데이터를 생성하는 중…",
+      details: {
+        draft: true,
+        indexGenerationId: claimed.id,
+        searchIndexGenerationId: claimed.id,
+        attempt: claimed.attempt,
+      },
+    }).catch(() => undefined);
+
+    const embeddings = await rebuildPackEmbeddings({
+      packId: claimed.packId,
+      versionId: claimed.versionId,
+      force: true,
+      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      indexGenerationId: claimed.chunkGenerationId,
+      searchIndexGenerationId: claimed.id,
+      pipelineRunId: claimed.pipelineRunId,
+      fingerprint: claimed.fingerprint,
+      normalizedDocumentId: claimed.normalizedDocumentId,
+      chunkGenerationId: claimed.chunkGenerationId,
+      includeInactiveForGeneration: true,
+      requirePgvector: true,
+      onChunkProcessed: async (processedCount) => {
+        await prisma.searchIndexGeneration.updateMany({
+          where: {
+            id: claimed.id,
+            attempt: claimed.attempt,
+            status: "EMBEDDING",
+          },
+          data: { embeddedCount: processedCount },
+        });
+      },
+    });
+
+    if (!embeddings) {
+      throw new Error("INDEX_BUILD_FAILED:embedding rebuild returned null");
+    }
+
+    const embedded =
+      embeddings.createdCount + embeddings.updatedCount + embeddings.skippedCount;
+
+    // Re-check attempt ownership before INDEXING transition.
+    const stillOwned = await prisma.searchIndexGeneration.findFirst({
+      where: { id: claimed.id, attempt: claimed.attempt, status: "EMBEDDING" },
+    });
+    if (!stillOwned) return;
+
+    await markSearchGenerationIndexing(
+      claimed.id,
+      {
+        embeddedCount: embedded,
+        chunkCount: embeddings.processedCount,
+        failedCount: 0,
+        expectedAttempt: claimed.attempt,
+      },
+    );
+
+    const vectorCount = await countVectorsForGeneration(claimed.id);
+    const expectedChunks =
+      claimed.chunkCount > 0 ? claimed.chunkCount : embeddings.processedCount;
+    if (vectorCount !== expectedChunks || embedded < expectedChunks) {
+      await markSearchGenerationFailed(claimed.id, {
+        failureCode: "VECTOR_COUNT_MISMATCH",
+        failureMessage: `vectors=${vectorCount} chunks=${expectedChunks} embedded=${embedded}`,
+        expectedAttempt: claimed.attempt,
+      });
+      await completePipelineStep({
+        runId: claimed.pipelineRunId,
+        step: "INDEXING",
+        status: "FAIL",
+        message: "검색데이터 저장이 완료되지 않았습니다.",
+        details: { failureCode: "VECTOR_COUNT_MISMATCH", vectorCount, expectedChunks },
+      }).catch(() => undefined);
+      return;
+    }
+
+    await completePipelineStep({
+      runId: claimed.pipelineRunId,
+      step: "INDEXING",
+      status: "PASS",
+      message: `검색데이터 ${vectorCount}건을 생성했습니다.`,
+      details: {
+        draft: true,
+        indexGenerationId: claimed.id,
+        searchIndexGenerationId: claimed.id,
+        indexScope: "DRAFT",
+        embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+        processedCount: embeddings.processedCount,
+        vectorCount,
+        attempt: claimed.attempt,
+      },
+    });
+
+    await recordProviderAudit({
+      action: AuditAction.PROVIDER_PACK_UPDATE,
+      entityType: "KnowledgePack",
+      entityId: claimed.packId,
+      actorUserId: null,
+      metadata: {
+        event: "SEARCH_DATA_GENERATION_COMPLETED",
+        packId: claimed.packId,
+        versionId: claimed.versionId,
+        searchIndexGenerationId: claimed.id,
+        chunkCount: expectedChunks,
+        vectorCount,
+        attempt: claimed.attempt,
+      },
+    }).catch(() => undefined);
+  } catch (error) {
+    const code = isEmbeddingProviderError(error)
+      ? error.code
+      : error instanceof PayloadServiceError
+        ? error.code
+        : error instanceof Error && error.message.startsWith("INDEX_BUILD_FAILED")
+          ? "INDEX_BUILD_FAILED"
+          : "INDEX_BUILD_FAILED";
+
+    await markSearchGenerationFailed(claimed.id, {
       failureCode: code,
       failureMessage: error instanceof Error ? error.message.slice(0, 300) : null,
+      expectedAttempt: claimed.attempt,
+    }).catch(() => undefined);
+
+    await completePipelineStep({
+      runId: claimed.pipelineRunId,
+      step: "INDEXING",
+      status: "FAIL",
+      message: mapSearchDataFailureCode(code).message,
+      details: { failureCode: code },
     }).catch(() => undefined);
 
     await recordProviderAudit({
       action: AuditAction.PROVIDER_PACK_UPDATE,
       entityType: "KnowledgePack",
-      entityId: input.packId,
-      actorUserId: input.userId,
+      entityId: claimed.packId,
+      actorUserId: null,
       metadata: {
         event: "SEARCH_DATA_GENERATION_FAILED",
         failureCode: code,
-        searchIndexGenerationId: indexGenerationId,
-        chunkCount,
+        searchIndexGenerationId: claimed.id,
+        attempt: claimed.attempt,
       },
     }).catch(() => undefined);
-
-    return { error: "INVALID", message, code };
   }
 }
 
 /**
  * Runs retrieval quality evaluation and activates Draft READY generation.
+ * Eval FAIL/WARNING keeps Generation INDEXING (VALIDATION_FAILED UI).
  */
 export async function validateSearchData(input: {
   userId: string;
@@ -661,11 +826,7 @@ export async function validateSearchData(input: {
             : "검색 검증에 보완이 필요합니다.",
         details: evaluation as unknown as Record<string, unknown>,
       });
-      await failDraftIndexGeneration({
-        versionId: version.id,
-        indexGenerationId,
-        failureCode: evaluation.failureCode ?? "RETRIEVAL_EVALUATION_FAILED",
-      }).catch(() => undefined);
+      // Keep SearchIndexGeneration INDEXING — do not failDraftIndexGeneration.
       await recordProviderAudit({
         action: AuditAction.PROVIDER_PACK_UPDATE,
         entityType: "KnowledgePack",
@@ -706,11 +867,15 @@ export async function validateSearchData(input: {
 
     return getSearchDataStatus(input) as Promise<SearchDataStatusResponse>;
   } catch (error) {
-    await failDraftIndexGeneration({
-      versionId: version.id,
-      indexGenerationId,
-      failureCode: "RETRIEVAL_EVALUATION_FAILED",
-      failureMessage: error instanceof Error ? error.message.slice(0, 300) : null,
+    await completePipelineStep({
+      runId: latest.id,
+      step: "SEARCH_EVALUATING",
+      status: "FAIL",
+      message: "검색 품질 검증에 실패했습니다.",
+      details: {
+        failureCode: "RETRIEVAL_EVALUATION_FAILED",
+        message: error instanceof Error ? error.message.slice(0, 300) : null,
+      },
     }).catch(() => undefined);
     await recordProviderAudit({
       action: AuditAction.PROVIDER_PACK_UPDATE,
@@ -729,4 +894,9 @@ export async function validateSearchData(input: {
       code: "RETRIEVAL_EVALUATION_FAILED",
     };
   }
+}
+
+/** @internal test helper */
+export function __testOnlyIsLocalE5Generation(g: SearchIndexGeneration | null): boolean {
+  return Boolean(g && g.embeddingProvider === LOCAL_E5_EMBEDDING_PROVIDER);
 }

@@ -162,6 +162,8 @@ export async function transitionSearchGeneration(
     from: SearchIndexGenerationStatus | SearchIndexGenerationStatus[];
     to: SearchIndexGenerationStatus;
     scope?: "DRAFT" | "PRODUCTION";
+    /** When set, only transition if attempt still matches (worker ownership). */
+    expectedAttempt?: number;
     data?: Prisma.SearchIndexGenerationUpdateManyMutationInput;
   },
   client: SearchGenerationClient = prisma,
@@ -183,6 +185,7 @@ export async function transitionSearchGeneration(
       id,
       status: { in: [...fromList] },
       ...(input.scope ? { scope: input.scope } : {}),
+      ...(input.expectedAttempt != null ? { attempt: input.expectedAttempt } : {}),
     },
     data: {
       status: input.to,
@@ -287,6 +290,7 @@ export async function assertSearchGenerationCounts(
 export async function markSearchGenerationEmbedding(
   id: string,
   client: SearchGenerationClient = prisma,
+  options: { expectedAttempt?: number } = {},
 ): Promise<SearchIndexGeneration> {
   return transitionSearchGeneration(
     id,
@@ -294,6 +298,7 @@ export async function markSearchGenerationEmbedding(
       from: "PENDING",
       to: "EMBEDDING",
       scope: "DRAFT",
+      expectedAttempt: options.expectedAttempt,
       data: { startedAt: new Date() },
     },
     client,
@@ -302,7 +307,12 @@ export async function markSearchGenerationEmbedding(
 
 export async function markSearchGenerationIndexing(
   id: string,
-  input: { embeddedCount?: number; failedCount?: number; chunkCount?: number } = {},
+  input: {
+    embeddedCount?: number;
+    failedCount?: number;
+    chunkCount?: number;
+    expectedAttempt?: number;
+  } = {},
   client: SearchGenerationClient = prisma,
 ): Promise<SearchIndexGeneration> {
   return transitionSearchGeneration(
@@ -311,6 +321,7 @@ export async function markSearchGenerationIndexing(
       from: "EMBEDDING",
       to: "INDEXING",
       scope: "DRAFT",
+      expectedAttempt: input.expectedAttempt,
       data: {
         ...(input.embeddedCount != null ? { embeddedCount: input.embeddedCount } : {}),
         ...(input.failedCount != null ? { failedCount: input.failedCount } : {}),
@@ -354,7 +365,12 @@ export async function markSearchGenerationReady(
 
 export async function markSearchGenerationFailed(
   id: string,
-  input: { failureCode: string; failureMessage?: string | null; failedCount?: number },
+  input: {
+    failureCode: string;
+    failureMessage?: string | null;
+    failedCount?: number;
+    expectedAttempt?: number;
+  },
   client: SearchGenerationClient = prisma,
 ): Promise<SearchIndexGeneration> {
   const existing = await loadSearchGeneration(id, client);
@@ -373,11 +389,22 @@ export async function markSearchGenerationFailed(
       409,
     );
   }
+  if (
+    input.expectedAttempt != null &&
+    existing.attempt !== input.expectedAttempt
+  ) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_TRANSITION_CONFLICT",
+      "검색 세대 Attempt가 일치하지 않습니다.",
+      409,
+    );
+  }
   return transitionSearchGeneration(
     id,
     {
       from: ["PENDING", "EMBEDDING", "INDEXING"],
       to: "FAILED",
+      expectedAttempt: input.expectedAttempt,
       data: {
         failureCode: input.failureCode,
         failureMessage: input.failureMessage ?? null,

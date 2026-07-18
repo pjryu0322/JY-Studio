@@ -465,6 +465,7 @@ export function ProviderServiceValidationTab({
   onGoToReview,
   onGoToKnowledge,
   onStatusChange,
+  onSearchDataStateChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
@@ -475,6 +476,9 @@ export function ProviderServiceValidationTab({
   readonly onGoToReview?: () => void;
   readonly onGoToKnowledge?: () => void;
   readonly onStatusChange?: (status: ServiceValidationStatusDto) => void;
+  readonly onSearchDataStateChange?: (
+    state: import("@/lib/search-data/search-data-state").SearchDataUiState | null,
+  ) => void;
 }) {
   void _knowledgeStatus;
   const [status, setStatus] = useState<ServiceValidationStatusDto | null>(null);
@@ -492,8 +496,9 @@ export function ProviderServiceValidationTab({
   const loadSearchData = useCallback(async () => {
     const data = await fetchProviderSearchDataStatusApi(packId);
     setSearchData(data);
+    onSearchDataStateChange?.(data.state);
     return data;
-  }, [packId]);
+  }, [packId, onSearchDataStateChange]);
 
   const load = useCallback(async () => {
     try {
@@ -504,6 +509,7 @@ export function ProviderServiceValidationTab({
       setStatus(svc);
       setSearchData(sd);
       onStatusChange?.(svc);
+      onSearchDataStateChange?.(sd.state);
       if (!query && svc.suggestedQuery) setQuery(svc.suggestedQuery);
       setError(null);
     } catch (err) {
@@ -511,7 +517,7 @@ export function ProviderServiceValidationTab({
     } finally {
       setLoading(false);
     }
-  }, [packId, onStatusChange, query]);
+  }, [packId, onStatusChange, onSearchDataStateChange, query]);
 
   useEffect(() => {
     void load();
@@ -543,10 +549,13 @@ export function ProviderServiceValidationTab({
     setSearchBusy(true);
     setError(null);
     try {
-      const next = await generateProviderSearchDataApi(packId);
+      await generateProviderSearchDataApi(packId);
+      // 202 enqueue → poll authoritative status (do not surface card failures as global alert).
+      const next = await loadSearchData();
       setSearchData(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "검색데이터 생성에 실패했습니다.");
+      // Network / unexpected server errors only — CREATE_FAILED lives in the card.
+      setError(err instanceof Error ? err.message : "검색데이터 요청에 실패했습니다.");
       await loadSearchData().catch(() => undefined);
     } finally {
       setSearchBusy(false);
@@ -625,10 +634,6 @@ export function ProviderServiceValidationTab({
   const preparationPassed = Boolean(
     status?.allPreparationChannelsPassed ?? status?.allSelectedPassed,
   );
-  const showServiceChannels =
-    searchData?.state === "VALIDATED" ||
-    searchData?.state === "CREATED" ||
-    searchData?.canRunServiceValidation;
   const showTestQuestions =
     searchData?.state === "CREATED" ||
     searchData?.state === "VALIDATED" ||
@@ -708,15 +713,28 @@ export function ProviderServiceValidationTab({
         {sd?.state === "CREATE_FAILED" ? (
           <div className="mt-2 space-y-2">
             <p className="text-sm font-semibold text-rose-800">검색데이터 생성 실패</p>
-            <p className="text-sm text-slate-800">{sd.message}</p>
-            <button
-              type="button"
-              disabled={!editable || searchBusy}
-              onClick={() => void handleGenerate()}
-              className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
-            >
-              검색데이터 다시 생성
-            </button>
+            <p className="text-sm leading-snug text-slate-800">{sd.message}</p>
+            {sd.supportRequired ? (
+              <p className="text-xs text-store-muted">관리자에게 문의가 필요합니다.</p>
+            ) : null}
+            {sd.failureCode === "EMBEDDING_TOKEN_LIMIT_EXCEEDED" ? (
+              <button
+                type="button"
+                onClick={() => onGoToKnowledge?.()}
+                className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-sm font-bold text-white"
+              >
+                데이터 구조화로 이동
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!editable || searchBusy}
+                onClick={() => void handleGenerate()}
+                className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+              >
+                검색데이터 다시 생성
+              </button>
+            )}
           </div>
         ) : null}
 
@@ -748,10 +766,9 @@ export function ProviderServiceValidationTab({
 
         {sd?.state === "VALIDATION_FAILED" ? (
           <div className="mt-2 space-y-2">
-            <p className="text-sm font-semibold text-rose-800">검색 품질 검증 실패</p>
-            <p className="text-sm text-slate-800">
-              검색 품질이 기준을 충족하지 못했습니다. 미통과 질문을 확인한 후 검색데이터를 다시
-              생성하거나 검색 단위를 보완해 주세요.
+            <p className="text-sm font-semibold text-rose-800">검색 품질 보완 필요</p>
+            <p className="text-sm leading-snug text-slate-800">
+              테스트 질문 일부가 기준을 충족하지 못했습니다.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -810,6 +827,7 @@ export function ProviderServiceValidationTab({
           {techOpen && sd?.technical ? (
             <ul className="mt-2 space-y-1 break-all rounded-lg border border-store-border bg-white px-3 py-2 font-mono text-[11px] text-slate-600">
               <li>Generation: {sd.technical.searchIndexGenerationId ?? "—"}</li>
+              <li>Attempt: {sd.technical.attempt ?? "—"}</li>
               <li>Chunk Gen: {sd.technical.chunkGenerationId ?? "—"}</li>
               <li>PipelineRun: {sd.technical.pipelineRunId ?? "—"}</li>
               <li>ND: {sd.technical.normalizedDocumentId ?? "—"}</li>
@@ -822,6 +840,7 @@ export function ProviderServiceValidationTab({
               <li>
                 Scope/Status: {sd.technical.indexScope ?? "—"} / {sd.technical.indexStatus ?? "—"}
               </li>
+              <li>Failure: {sd.technical.failureCode ?? "—"}</li>
             </ul>
           ) : null}
         </div>
@@ -845,7 +864,10 @@ export function ProviderServiceValidationTab({
         </p>
       ) : null}
 
-      {!searchReady && showServiceChannels === false ? (
+      {!searchReady &&
+      (sd?.state === "CREATED" ||
+        sd?.state === "VALIDATING" ||
+        sd?.state === "VALIDATION_FAILED") ? (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           검색 품질 검증을 완료하면 API·MCP 검증을 진행할 수 있습니다.
         </p>

@@ -26,10 +26,21 @@ describe("ProviderServiceValidationTab search-data UX", () => {
     assert.match(source, /validateProviderSearchDataApi/);
   });
 
-  it("keeps API·MCP locked until VALIDATED and uses 44px touch targets", () => {
+  it("gates API·MCP lock hint to CREATED/VALIDATING/VALIDATION_FAILED and uses 44px touch targets", () => {
     assert.match(source, /검색 품질 검증을 완료하면 API·MCP 검증을 진행할 수 있습니다/);
+    assert.match(source, /sd\?\.state === "CREATED"/);
     assert.match(source, /min-h-\[44px\]/);
     assert.match(source, /canRunServiceValidation/);
+  });
+
+  it("keeps CREATE_FAILED message in the card only (no duplicate global alert path)", () => {
+    assert.match(source, /검색데이터 생성 실패/);
+    assert.match(source, /검색데이터 요청에 실패했습니다/);
+    assert.doesNotMatch(source, /setError\([^)]*검색데이터 생성에 실패했습니다/);
+  });
+
+  it("shows VALIDATION_FAILED as quality remediation not create failure", () => {
+    assert.match(source, /검색 품질 보완 필요/);
   });
 
   it("separates original download wording from Portable RAG Export", () => {
