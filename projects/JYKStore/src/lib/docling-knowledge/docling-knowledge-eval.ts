@@ -2,6 +2,7 @@ import {
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { prisma } from "@/lib/prisma";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { runRetrievalForEvaluation } from "@/lib/retrieval-service";
 
 export const DOCLING_RETRIEVAL_PASS_THRESHOLDS = {
@@ -36,6 +37,7 @@ export type DoclingEvalCase = {
 export type DoclingRetrievalEvalResult = {
   status: "PASS" | "WARNING" | "FAIL";
   failureCode?: string;
+  retrievalRankingPolicyVersion: typeof RETRIEVAL_RANKING_POLICY_VERSION;
   smoke: {
     ok: boolean;
     embeddingPresent: boolean;
@@ -258,6 +260,7 @@ export async function runDoclingRetrievalEvaluation(input: {
     return {
       status: "FAIL",
       failureCode: "INSUFFICIENT_EVALUATION_CASES",
+      retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
       smoke: {
         ok: smokeErrors === 0 && smokeReturned && embeddingCount > 0,
         embeddingPresent: embeddingCount > 0,
@@ -461,6 +464,7 @@ export async function runDoclingRetrievalEvaluation(input: {
 
   return {
     status,
+    retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
     smoke,
     questionCount: n,
     passedCount: recallHits,

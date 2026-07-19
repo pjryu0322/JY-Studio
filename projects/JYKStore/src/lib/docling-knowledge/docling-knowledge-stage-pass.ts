@@ -1,4 +1,5 @@
 import type { DoclingKnowledgeStageId } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 
 /** Stages that complete the data-structure registration step. */
 export const STRUCTURE_STAGE_IDS = [
@@ -113,8 +114,12 @@ export function isStructureStagesPassed(input: StructurePassInput): boolean {
   return true;
 }
 
-/** Strict: SEARCH_INDEX + RETRIEVAL_EVALUATION must be PASS (no WARNING). */
-export function isSearchFoundationStagesPassedStrict(input: StructurePassInput): boolean {
+/** Strict: SEARCH_INDEX + RETRIEVAL_EVALUATION must be PASS (no WARNING) with current ranking policy. */
+export function isSearchFoundationStagesPassedStrict(
+  input: StructurePassInput & {
+    expectedRankingPolicyVersion?: string;
+  },
+): boolean {
   if (!input.pipelineCurrent) return false;
   if (!isStructureStagesPassed(input)) return false;
 
@@ -122,7 +127,12 @@ export function isSearchFoundationStagesPassedStrict(input: StructurePassInput):
   const evaluation = findStep(input.steps, "SEARCH_EVALUATING");
 
   if (index?.status !== "PASS") return false;
-  return evaluation?.status === "PASS";
+  if (evaluation?.status !== "PASS") return false;
+
+  const expected =
+    input.expectedRankingPolicyVersion?.trim() || RETRIEVAL_RANKING_POLICY_VERSION;
+  const stored = evaluation.details?.retrievalRankingPolicyVersion;
+  return typeof stored === "string" && stored.trim() === expected;
 }
 
 /**

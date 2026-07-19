@@ -9,12 +9,22 @@ import {
   resolveProviderValidationGenerationScope,
 } from "@/lib/retrieval/retrieval-generation-scope";
 import type { ApplyHybridVectorRankingInput } from "@/lib/retrieval/hybrid-ranking-service";
-import { retrieveContextsForVersion } from "@/lib/retrieval-service";
+import type { RerankStats } from "@/lib/retrieval/relevance-diversity-rerank";
+import {
+  retrieveContextsForVersion,
+  retrieveContextsForVersionWithDiagnostics,
+} from "@/lib/retrieval-service";
 
 export type RetrievalExecutionMode = "PUBLIC" | "PROVIDER_VALIDATION";
 
 export type ExecuteRetrievalApiResult =
-  | { ok: true; data: RetrievalResponseDto; latencyMs: number }
+  | {
+      ok: true;
+      data: RetrievalResponseDto;
+      latencyMs: number;
+      /** Provider-validation diagnostics only — never part of Public API response. */
+      rerankStats?: RerankStats | null;
+    }
   | {
       ok: false;
       code: string;
@@ -145,7 +155,7 @@ export async function executeRetrievalApiRequest(input: {
       versionId: input.versionId,
       indexGenerationId: input.indexGenerationId,
     });
-    const data = await retrieveContextsForVersion({
+    const { response, rerankStats } = await retrieveContextsForVersionWithDiagnostics({
       packId: input.knowledgePackId,
       versionId: input.versionId,
       query: input.query,
@@ -159,7 +169,7 @@ export async function executeRetrievalApiRequest(input: {
       searchIndexGenerationId: scope.searchIndexGenerationId,
       hybridTestHooks: input.hybridTestHooks,
     });
-    return { ok: true, data, latencyMs: Date.now() - started };
+    return { ok: true, data: response, latencyMs: Date.now() - started, rerankStats };
   } catch (error) {
     return mapRetrievalRuntimeError(error);
   }

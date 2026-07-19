@@ -194,7 +194,13 @@ async function seedApprovalReadyPack(
   await prisma.pipelineStepLog.createMany({
     data: [
       { runId: pipeline.id, packId, step: "STRUCTURE_VALIDATING", status: "PASS" },
-      { runId: pipeline.id, packId, step: "SEARCH_EVALUATING", status: "PASS" },
+      {
+        runId: pipeline.id,
+        packId,
+        step: "SEARCH_EVALUATING",
+        status: "PASS",
+        details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+      },
       { runId: pipeline.id, packId, step: "READY_FOR_REVIEW", status: "PASS" },
     ],
   });

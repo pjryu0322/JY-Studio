@@ -18,6 +18,7 @@ import { toPackLanguageCode } from "@/lib/pack-language";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 
 export type {
   DistributionReviewSubmitSnapshot,
@@ -262,6 +263,22 @@ export async function commitDistributionPackForReview(
       message:
         "지식 데이터 생성(검색 결과 검증)이 현재 정규화 결과와 일치하지 않습니다. 다시 생성해 주세요.",
       missingRequirements: ["RETRIEVAL_EVALUATION_PASSED"],
+    };
+  }
+
+  const evalDetails =
+    evalStep.details && typeof evalStep.details === "object" && !Array.isArray(evalStep.details)
+      ? (evalStep.details as Record<string, unknown>)
+      : null;
+  const evalPolicy =
+    typeof evalDetails?.retrievalRankingPolicyVersion === "string"
+      ? evalDetails.retrievalRankingPolicyVersion.trim()
+      : "";
+  if (evalPolicy !== RETRIEVAL_RANKING_POLICY_VERSION) {
+    return {
+      error: "INCOMPLETE",
+      message: "검색 순위 정책이 변경되었습니다. 자동 검색 평가를 다시 실행해 주세요.",
+      missingRequirements: ["RETRIEVAL_EVALUATION_POLICY_CURRENT"],
     };
   }
 

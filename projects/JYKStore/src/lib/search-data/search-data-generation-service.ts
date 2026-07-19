@@ -41,6 +41,7 @@ import {
   type SearchGenerationEmbeddingDescriptor,
 } from "@/lib/search-generation/search-generation-types";
 import { mapSearchDataFailureCode } from "@/lib/search-data/search-data-error";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import {
   buildSearchDataStatusResponse,
   type SearchDataStatusResponse,
@@ -1175,6 +1176,9 @@ export async function validateSearchData(input: {
       step: "SEARCH_EVALUATING",
       status: "RUNNING",
       message: "검색 품질을 검증하는 중…",
+      details: {
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+      },
     });
 
     const evaluation = await runDoclingRetrievalEvaluation({
@@ -1182,6 +1186,10 @@ export async function validateSearchData(input: {
       versionId: version.id,
       indexGenerationId,
     });
+    const evaluationDetails = {
+      ...evaluation,
+      retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+    };
 
     if (evaluation.status === "FAIL" || evaluation.status === "WARNING") {
       await completePipelineStep({
@@ -1192,7 +1200,7 @@ export async function validateSearchData(input: {
           evaluation.status === "FAIL"
             ? "검색 품질이 기준을 충족하지 못했습니다."
             : "검색 검증에 보완이 필요합니다.",
-        details: evaluation as unknown as Record<string, unknown>,
+        details: evaluationDetails as unknown as Record<string, unknown>,
       });
       // Keep SearchIndexGeneration INDEXING — do not failDraftIndexGeneration.
       await recordProviderAudit({
@@ -1204,6 +1212,7 @@ export async function validateSearchData(input: {
           event: "SEARCH_DATA_VALIDATION_FAILED",
           failureCode: evaluation.failureCode ?? "RETRIEVAL_EVALUATION_FAILED",
           searchIndexGenerationId: indexGenerationId,
+          retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
         },
       });
       return getSearchDataStatus(input) as Promise<SearchDataStatusResponse>;
@@ -1219,7 +1228,7 @@ export async function validateSearchData(input: {
       step: "SEARCH_EVALUATING",
       status: "PASS",
       message: "검색 품질 검증이 완료되었습니다.",
-      details: evaluation as unknown as Record<string, unknown>,
+      details: evaluationDetails as unknown as Record<string, unknown>,
     });
 
     await completePipelineStep({
@@ -1249,6 +1258,7 @@ export async function validateSearchData(input: {
       metadata: {
         event: "SEARCH_DATA_VALIDATION_COMPLETED",
         searchIndexGenerationId: indexGenerationId,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
       },
     });
 
@@ -1262,6 +1272,7 @@ export async function validateSearchData(input: {
       details: {
         failureCode: "RETRIEVAL_EVALUATION_FAILED",
         message: error instanceof Error ? error.message.slice(0, 300) : null,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
       },
     }).catch(() => undefined);
     await recordProviderAudit({
@@ -1273,6 +1284,7 @@ export async function validateSearchData(input: {
         event: "SEARCH_DATA_VALIDATION_FAILED",
         failureCode: "RETRIEVAL_EVALUATION_FAILED",
         searchIndexGenerationId: indexGenerationId,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
       },
     }).catch(() => undefined);
     return {

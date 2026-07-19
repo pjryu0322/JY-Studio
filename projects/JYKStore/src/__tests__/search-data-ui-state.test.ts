@@ -280,5 +280,8 @@ describe("buildSearchDataStatusResponse", () => {
     assert.equal(dto.state, "VALIDATED");
     assert.equal(dto.canRunServiceValidation, false);
     assert.equal(dto.canValidate, true);
+    assert.equal(dto.rankingPolicyStale, true);
+    assert.equal(dto.currentRankingPolicyVersion, "relevance_diversity_v2");
+    assert.equal(dto.evaluatedRankingPolicyVersion, "relevance_diversity_v1");
   });
 });

@@ -15,6 +15,7 @@ import {
   selectRetrievalCandidatesWithStats,
 } from "@/lib/retrieval/retrieval-response-mapper";
 import { scoreRetrievalCandidates } from "@/lib/retrieval/retrieval-score-service";
+import type { RerankStats } from "@/lib/retrieval/relevance-diversity-rerank";
 import type { RetrievalEvaluationCandidate } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
 
@@ -35,6 +36,11 @@ export type RetrieveContextsResult =
   | { ok: false; code: "SERVICE_CHANNEL_DISABLED"; message: string }
   | { ok: false; code: "SERVICE_ENDED"; message: string }
   | { ok: false; code: "SEARCH_RUNTIME_UNAVAILABLE"; message: string };
+
+export type InternalRetrievalExecution = {
+  response: RetrievalResponseDto;
+  rerankStats: RerankStats | null;
+};
 
 export async function retrieveContexts(input: {
   knowledgePackId: string;
@@ -79,7 +85,7 @@ export async function retrieveContexts(input: {
   return { ok: true, data: result.data };
 }
 
-export async function retrieveContextsForVersion(input: {
+export async function retrieveContextsForVersionWithDiagnostics(input: {
   packId: string;
   versionId: string;
   query?: string;
@@ -97,7 +103,7 @@ export async function retrieveContextsForVersion(input: {
    * Production callers must not pass this.
    */
   hybridTestHooks?: Pick<ApplyHybridVectorRankingInput, "requireGeneration" | "resolveAdapter">;
-}): Promise<RetrievalResponseDto> {
+}): Promise<InternalRetrievalExecution> {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
   const filterKeys = Object.keys(input.filters);
@@ -141,7 +147,7 @@ export async function retrieveContextsForVersion(input: {
     embeddingModel = hybrid.embeddingModel;
   }
 
-  const { selected } = selectRetrievalCandidatesWithStats({
+  const { selected, stats } = selectRetrievalCandidatesWithStats({
     scored: hybridScored,
     hasFilters,
     hasQuery,
@@ -149,20 +155,46 @@ export async function retrieveContextsForVersion(input: {
     query: searchQuery,
   });
 
-  return mapRetrievalResponse({
-    selected,
-    packId: input.packId,
-    includeMetadata: input.includeMetadata,
-    useHybrid,
-    topK: input.topK,
-    filters: input.filters,
-    requestId: input.requestId,
-    embeddingProvider,
-    embeddingModel,
-    scanned,
-    filteredCount: hybridScored.length,
-    collectionMode,
-  });
+  return {
+    response: mapRetrievalResponse({
+      selected,
+      packId: input.packId,
+      includeMetadata: input.includeMetadata,
+      useHybrid,
+      topK: input.topK,
+      filters: input.filters,
+      requestId: input.requestId,
+      embeddingProvider,
+      embeddingModel,
+      scanned,
+      filteredCount: hybridScored.length,
+      collectionMode,
+    }),
+    rerankStats: stats,
+  };
+}
+
+export async function retrieveContextsForVersion(input: {
+  packId: string;
+  versionId: string;
+  query?: string;
+  filters: RetrievalFilters;
+  topK: number;
+  includeMetadata: boolean;
+  retrievalMode: RetrievalMode;
+  requestId: string;
+  indexGenerationId?: string | null;
+  excludeDraftScope?: boolean;
+  /** P5: search generation to scope candidate/vector lookups to, when resolved. */
+  searchIndexGenerationId?: string | null;
+  /**
+   * @internal Test-only hooks for hybrid ranking (adapter/generation injection).
+   * Production callers must not pass this.
+   */
+  hybridTestHooks?: Pick<ApplyHybridVectorRankingInput, "requireGeneration" | "resolveAdapter">;
+}): Promise<RetrievalResponseDto> {
+  const { response } = await retrieveContextsForVersionWithDiagnostics(input);
+  return response;
 }
 
 /**

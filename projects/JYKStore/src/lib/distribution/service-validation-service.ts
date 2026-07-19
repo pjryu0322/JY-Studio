@@ -39,7 +39,9 @@ import {
   evidenceIntegrityForRun,
   resolveCurrentValidationBindingTx,
   resolvePipelineRunBindingTx,
+  resolveValidationBindingState,
   type CurrentValidationBinding,
+  type ValidationBindingState,
 } from "@/lib/distribution/service-validation-binding";
 import {
   assertSharedConfirmationEvidence,
@@ -47,7 +49,11 @@ import {
   computeResultFingerprint,
   isLegacySharedConfirmationMissingFingerprint,
 } from "@/lib/distribution/service-validation-share";
-import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
+import {
+  RETRIEVAL_RANKING_POLICY_VERSION,
+  type RerankStats,
+} from "@/lib/retrieval/relevance-diversity-rerank";
+import { OPEN_PACK_REVIEW_STATUSES } from "@/lib/pack-review-status";
 import {
   assertCompletePreparationValidationSnapshotEntry,
   type PreparationValidationSnapshotEntry,
@@ -218,12 +224,26 @@ export function resolveRunCurrentValidity(input: {
 
 export function resolveValidationLockReason(input: {
   packStatus: string;
-  hasBinding: boolean;
-}): Exclude<ServiceValidationLockReason, "SEARCH_DATA_NOT_READY" | null> | null {
-  if (input.packStatus === PackStatus.DRAFT && input.hasBinding) return null;
-  if (input.packStatus === PackStatus.REVIEWING) return "OPEN_REVIEW";
+  hasBinding?: boolean;
+  hasOpenReview?: boolean;
+  bindingStatus?: ValidationBindingState["status"] | null;
+  searchDataReady?: boolean;
+}): ServiceValidationLockReason {
+  if (input.hasOpenReview || input.packStatus === PackStatus.REVIEWING) {
+    return "OPEN_REVIEW";
+  }
   if (input.packStatus !== PackStatus.DRAFT) return "PACK_NOT_DRAFT";
-  if (!input.hasBinding) return "BINDING_MISSING";
+
+  const bindingStatus =
+    input.bindingStatus ??
+    (input.hasBinding === false
+      ? "MISSING"
+      : input.hasBinding === true
+        ? "CURRENT"
+        : null);
+  if (bindingStatus === "MISSING" || bindingStatus == null) return "BINDING_MISSING";
+  if (bindingStatus === "STALE") return "BINDING_STALE";
+  if (input.searchDataReady === false) return "SEARCH_DATA_NOT_READY";
   return null;
 }
 
@@ -235,6 +255,66 @@ export function rankingPolicyVersionFromDetails(details: unknown): string | null
   return typeof rec?.retrievalRankingPolicyVersion === "string"
     ? rec.retrievalRankingPolicyVersion.trim() || null
     : null;
+}
+
+export function resolveSearchEvaluationValidity(input: {
+  status?: string | null;
+  details?: unknown;
+  expectedRankingPolicyVersion: string;
+}):
+  | { current: true }
+  | {
+      current: false;
+      reason: "EVALUATION_MISSING" | "EVALUATION_NOT_PASSED" | "RANKING_POLICY_STALE";
+    } {
+  if (input.status == null || input.status === "") {
+    return { current: false, reason: "EVALUATION_MISSING" };
+  }
+  if (input.status !== "PASS") {
+    return { current: false, reason: "EVALUATION_NOT_PASSED" };
+  }
+  const version = rankingPolicyVersionFromDetails(input.details);
+  if (!version || version !== input.expectedRankingPolicyVersion) {
+    return { current: false, reason: "RANKING_POLICY_STALE" };
+  }
+  return { current: true };
+}
+
+function assertSearchEvaluationCurrentForChannel(input: {
+  channel: ServiceChannel;
+  status?: string | null;
+  details?: unknown;
+}): void {
+  if (input.channel === "DOWNLOAD") return;
+  if (input.channel !== "API" && input.channel !== "MCP") return;
+  const validity = resolveSearchEvaluationValidity({
+    status: input.status,
+    details: input.details,
+    expectedRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+  });
+  if (validity.current) return;
+  if (validity.reason === "RANKING_POLICY_STALE") {
+    throw new PayloadServiceError(
+      "SEARCH_EVALUATION_POLICY_STALE",
+      "검색 순위 정책이 변경되었습니다. 자동 검색 평가를 다시 실행해 주세요.",
+      409,
+    );
+  }
+  throw new PayloadServiceError(
+    "SEARCH_EVALUATION_REQUIRED",
+    "자동 검색 평가를 먼저 완료해 주세요.",
+    409,
+  );
+}
+
+function rerankDetailsFromStats(stats: RerankStats | null | undefined): Record<string, unknown> {
+  if (!stats) return {};
+  return {
+    candidateCount: stats.candidateCount,
+    deduplicatedCount: stats.deduplicatedCount,
+    uniqueCandidateCount: Math.max(0, stats.candidateCount - stats.deduplicatedCount),
+    finalResultCount: stats.finalResultCount,
+  };
 }
 
 export function resolveConfirmationStatusDto(input: {
@@ -299,22 +379,26 @@ async function loadBindingContext(
   client: Prisma.TransactionClient | typeof prisma = prisma,
 ) {
   const dist = await client.packDistributionMetadata.findUnique({ where: { versionId } });
-  try {
-    const binding = await resolveCurrentValidationBindingTx(client, { packId, versionId });
-    const latest = await client.pipelineRun.findUnique({ where: { id: binding.pipelineRunId } });
+  const bindingState = await resolveValidationBindingState(client, { packId, versionId });
+  if (bindingState.status !== "CURRENT") {
     return {
       dist,
-      latest,
-      binding: {
-        versionId: binding.versionId,
-        indexGenerationId: binding.indexGenerationId,
-        normalizedDocumentId: binding.normalizedDocumentId,
-        fingerprint: binding.fingerprint,
-      },
+      latest: bindingState.latest
+        ? await client.pipelineRun.findUnique({ where: { id: bindingState.latest.id } })
+        : null,
+      binding: null as CurrentValidationBinding | null,
+      bindingState,
     };
-  } catch {
-    return { dist, latest: null, binding: null };
   }
+  const latest = await client.pipelineRun.findUnique({
+    where: { id: bindingState.binding.pipelineRunId },
+  });
+  return {
+    dist,
+    latest,
+    binding: bindingState.binding,
+    bindingState,
+  };
 }
 
 export async function findLatestServiceValidationRun(input: {
@@ -574,15 +658,65 @@ export async function getServiceValidationStatus(input: {
   packId: string;
 }): Promise<ServiceValidationStatusDto> {
   const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
-  const { binding } = await loadBindingContext(pack.packId, version.id);
+  const { binding, latest, bindingState } = await loadBindingContext(pack.packId, version.id);
 
   // Search-validation prepares all delivery channels before the provider picks publish channels.
   const selected = new Set(SEARCH_VALIDATION_PREPARATION_CHANNELS);
 
-  const canRunValidation = pack.status === PackStatus.DRAFT && Boolean(binding);
+  const openReview = await prisma.packReview.findFirst({
+    where: {
+      packId: pack.packId,
+      status: { in: [...OPEN_PACK_REVIEW_STATUSES] },
+    },
+    select: { id: true },
+  });
+
+  let searchDataReady = false;
+  if (binding && latest) {
+    const [generationRow, evalStep] = await Promise.all([
+      prisma.searchIndexGeneration.findUnique({
+        where: { id: binding.indexGenerationId },
+        select: {
+          status: true,
+          scope: true,
+          versionId: true,
+          pipelineRunId: true,
+          normalizedDocumentId: true,
+          fingerprint: true,
+          chunkGenerationId: true,
+        },
+      }),
+      prisma.pipelineStepLog.findFirst({
+        where: { runId: latest.id, step: "SEARCH_EVALUATING" },
+        select: { status: true, details: true },
+      }),
+    ]);
+    const generationOk =
+      generationRow?.status === "READY" &&
+      generationRow.scope === "DRAFT" &&
+      generationRow.versionId === version.id &&
+      generationRow.pipelineRunId === latest.id &&
+      generationRow.normalizedDocumentId === binding.normalizedDocumentId &&
+      generationRow.fingerprint === binding.fingerprint &&
+      generationRow.chunkGenerationId === binding.indexGenerationId;
+    const evalOk = resolveSearchEvaluationValidity({
+      status: evalStep?.status,
+      details: evalStep?.details,
+      expectedRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+    }).current;
+    searchDataReady = Boolean(generationOk && evalOk);
+  }
+
+  const canRunValidation =
+    pack.status === PackStatus.DRAFT &&
+    bindingState.status === "CURRENT" &&
+    searchDataReady &&
+    !openReview;
   const validationLockReason = resolveValidationLockReason({
     packStatus: pack.status,
-    hasBinding: Boolean(binding),
+    hasOpenReview: Boolean(openReview),
+    bindingStatus: bindingState.status,
+    searchDataReady,
   });
   const channels: ServiceValidationChannelDto[] = [];
   const confirmerIds = new Set<string>();
@@ -750,6 +884,18 @@ export async function runServiceChannelValidation(input: {
     );
   }
 
+  if (input.channel === "API" || input.channel === "MCP") {
+    const evalStep = await prisma.pipelineStepLog.findFirst({
+      where: { runId: latest.id, step: "SEARCH_EVALUATING" },
+      select: { status: true, details: true },
+    });
+    assertSearchEvaluationCurrentForChannel({
+      channel: input.channel,
+      status: evalStep?.status,
+      details: evalStep?.details,
+    });
+  }
+
   const started = Date.now();
   let status: ServiceValidationStatus = "FAIL";
   let failureCode: string | null = null;
@@ -817,6 +963,7 @@ export async function runServiceChannelValidation(input: {
         requestId: `provider-api-validation`,
         retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
         rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
+        ...rerankDetailsFromStats(result.rerankStats),
       };
       if (!hits.ok) {
         failureCode = hits.code;
@@ -880,6 +1027,7 @@ export async function runServiceChannelValidation(input: {
         hitCount: resultCount,
         retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
         rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
+        ...rerankDetailsFromStats(result.rerankStats),
       };
       safeItems = await buildSafeRetrievalItems({
         contexts: retrievalContexts,
@@ -988,6 +1136,17 @@ export async function runServiceChannelValidation(input: {
         "지식 데이터가 변경되어 서비스 검증을 다시 실행해야 합니다.",
         409,
       );
+    }
+    if (input.channel === "API" || input.channel === "MCP") {
+      const evalStepInTx = await tx.pipelineStepLog.findFirst({
+        where: { runId: bindingInTx.pipelineRunId, step: "SEARCH_EVALUATING" },
+        select: { status: true, details: true },
+      });
+      assertSearchEvaluationCurrentForChannel({
+        channel: input.channel,
+        status: evalStepInTx?.status,
+        details: evalStepInTx?.details,
+      });
     }
     if (!SEARCH_VALIDATION_PREPARATION_CHANNELS.includes(input.channel)) {
       throw new PayloadServiceError(

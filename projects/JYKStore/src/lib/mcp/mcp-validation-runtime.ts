@@ -3,6 +3,7 @@ import {
   executeRetrievalApiRequest,
 } from "@/lib/retrieval/retrieval-api-adapter";
 import { RETRIEVAL_QUERY_MAX_LENGTH, type RetrievalResponseDto } from "@/lib/retrieval-dto";
+import type { RerankStats } from "@/lib/retrieval/relevance-diversity-rerank";
 
 /** Keep in sync with mcp-server/tool-definitions.ts MCP_TOOL_NAMES. */
 const MCP_TOOL_REGISTRY = [
@@ -29,6 +30,7 @@ export type ExecuteMcpValidationResult =
       responseBytes: number;
       latencyMs: number;
       mcpProtocolVersion: string;
+      rerankStats?: RerankStats | null;
     }
   | { ok: false; code: string; message: string };
 
@@ -165,5 +167,6 @@ export async function executeMcpValidation(input: {
     responseBytes,
     latencyMs: Date.now() - started,
     mcpProtocolVersion: "2024-11-05",
+    rerankStats: result.rerankStats,
   };
 }

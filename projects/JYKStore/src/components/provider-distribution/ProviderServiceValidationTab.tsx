@@ -832,16 +832,54 @@ export function ProviderServiceValidationTab({
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                  생성 완료
+                  검색데이터 생성 완료
                 </span>
-                <p className="text-sm font-semibold text-emerald-900">검색데이터 준비 완료</p>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                    sd.rankingPolicyStale
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  }`}
+                >
+                  {sd.rankingPolicyStale ? "자동 평가 다시 필요" : "자동 평가 통과"}
+                </span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                    sd.rankingPolicyStale || providerConfirmAggregate(selected) !== "CONFIRMED"
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  }`}
+                >
+                  {sd.rankingPolicyStale
+                    ? "제공자 품질 확인 다시 필요"
+                    : providerConfirmAggregate(selected) === "CONFIRMED"
+                      ? "제공자 품질 확인 완료"
+                      : "제공자 품질 확인 필요"}
+                </span>
               </div>
+              <p className="text-sm font-semibold text-emerald-900">검색데이터 준비 완료</p>
               <p className="text-xs text-slate-700">
                 검색 단위 {sd.chunkCount} · 벡터 {sd.vectorCount} · {sd.modelLabel ?? sd.model ?? "Local E5"}
                 {sd.dimension != null ? ` · ${sd.dimension}차원` : ""}
               </p>
             </div>
-            {sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
+            {sd.rankingPolicyStale ? (
+              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-3">
+                <p className="text-sm font-semibold text-amber-950">검색 순위 정책이 변경되었습니다.</p>
+                <p className="text-xs leading-snug text-amber-900">
+                  기존 검색데이터는 유지되며 자동 검색 평가만 다시 실행하면 됩니다.
+                </p>
+                <button
+                  type="button"
+                  disabled={!editable || !sd.canValidate || searchBusy}
+                  onClick={() => void handleValidateQuality()}
+                  className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {searchBusy ? "검증 중…" : "자동 평가 다시 실행"}
+                </button>
+              </div>
+            ) : null}
+            {!sd.rankingPolicyStale && sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -860,26 +898,28 @@ export function ProviderServiceValidationTab({
                 </p>
               </div>
             ) : null}
-            {(() => {
-              const confirmState = providerConfirmAggregate(selected);
-              return (
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("confirm", confirmState)}`}
-                    >
-                      {confirmLabel(confirmState)}
-                    </span>
-                    <p className="text-sm font-semibold text-slate-900">제공자 품질 확인</p>
-                  </div>
-                  {confirmState === "NOT_REVIEWED" || confirmState === "STALE" ? (
-                    <p className="text-xs text-slate-700">
-                      실제 질문으로 검색한 뒤 결과의 관련성과 출처를 확인하세요.
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })()}
+            {!sd.rankingPolicyStale
+              ? (() => {
+                  const confirmState = providerConfirmAggregate(selected);
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("confirm", confirmState)}`}
+                        >
+                          {confirmLabel(confirmState)}
+                        </span>
+                        <p className="text-sm font-semibold text-slate-900">제공자 품질 확인</p>
+                      </div>
+                      {confirmState === "NOT_REVIEWED" || confirmState === "STALE" ? (
+                        <p className="text-xs text-slate-700">
+                          실제 질문으로 검색한 뒤 결과의 관련성과 출처를 확인하세요.
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()
+              : null}
           </div>
         ) : null}
 

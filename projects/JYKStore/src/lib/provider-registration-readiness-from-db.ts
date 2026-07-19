@@ -70,7 +70,11 @@ export function pipelineSignalsFromRun(input: {
   bindingMatches: boolean;
 }): Pick<PackRegistrationSignals, "structurePassed" | "searchFoundationPassed" | "pipelineCurrent"> {
   const pipelineCurrent = Boolean(input.bundle && input.bindingMatches);
-  const passInput = { steps: input.steps, pipelineCurrent };
+  const passInput = {
+    steps: input.steps,
+    pipelineCurrent,
+    expectedRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+  };
   return {
     pipelineCurrent,
     structurePassed: isStructureStagesPassed(passInput),

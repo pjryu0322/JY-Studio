@@ -106,7 +106,13 @@ async function seedReadyPack(suffix: string) {
       { runId: pipeline.id, packId, step: "KNOWLEDGE_CHECKING", status: "PASS" },
       { runId: pipeline.id, packId, step: "CHUNKING", status: "PASS", details: { chunkCount: 5 } },
       { runId: pipeline.id, packId, step: "INDEXING", status: "PASS" },
-      { runId: pipeline.id, packId, step: "SEARCH_EVALUATING", status: "PASS" },
+      {
+        runId: pipeline.id,
+        packId,
+        step: "SEARCH_EVALUATING",
+        status: "PASS",
+        details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+      },
       { runId: pipeline.id, packId, step: "READY_FOR_REVIEW", status: "PASS" },
     ],
   });

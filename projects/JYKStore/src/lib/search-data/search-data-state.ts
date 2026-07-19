@@ -34,6 +34,10 @@ export type SearchDataStatusResponse = {
   canGenerate: boolean;
   canValidate: boolean;
   canRunServiceValidation: boolean;
+  /** True when VALIDATED but evaluation used an outdated ranking policy. */
+  rankingPolicyStale: boolean;
+  currentRankingPolicyVersion: string;
+  evaluatedRankingPolicyVersion: string | null;
   /** Technical details — UI shows only when expanded. */
   technical?: {
     searchIndexGenerationId?: string | null;
@@ -345,6 +349,9 @@ export function buildSearchDataStatusResponse(
     canGenerate,
     canValidate,
     canRunServiceValidation,
+    rankingPolicyStale,
+    currentRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+    evaluatedRankingPolicyVersion: input.evaluationRankingPolicyVersion ?? null,
     technical: {
       searchIndexGenerationId: g?.id ?? null,
       chunkGenerationId: g?.chunkGenerationId ?? null,

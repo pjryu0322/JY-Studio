@@ -38,6 +38,9 @@ describe("provider search validation UX", () => {
     assert.match(tab, /검색데이터 준비 완료/);
     assert.match(tab, /자동 검색 평가/);
     assert.match(tab, /자동 평가 통과/);
+    assert.match(tab, /자동 평가 다시 필요/);
+    assert.match(tab, /자동 평가 다시 실행/);
+    assert.match(tab, /rankingPolicyStale/);
     assert.match(tab, /품질 확인 필요/);
     assert.match(tab, /결과 적절함/);
     assert.match(tab, /검색 결과 보완 필요/);

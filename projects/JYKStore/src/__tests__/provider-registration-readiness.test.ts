@@ -19,7 +19,11 @@ const allPassSteps = [
   { step: "KNOWLEDGE_CHECKING", status: "PASS" },
   { step: "CHUNKING", status: "PASS", details: { chunkCount: 3 } },
   { step: "INDEXING", status: "PASS" },
-  { step: "SEARCH_EVALUATING", status: "PASS" },
+  {
+    step: "SEARCH_EVALUATING",
+    status: "PASS",
+    details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+  },
   { step: "READY_FOR_REVIEW", status: "PASS" },
 ];
 

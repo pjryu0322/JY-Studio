@@ -166,7 +166,10 @@ describe("source change STALE (isolated test DB)", { skip: !runDb }, () => {
         details: { chunkCount: 3, tokenGateStatus: "PASS" },
       },
       { step: "INDEXING" as PipelineStatus, details: {} },
-      { step: "SEARCH_EVALUATING" as PipelineStatus, details: {} },
+      {
+        step: "SEARCH_EVALUATING" as PipelineStatus,
+        details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+      },
       { step: "READY_FOR_REVIEW" as PipelineStatus, details: {} },
     ]) {
       await prisma.pipelineStep.create({
