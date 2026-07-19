@@ -673,14 +673,13 @@ async function mapRunToProviderChannelDto(input: {
   }
 
   const downloadTestCompleted = Boolean(downloadTest?.responseReady);
+  // DOWNLOAD: show confirm UI before download-test; API confirm still requires download evidence.
   const canConfirm =
     canRunValidation &&
     systemStatus === "PASS" &&
     effectiveValidity === "CURRENT" &&
     providerConfirmationStatus === "NOT_REVIEWED" &&
-    (channel === "DOWNLOAD"
-      ? downloadTestCompleted
-      : resultRows.length > 0);
+    (channel === "DOWNLOAD" ? true : resultRows.length > 0);
 
   return {
     channel,

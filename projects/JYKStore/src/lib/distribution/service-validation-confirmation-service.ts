@@ -328,7 +328,7 @@ export async function confirmServiceValidationRun(input: {
       if (current.run.channel !== "DOWNLOAD" || !current.run.downloadTest?.responseReady) {
         throw new PayloadServiceError(
           "SERVICE_DOWNLOAD_TEST_REQUIRED",
-          "테스트 다운로드를 먼저 실행해 주세요.",
+          "RAG Export를 먼저 다운로드해 주세요.",
           400,
         );
       }

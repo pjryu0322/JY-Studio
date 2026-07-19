@@ -358,15 +358,44 @@ function DownloadConfirmPanel({
   const [localError, setLocalError] = useState<string | null>(null);
   const allChecked = Object.values(checks).every(Boolean);
 
-  if (!channel.canConfirm) return null;
+  if (!channel.canConfirm && !channel.runId) return null;
+  // PASS + CURRENT 이면 다운로드·확인 UI를 보여 준다 (canConfirm이 잠깐 false여도 runId 기준).
+  const showPanel =
+    channel.canConfirm ||
+    (channel.systemStatus === "PASS" &&
+      channel.currentValidity === "CURRENT" &&
+      channel.providerConfirmationStatus === "NOT_REVIEWED" &&
+      Boolean(channel.runId));
+  if (!showPanel) return null;
+
+  const summary = channel.downloadSummary;
 
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-3">
       <p className="text-sm font-semibold text-slate-900">RAG Export 품질 확인</p>
+      <p className="text-xs leading-snug text-slate-700">
+        패키지를 다운로드해 Chunk·출처·Checksum을 확인한 뒤 아래 항목을 체크해 주세요.
+      </p>
+      {summary ? (
+        <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-700">
+          <li>
+            Schema {summary.schemaVersion ?? "—"} · Chunk {summary.chunkCount ?? "—"}개 · Source{" "}
+            {summary.sourceCount ?? "—"}개
+          </li>
+          <li>
+            Manifest {summary.manifestValid ? "정상" : "확인 필요"} · Source Trace{" "}
+            {summary.sourceTraceValid ? "정상" : "확인 필요"} · Checksum{" "}
+            {summary.checksumsValid ? "정상" : "확인 필요"}
+          </li>
+          <li>
+            Vector 미포함 · 원본문서 Binary 미포함
+          </li>
+        </ul>
+      ) : null}
       {channel.runId ? (
         <a
           href={providerServiceValidationDownloadTestUrl(packId, channel.runId)}
-          className="inline-flex min-h-[44px] items-center rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800"
+          className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-950 sm:w-auto"
           onClick={() => {
             // After download starts, refresh so downloadTestCompleted becomes true.
             window.setTimeout(() => {
@@ -379,11 +408,11 @@ function DownloadConfirmPanel({
       ) : null}
       {!channel.downloadTestCompleted ? (
         <p className="text-xs text-amber-800">
-          RAG Export를 다운로드한 뒤에 아래 확인 항목을 체크할 수 있습니다.
+          먼저 패키지를 다운로드한 뒤 확인 항목을 체크할 수 있습니다.
         </p>
       ) : (
         <p className="text-xs text-emerald-800">
-          RAG Export 다운로드가 시작되고 패키지 정보가 정상임을 확인했습니다.
+          다운로드가 시작되었습니다. 패키지 내용을 확인한 뒤 아래 항목을 체크해 주세요.
         </p>
       )}
       {(
@@ -404,11 +433,7 @@ function DownloadConfirmPanel({
             type="checkbox"
             className="mt-1"
             checked={checks[key]}
-            disabled={
-              disabled ||
-              busy ||
-              (key === "downloadOkConfirmed" && !channel.downloadTestCompleted)
-            }
+            disabled={disabled || busy || !channel.downloadTestCompleted}
             onChange={(e) => setChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
           />
           <span>{label}</span>
@@ -418,7 +443,9 @@ function DownloadConfirmPanel({
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
-          disabled={!allChecked || busy || disabled}
+          disabled={
+            !allChecked || busy || disabled || !channel.downloadTestCompleted || !channel.canConfirm
+          }
           onClick={() => {
             void (async () => {
               if (!channel.runId) return;
