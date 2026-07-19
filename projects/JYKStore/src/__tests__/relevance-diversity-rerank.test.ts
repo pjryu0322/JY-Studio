@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { KnowledgeChunk, SourceDocument } from "@prisma/client";
 import {
+  RELEVANCE_TIE_EPSILON,
+  TOP3_MAX_SAME_FAMILY,
+  TOP5_MAX_SAME_FAMILY,
   computeFinalRelevanceScore,
   deduplicateScoredCandidates,
   normalizeForDedupe,
@@ -57,6 +60,21 @@ function scored(
   };
 }
 
+/** Build candidates with controlled finalRelevance via vectorSimilarity + title. */
+function withSim(
+  id: string,
+  title: string,
+  content: string,
+  section: string,
+  sim: number,
+  metadata?: Record<string, unknown>,
+): ScoredCandidate {
+  return scored(
+    makeChunk({ id, title, content, section, metadata: metadata ?? null }),
+    { vectorSimilarity: sim, metadata: metadata ?? null },
+  );
+}
+
 describe("relevance-diversity-rerank", () => {
   it("normalizes title suffix and punctuation for dedupe", () => {
     assert.equal(
@@ -65,59 +83,194 @@ describe("relevance-diversity-rerank", () => {
     );
   });
 
-  it("dedupes identical chunkId, parent/split family, and near-duplicate bodies", () => {
-    const a = scored(
-      makeChunk({
-        id: "a",
-        title: "A",
-        content: "동일본문 내용입니다. ".repeat(20),
-        section: "S1",
-      }),
-      { vectorSimilarity: 0.9, metadata: { splitSourceId: "family-1", pageStart: 10 } },
+  it("preserves distinct same-family chunks and only removes true duplicates", () => {
+    const a = withSim(
+      "a",
+      "적용 대상",
+      "대가산정 적용 대상에 대한 상세 설명입니다. ".repeat(6),
+      "S1",
+      0.9,
+      { splitSourceId: "ku-1", knowledgeUnitId: "ku-1", pageStart: 10 },
     );
-    const b = scored(
-      makeChunk({
-        id: "b",
-        title: "A twin",
-        content: "동일본문 내용입니다. ".repeat(20),
-        section: "S1",
-      }),
-      { vectorSimilarity: 0.85, metadata: { splitSourceId: "family-1", pageStart: 10 } },
+    const b = withSim(
+      "b",
+      "계산 방식",
+      "대가산정 계산 방식과 산정식을 설명합니다. ".repeat(6),
+      "S1",
+      0.88,
+      { splitSourceId: "ku-1", knowledgeUnitId: "ku-1", pageStart: 11 },
     );
-    const c = scored(
-      makeChunk({
-        id: "c",
-        title: "Near",
-        content: "동일본문 내용입니다. ".repeat(19) + "거의같음 ",
-        section: "S1",
-      }),
-      { vectorSimilarity: 0.84, metadata: { splitSourceId: "family-2", pageStart: 11 } },
+    const c = withSim(
+      "c",
+      "예외와 주의사항",
+      "대가산정 예외와 주의사항을 별도로 안내합니다. ".repeat(6),
+      "S1",
+      0.86,
+      { splitSourceId: "ku-1", knowledgeUnitId: "ku-1", pageStart: 12 },
     );
-    const d = scored(
-      makeChunk({
-        id: "d",
-        title: "Other section",
-        content: "완전히 다른 섹션의 본문입니다. 감리 절차를 설명합니다. ".repeat(8),
-        section: "S2",
-      }),
-      { vectorSimilarity: 0.7, metadata: { splitSourceId: "family-3", pageStart: 20 } },
+    const { kept, removedCount } = deduplicateScoredCandidates([a, b, c]);
+    assert.equal(removedCount, 0);
+    assert.equal(kept.length, 3);
+  });
+
+  it("dedupes same-family chunks when normalized bodies match", () => {
+    const body = "동일 본문 내용입니다. 공백과 구두점만 다를 수 있습니다. ".repeat(8);
+    const a = withSim("a", "A", body, "S1", 0.9, {
+      splitSourceId: "family-1",
+      pageStart: 10,
+    });
+    const b = withSim("b", "B", `${body}!!!`, "S1", 0.85, {
+      splitSourceId: "family-1",
+      pageStart: 10,
+    });
+    const { kept, removedCount } = deduplicateScoredCandidates([a, b]);
+    assert.equal(removedCount, 1);
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.chunk.id, "a");
+  });
+
+  it("dedupes near-duplicate bodies even across different families", () => {
+    const words = Array.from({ length: 100 }, (_, i) => `점검단어${i}`);
+    const aBody = words.join(" ");
+    const bWords = [...words];
+    bWords[50] = "점검단어50x";
+    const bBody = bWords.join(" ");
+    const a = withSim("a", "A", aBody, "S1", 0.9, {
+      splitSourceId: "family-a",
+      pageStart: 1,
+    });
+    const b = withSim("b", "B", bBody, "S2", 0.88, {
+      splitSourceId: "family-b",
+      pageStart: 2,
+    });
+    const { kept, removedCount } = deduplicateScoredCandidates([a, b]);
+    assert.equal(removedCount, 1);
+    assert.equal(kept.length, 1);
+  });
+
+  it("keeps short distinct bodies even in the same family", () => {
+    const a = withSim("a", "적용 대상", "적용 대상", "S1", 0.8, {
+      splitSourceId: "ku-short",
+      pageStart: 1,
+    });
+    const b = withSim("b", "적용 기준", "적용 기준", "S1", 0.79, {
+      splitSourceId: "ku-short",
+      pageStart: 1,
+    });
+    const { kept, removedCount } = deduplicateScoredCandidates([a, b]);
+    assert.equal(removedCount, 0);
+    assert.equal(kept.length, 2);
+  });
+
+  it("keeps different content on same source/page/section", () => {
+    const a = withSim(
+      "a",
+      "산정 대상",
+      "산정 대상에 포함되는 사업 유형을 설명합니다. ".repeat(5),
+      "대가산정",
+      0.85,
+      { splitSourceId: "ku-x", pageStart: 20 },
     );
-    const e = scored(
-      makeChunk({
-        id: "e",
-        title: "Other page",
-        content: "페이지가 다른 별도 설명입니다. 보고서 작성 주의사항. ".repeat(8),
-        section: "S3",
-      }),
-      { vectorSimilarity: 0.68, metadata: { splitSourceId: "family-4", pageStart: 30 } },
+    const b = withSim(
+      "b",
+      "계산식",
+      "대가산정 계산식과 계수를 설명합니다. ".repeat(5),
+      "대가산정",
+      0.84,
+      { splitSourceId: "ku-x", pageStart: 20 },
+    );
+    const { kept } = deduplicateScoredCandidates([a, b]);
+    assert.equal(kept.length, 2);
+  });
+
+  it("does not let diversity invert ranks 2–3 when relevance gap exceeds epsilon", () => {
+    const query = "기획단계 대가 산정";
+    // Rank1 seed
+    const rank1 = withSim(
+      "r1",
+      "기획단계 대가 산정",
+      "기획단계 대가 산정 방법을 직접 설명합니다. ".repeat(4),
+      "기획",
+      0.95,
+      { splitSourceId: "f1", pageStart: 1 },
+    );
+    // Higher relevance, same section/page as rank1 → low diversity
+    const a = withSim(
+      "a",
+      "기획단계 대가 산정 세부",
+      "기획단계 대가 산정 세부 절차와 적용 기준입니다. ".repeat(4),
+      "기획",
+      0.88,
+      { splitSourceId: "f1", pageStart: 1 },
+    );
+    // Lower relevance, different section → high diversity
+    const b = withSim(
+      "b",
+      "일반 개요",
+      "문서 개요와 배경 설명을 제공합니다. ".repeat(4),
+      "개요",
+      0.77,
+      { splitSourceId: "f2", pageStart: 99 },
     );
 
-    const { kept, removedCount } = deduplicateScoredCandidates([a, b, c, d, e]);
-    assert.ok(removedCount >= 1);
-    assert.ok(kept.some((x) => x.chunk.id === "a" || x.chunk.id === "b"));
-    assert.ok(kept.some((x) => x.chunk.id === "d"));
-    assert.ok(kept.some((x) => x.chunk.id === "e"));
-    assert.equal(new Set(kept.map((x) => x.chunk.id)).size, kept.length);
+    const scoreA = computeFinalRelevanceScore(a, query);
+    const scoreB = computeFinalRelevanceScore(b, query);
+    assert.ok(scoreA - scoreB > RELEVANCE_TIE_EPSILON, `${scoreA} vs ${scoreB}`);
+
+    const { selected } = selectDiverseTopK({
+      scored: [rank1, a, b],
+      query,
+      topK: 3,
+    });
+    assert.equal(selected[0]?.chunk.id, "r1");
+    assert.equal(selected[1]?.chunk.id, "a");
+    assert.equal(selected[2]?.chunk.id, "b");
+  });
+
+  it("may use diversity inside relevance tie epsilon", () => {
+    const query = "기획단계 대가 산정";
+    const sharedTitle = "기획단계 대가 산정 안내";
+    const rank1 = withSim(
+      "r1",
+      sharedTitle,
+      "기획단계 대가 산정 핵심 설명을 제공합니다. ".repeat(4),
+      "핵심",
+      0.95,
+      { splitSourceId: "f0", pageStart: 1 },
+    );
+    // Same section/page as rank1 → lower diversity; nearly tied relevance.
+    const same = withSim(
+      "same",
+      sharedTitle,
+      "기획단계 대가 산정 안내 A형 보충 설명입니다. ".repeat(4),
+      "핵심",
+      0.86,
+      { splitSourceId: "f1", pageStart: 1 },
+    );
+    const other = withSim(
+      "other",
+      sharedTitle,
+      "기획단계 대가 산정 안내 B형 참고 설명입니다. ".repeat(4),
+      "부록",
+      0.858,
+      { splitSourceId: "f2", pageStart: 50 },
+    );
+
+    const scoreSame = computeFinalRelevanceScore(same, query);
+    const scoreOther = computeFinalRelevanceScore(other, query);
+    assert.ok(
+      Math.abs(scoreSame - scoreOther) <= RELEVANCE_TIE_EPSILON,
+      `${scoreSame} vs ${scoreOther}`,
+    );
+
+    const { selected } = selectDiverseTopK({
+      scored: [rank1, same, other],
+      query,
+      topK: 3,
+    });
+    assert.equal(selected[0]?.chunk.id, "r1");
+    // Diversity should prefer other section/page within the tie group.
+    assert.equal(selected[1]?.chunk.id, "other");
   });
 
   it("ranks keyword-direct match above generic overview when vector scores are close", () => {
@@ -184,30 +337,28 @@ describe("relevance-diversity-rerank", () => {
     assert.equal(selected[0]?.chunk.id, "best");
   });
 
-  it("limits same parent family and returns fewer than topK when candidates are weak", () => {
+  it("allows up to TOP3_MAX_SAME_FAMILY distinct family chunks in top results", () => {
+    assert.equal(TOP3_MAX_SAME_FAMILY, 2);
+    assert.equal(TOP5_MAX_SAME_FAMILY, 2);
+
     const query = "감리 결과보고서";
     const family = Array.from({ length: 3 }, (_, i) =>
-      scored(
-        makeChunk({
-          id: `f-${i}`,
-          title: `결과보고서 조각 ${i}`,
-          content: `감리 결과보고서 작성 시 주의사항 조각 ${i}. `.repeat(10),
-          section: "결과보고서",
-        }),
-        {
-          vectorSimilarity: 0.9 - i * 0.01,
-          metadata: { splitSourceId: "same-parent", pageStart: 40 + i },
-        },
+      withSim(
+        `f-${i}`,
+        `결과보고서 조각 ${i}`,
+        `감리 결과보고서 작성 시 주의사항 조각 ${i} 상세 내용입니다. `.repeat(6),
+        "결과보고서",
+        0.9 - i * 0.02,
+        { splitSourceId: "same-parent", pageStart: 40 + i },
       ),
     );
-    const other = scored(
-      makeChunk({
-        id: "other-sec",
-        title: "다른 섹션",
-        content: "감리 결과보고서와 관련된 별도 섹션 내용입니다. ".repeat(8),
-        section: "부록",
-      }),
-      { vectorSimilarity: 0.75, metadata: { splitSourceId: "other", pageStart: 90 } },
+    const other = withSim(
+      "other-sec",
+      "다른 섹션",
+      "감리 결과보고서와 관련된 별도 섹션 내용입니다. ".repeat(6),
+      "부록",
+      0.75,
+      { splitSourceId: "other", pageStart: 90 },
     );
 
     const { selected, stats } = selectDiverseTopK({
@@ -220,7 +371,8 @@ describe("relevance-diversity-rerank", () => {
     const familyKept = selected.filter(
       (s) => (s.metadataRecord?.splitSourceId as string | undefined) === "same-parent",
     );
-    assert.equal(familyKept.length, 1);
+    assert.ok(familyKept.length <= TOP5_MAX_SAME_FAMILY);
+    assert.ok(familyKept.length >= 1);
     assert.ok(selected.some((s) => s.chunk.id === "other-sec"));
     assert.equal(stats.rerankMode, "relevance_diversity_v1");
   });

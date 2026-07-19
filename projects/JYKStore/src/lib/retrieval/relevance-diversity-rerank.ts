@@ -4,11 +4,24 @@ import type { ScoredCandidate } from "./retrieval-types";
 /** Near-duplicate body similarity threshold (Jaccard over word shingles). */
 export const NEAR_DUPLICATE_SIMILARITY = 0.9;
 
+/** Minimum normalized body length for Jaccard near-duplicate checks. */
+export const NEAR_DUPLICATE_MIN_CHARS = 80;
+
 /** Rank 2–3 must keep at least this fraction of rank-1 final relevance. */
 export const RANK_23_RELATIVE_FLOOR = 0.85;
 
 /** Absolute minimum final relevance to include a result (avoid padding Top-K). */
 export const ABSOLUTE_RELEVANCE_FLOOR = 0.12;
+
+/**
+ * Within this gap, finalRelevanceScore is treated as a tie and diversity may break it.
+ * Larger gaps must preserve relevance order for ranks 2–3.
+ */
+export const RELEVANCE_TIE_EPSILON = 0.02;
+
+/** Same split/parent family allowed in ranks 1–3 and overall Top-5. */
+export const TOP3_MAX_SAME_FAMILY = 2;
+export const TOP5_MAX_SAME_FAMILY = 2;
 
 const WEIGHTS = {
   normalizedVectorScore: 0.8,
@@ -16,7 +29,6 @@ const WEIGHTS = {
   sectionMatchBonus: 0.05,
   phraseMatchBonus: 0.03,
   provenanceCompletenessBonus: 0.02,
-  duplicatePenalty: 0.2,
   missingSourcePenalty: 0.1,
 } as const;
 
@@ -65,6 +77,10 @@ export function bodySimilarity(a: string, b: string): number {
   const nb = normalizeForDedupe(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
+  // Short bodies: only exact normalized hash counts as duplicate (caller also checks).
+  if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
+    return 0;
+  }
   return jaccardSimilarity(makeWordShingles(na, 3), makeWordShingles(nb, 3));
 }
 
@@ -101,12 +117,13 @@ function pageRangeKey(meta: MetaFields): string | null {
   return `${meta.pageStart}-${meta.pageEnd ?? meta.pageStart}`;
 }
 
-function familyKey(meta: MetaFields): string | null {
+/** Family key for diversity caps only — never used to confirm duplicates. */
+export function familyKey(meta: MetaFields): string | null {
   return meta.parentChunkId ?? meta.splitSourceId;
 }
 
 /**
- * Prefer higher hybrid/vector score, then provenance completeness, then primary length.
+ * Prefer higher vector/hybrid score, then provenance, primary length, sortOrder.
  */
 export function pickDuplicateRepresentative(
   a: ScoredCandidate,
@@ -125,25 +142,41 @@ export function pickDuplicateRepresentative(
   if (mb.primaryContentLength !== ma.primaryContentLength) {
     return mb.primaryContentLength > ma.primaryContentLength ? b : a;
   }
-  return a;
+  if (a.chunk.sortOrder !== b.chunk.sortOrder) {
+    return a.chunk.sortOrder < b.chunk.sortOrder ? a : b;
+  }
+  return a.chunk.id <= b.chunk.id ? a : b;
 }
 
+function isNearDuplicateContent(a: string, b: string): boolean {
+  const na = normalizeForDedupe(a);
+  const nb = normalizeForDedupe(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
+    return false;
+  }
+  return bodySimilarity(a, b) >= NEAR_DUPLICATE_SIMILARITY;
+}
+
+/**
+ * Deduplicate by chunkId / normalized body / near-duplicate only.
+ * Same parentChunkId / splitSourceId / knowledgeUnitId alone is NOT a duplicate.
+ */
 export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
   kept: ScoredCandidate[];
   removedCount: number;
 } {
   const kept: ScoredCandidate[] = [];
   const seenChunkIds = new Set<string>();
-  const seenFamilies = new Map<string, number>();
-  const seenSourcePageSection = new Map<string, number>();
   const seenHashes = new Map<string, number>();
+  const seenSourcePageSectionHash = new Map<string, number>();
 
   for (const item of scored) {
     if (seenChunkIds.has(item.chunk.id)) continue;
     seenChunkIds.add(item.chunk.id);
 
     const meta = extractCandidateMeta(item);
-    const family = familyKey(meta);
     const hash = contentDedupeKey(item.chunk.content);
     const section = (item.chunk.section ?? "").trim().toLowerCase();
     const sourcePageSection =
@@ -153,21 +186,22 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
 
     let duplicateOf: number | null = null;
 
-    if (family) {
-      const idx = seenFamilies.get(family);
-      if (idx != null) duplicateOf = idx;
-    }
-    if (duplicateOf == null && sourcePageSection && hash) {
-      const idx = seenSourcePageSection.get(`${sourcePageSection}|${hash}`);
-      if (idx != null) duplicateOf = idx;
-    }
-    if (duplicateOf == null && hash.length >= 40) {
+    // Exact normalized hash (any length).
+    if (hash.length > 0) {
       const idx = seenHashes.get(hash);
       if (idx != null) duplicateOf = idx;
     }
+
+    // Same source/page/section + same hash (narrowing aid; still requires hash match).
+    if (duplicateOf == null && sourcePageSection && hash.length > 0) {
+      const idx = seenSourcePageSectionHash.get(`${sourcePageSection}|${hash}`);
+      if (idx != null) duplicateOf = idx;
+    }
+
+    // Near-duplicate body vs kept candidates.
     if (duplicateOf == null) {
       for (let i = 0; i < kept.length; i++) {
-        if (bodySimilarity(kept[i]!.chunk.content, item.chunk.content) >= NEAR_DUPLICATE_SIMILARITY) {
+        if (isNearDuplicateContent(kept[i]!.chunk.content, item.chunk.content)) {
           duplicateOf = i;
           break;
         }
@@ -178,22 +212,25 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
       const winner = pickDuplicateRepresentative(kept[duplicateOf]!, item);
       if (winner !== kept[duplicateOf]) {
         kept[duplicateOf] = winner;
-        const wMeta = extractCandidateMeta(winner);
-        const wFamily = familyKey(wMeta);
-        if (wFamily) seenFamilies.set(wFamily, duplicateOf);
         const wHash = contentDedupeKey(winner.chunk.content);
-        if (wHash.length >= 40) seenHashes.set(wHash, duplicateOf);
+        if (wHash.length > 0) seenHashes.set(wHash, duplicateOf);
+        const wMeta = extractCandidateMeta(winner);
+        const wSection = (winner.chunk.section ?? "").trim().toLowerCase();
+        const wKey =
+          winner.chunk.sourceDocumentId && wMeta.pageStart != null
+            ? `${winner.chunk.sourceDocumentId}|${wMeta.pageStart}|${wMeta.pageEnd ?? wMeta.pageStart}|${wSection}|${wHash}`
+            : null;
+        if (wKey) seenSourcePageSectionHash.set(wKey, duplicateOf);
       }
       continue;
     }
 
     const idx = kept.length;
     kept.push(item);
-    if (family) seenFamilies.set(family, idx);
-    if (sourcePageSection && hash) {
-      seenSourcePageSection.set(`${sourcePageSection}|${hash}`, idx);
+    if (hash.length > 0) seenHashes.set(hash, idx);
+    if (sourcePageSection && hash.length > 0) {
+      seenSourcePageSectionHash.set(`${sourcePageSection}|${hash}`, idx);
     }
-    if (hash.length >= 40) seenHashes.set(hash, idx);
   }
 
   return { kept, removedCount: Math.max(0, scored.length - kept.length) };
@@ -274,35 +311,53 @@ type Ranked = {
   meta: MetaFields;
 };
 
-function diversityDistance(a: Ranked, b: Ranked): number {
-  let d = 0;
-  const fa = familyKey(a.meta);
-  const fb = familyKey(b.meta);
-  if (fa && fb && fa === fb) d -= 0.5;
-  else d += 0.25;
-  const sa = (a.item.chunk.section ?? "").trim().toLowerCase();
-  const sb = (b.item.chunk.section ?? "").trim().toLowerCase();
-  if (sa && sb && sa === sb) d -= 0.25;
-  else if (sa || sb) d += 0.2;
-  const pa = pageRangeKey(a.meta);
-  const pb = pageRangeKey(b.meta);
-  if (pa && pb && pa === pb) d -= 0.15;
-  else if (pa || pb) d += 0.1;
-  if (
-    a.item.chunk.sourceDocumentId &&
-    b.item.chunk.sourceDocumentId &&
-    a.item.chunk.sourceDocumentId !== b.item.chunk.sourceDocumentId
-  ) {
-    d += 0.15;
+function compareRankedStability(a: Ranked, b: Ranked): number {
+  if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+  if (b.item.score !== a.item.score) return b.item.score - a.item.score;
+  if (b.item.vectorSimilarity !== a.item.vectorSimilarity) {
+    return b.item.vectorSimilarity - a.item.vectorSimilarity;
   }
-  d += 1 - bodySimilarity(a.item.chunk.content, b.item.chunk.content);
-  return d;
+  if (a.item.chunk.sortOrder !== b.item.chunk.sortOrder) {
+    return a.item.chunk.sortOrder - b.item.chunk.sortOrder;
+  }
+  const ta = a.item.chunk.createdAt.getTime();
+  const tb = b.item.chunk.createdAt.getTime();
+  if (ta !== tb) return ta - tb;
+  return a.item.chunk.id.localeCompare(b.item.chunk.id);
 }
 
-function avgDiversityToSelected(candidate: Ranked, selected: Ranked[]): number {
+/**
+ * Diversity in [0, 1]: rewards different family / section / page / source / body.
+ * Same attributes score 0 for that signal — never negative.
+ */
+export function normalizedDiversityScore(candidate: Ranked, selected: Ranked): number {
+  let score = 0;
+  const fa = familyKey(candidate.meta);
+  const fb = familyKey(selected.meta);
+  if (!fa || !fb || fa !== fb) score += 0.35;
+
+  const sa = (candidate.item.chunk.section ?? "").trim().toLowerCase();
+  const sb = (selected.item.chunk.section ?? "").trim().toLowerCase();
+  if (!sa || !sb || sa !== sb) score += 0.25;
+
+  const pa = pageRangeKey(candidate.meta);
+  const pb = pageRangeKey(selected.meta);
+  if (!pa || !pb || pa !== pb) score += 0.15;
+
+  const da = candidate.item.chunk.sourceDocumentId;
+  const db = selected.item.chunk.sourceDocumentId;
+  if (!da || !db || da !== db) score += 0.1;
+
+  const bodyDiff = 1 - bodySimilarity(candidate.item.chunk.content, selected.item.chunk.content);
+  score += 0.15 * clamp01(bodyDiff);
+
+  return clamp01(score);
+}
+
+function avgNormalizedDiversity(candidate: Ranked, selected: Ranked[]): number {
   if (selected.length === 0) return 1;
   let sum = 0;
-  for (const s of selected) sum += diversityDistance(candidate, s);
+  for (const s of selected) sum += normalizedDiversityScore(candidate, s);
   return sum / selected.length;
 }
 
@@ -341,6 +396,73 @@ function passesDiversityCaps(
   return true;
 }
 
+function chooseMostDiverse(tieGroup: Ranked[], selected: Ranked[]): Ranked {
+  let best = tieGroup[0]!;
+  let bestDiv = avgNormalizedDiversity(best, selected);
+  for (let i = 1; i < tieGroup.length; i++) {
+    const candidate = tieGroup[i]!;
+    const div = avgNormalizedDiversity(candidate, selected);
+    if (div > bestDiv + 1e-9) {
+      best = candidate;
+      bestDiv = div;
+    } else if (Math.abs(div - bestDiv) <= 1e-9 && compareRankedStability(candidate, best) < 0) {
+      best = candidate;
+      bestDiv = div;
+    }
+  }
+  return best;
+}
+
+/**
+ * Ranks 2–3: relevance descending; diversity only inside RELEVANCE_TIE_EPSILON ties.
+ */
+export function pickRelevanceFirstCandidate(
+  pool: Ranked[],
+  selected: Ranked[],
+): Ranked | null {
+  if (pool.length === 0) return null;
+
+  const sorted = [...pool].sort(compareRankedStability);
+  const topRelevance = sorted[0]!.relevance;
+  const tieGroup = sorted.filter(
+    (candidate) => topRelevance - candidate.relevance <= RELEVANCE_TIE_EPSILON,
+  );
+
+  if (tieGroup.length === 1) return tieGroup[0]!;
+  return chooseMostDiverse(tieGroup, selected);
+}
+
+/**
+ * Ranks 4–5: weighted relevance + normalized diversity among floor-qualified pool.
+ */
+function pickDiversityWeightedCandidate(
+  pool: Ranked[],
+  selected: Ranked[],
+  relevanceWeight: number,
+  diversityWeight: number,
+): Ranked | null {
+  if (pool.length === 0) return null;
+  let best: Ranked | null = null;
+  let bestScore = -Infinity;
+  for (const candidate of pool) {
+    const diversity = avgNormalizedDiversity(candidate, selected);
+    const combined =
+      relevanceWeight * candidate.relevance + diversityWeight * diversity;
+    if (combined > bestScore + 1e-9) {
+      bestScore = combined;
+      best = candidate;
+    } else if (
+      best &&
+      Math.abs(combined - bestScore) <= 1e-9 &&
+      compareRankedStability(candidate, best) < 0
+    ) {
+      best = candidate;
+      bestScore = combined;
+    }
+  }
+  return best;
+}
+
 /**
  * Relevance-first Top-K with limited diversity on ranks 2–5.
  * Does not change Public API shape — only reorders/filters candidates.
@@ -372,111 +494,67 @@ export function selectDiverseTopK(input: {
       relevance: computeFinalRelevanceScore(item, query),
       meta: extractCandidateMeta(item),
     }))
-    .sort((a, b) => b.relevance - a.relevance || b.item.score - a.item.score);
+    .sort(compareRankedStability);
 
   const selected: Ranked[] = [];
-  // Rank 1: pure relevance (no diversity penalty).
-  const rank1 = ranked[0]!;
-  if (rank1.relevance < ABSOLUTE_RELEVANCE_FLOOR && rank1.item.vectorSimilarity < 0.2) {
-    // Still return best available rather than empty when something scored.
-    selected.push(rank1);
-  } else {
-    selected.push(rank1);
-  }
+  // Rank 1: pure relevance (no diversity).
+  selected.push(ranked[0]!);
 
-  const floor23 = Math.max(rank1.relevance * RANK_23_RELATIVE_FLOOR, ABSOLUTE_RELEVANCE_FLOOR);
-  const floor45 = Math.max(rank1.relevance * 0.7, ABSOLUTE_RELEVANCE_FLOOR);
+  const floor23 = Math.max(ranked[0]!.relevance * RANK_23_RELATIVE_FLOOR, ABSOLUTE_RELEVANCE_FLOOR);
+  const floor45 = Math.max(ranked[0]!.relevance * 0.7, ABSOLUTE_RELEVANCE_FLOOR);
 
-  const pickNext = (opts: {
-    remainingSlots: number;
-    relevanceWeight: number;
-    diversityWeight: number;
-    floor: number;
-    maxFamily: number;
-    maxSection: number;
-    maxPage: number;
-  }) => {
-    while (selected.length < topK && opts.remainingSlots > 0) {
-      const pool = ranked.filter(
-        (c) =>
-          !selected.some((s) => s.item.chunk.id === c.item.chunk.id) &&
-          c.relevance >= opts.floor,
-      );
+  const filterPool = (floor: number, caps: { maxFamily: number; maxSection: number; maxPage: number }) =>
+    ranked.filter(
+      (c) =>
+        !selected.some((s) => s.item.chunk.id === c.item.chunk.id) &&
+        c.relevance >= floor &&
+        passesDiversityCaps(c, selected, caps),
+    );
+
+  const pickWithRelax = (
+    mode: "relevance_first" | "diversity_weighted",
+    floor: number,
+    remainingSlots: number,
+    maxFamily: number,
+  ) => {
+    while (selected.length < topK && remainingSlots > 0) {
+      const strictCaps = { maxFamily, maxSection: 2, maxPage: 2 };
+      let pool = filterPool(floor, strictCaps);
+      if (pool.length === 0) {
+        // Relax page → section; keep family max at TOP5_MAX_SAME_FAMILY.
+        pool = filterPool(floor, {
+          maxFamily,
+          maxSection: 4,
+          maxPage: 8,
+        });
+      }
       if (pool.length === 0) break;
 
-      let best: Ranked | null = null;
-      let bestScore = -Infinity;
-      for (const candidate of pool) {
-        if (
-          !passesDiversityCaps(candidate, selected, {
-            maxFamily: opts.maxFamily,
-            maxSection: opts.maxSection,
-            maxPage: opts.maxPage,
-          })
-        ) {
-          continue;
-        }
-        const diversity = avgDiversityToSelected(candidate, selected);
-        const combined =
-          opts.relevanceWeight * candidate.relevance + opts.diversityWeight * diversity;
-        if (combined > bestScore) {
-          bestScore = combined;
-          best = candidate;
-        }
-      }
-
-      if (!best) {
-        // Relax page → section caps; keep family cap.
-        let relaxed: Ranked | null = null;
-        let relaxedScore = -Infinity;
-        for (const candidate of pool) {
-          if (
-            !passesDiversityCaps(candidate, selected, {
-              maxFamily: opts.maxFamily,
-              maxSection: opts.maxSection + 2,
-              maxPage: opts.maxPage + 5,
-            })
-          ) {
-            continue;
-          }
-          const diversity = avgDiversityToSelected(candidate, selected);
-          const combined =
-            opts.relevanceWeight * candidate.relevance + opts.diversityWeight * diversity;
-          if (combined > relaxedScore) {
-            relaxedScore = combined;
-            relaxed = candidate;
-          }
-        }
-        if (!relaxed) break;
-        selected.push(relaxed);
-      } else {
-        selected.push(best);
-      }
-      opts.remainingSlots -= 1;
+      const next =
+        mode === "relevance_first"
+          ? pickRelevanceFirstCandidate(pool, selected)
+          : pickDiversityWeightedCandidate(pool, selected, 0.75, 0.25);
+      if (!next) break;
+      selected.push(next);
+      remainingSlots -= 1;
     }
   };
 
-  // Ranks 2–3: relevance-heavy.
-  pickNext({
-    remainingSlots: Math.min(2, topK - selected.length),
-    relevanceWeight: 0.9,
-    diversityWeight: 0.1,
-    floor: floor23,
-    maxFamily: 1,
-    maxSection: 2,
-    maxPage: 2,
-  });
+  // Ranks 2–3: relevance order; diversity only inside epsilon ties.
+  pickWithRelax(
+    "relevance_first",
+    floor23,
+    Math.min(2, topK - selected.length),
+    TOP3_MAX_SAME_FAMILY,
+  );
 
-  // Ranks 4–5: more diversity, still above relevance floor.
-  pickNext({
-    remainingSlots: Math.max(0, topK - selected.length),
-    relevanceWeight: 0.75,
-    diversityWeight: 0.25,
-    floor: floor45,
-    maxFamily: 1,
-    maxSection: 2,
-    maxPage: 2,
-  });
+  // Ranks 4–5: diversity weighted, still above relevance floor.
+  pickWithRelax(
+    "diversity_weighted",
+    floor45,
+    Math.max(0, topK - selected.length),
+    TOP5_MAX_SAME_FAMILY,
+  );
 
   return {
     selected: selected.map((r) => r.item),
