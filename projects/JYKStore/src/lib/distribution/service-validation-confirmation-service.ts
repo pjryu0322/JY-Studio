@@ -18,7 +18,9 @@ import {
   requireOwnedDraftPackForServiceValidationRun,
   resolveRunCurrentValidity,
   loadOwnedPackForServiceValidationRead,
+  rankingPolicyVersionFromDetails,
 } from "@/lib/distribution/service-validation-service";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { canShareProviderConfirmation } from "@/lib/distribution/service-validation-share";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import type { ObjectStorage } from "@/lib/object-storage/object-storage";
@@ -83,6 +85,8 @@ async function requireOwnedRunnableRun(input: {
     bindingFingerprint: binding.fingerprint,
     bindingIndexGenerationId: binding.indexGenerationId,
     resultItemCount: run.channel === "DOWNLOAD" ? null : run.resultItems.length,
+    expectedRankingPolicyVersion:
+      run.channel === "API" || run.channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
   });
   if (run.status !== "PASS" || validity !== "CURRENT") {
     throw new PayloadServiceError(
@@ -208,8 +212,14 @@ async function resolveShareablePeerTx(
     return null;
   }
   const share = canShareProviderConfirmation({
-    apiRun: run.channel === "API" ? run : peer,
-    mcpRun: run.channel === "MCP" ? run : peer,
+    apiRun:
+      run.channel === "API"
+        ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
+        : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
+    mcpRun:
+      run.channel === "MCP"
+        ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
+        : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
     apiResults: (run.channel === "API" ? run.resultItems : peer.resultItems).map((item) => ({
       rank: item.rank,
       chunkId: item.chunkId,

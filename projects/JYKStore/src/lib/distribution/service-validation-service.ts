@@ -47,6 +47,7 @@ import {
   computeResultFingerprint,
   isLegacySharedConfirmationMissingFingerprint,
 } from "@/lib/distribution/service-validation-share";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import {
   assertCompletePreparationValidationSnapshotEntry,
   type PreparationValidationSnapshotEntry,
@@ -97,11 +98,21 @@ export type ServiceValidationChannelDto = {
   } | null;
 };
 
+export type ServiceValidationLockReason =
+  | "OPEN_REVIEW"
+  | "PACK_NOT_DRAFT"
+  | "BINDING_MISSING"
+  | "BINDING_STALE"
+  | "SEARCH_DATA_NOT_READY"
+  | null;
+
 export type ServiceValidationStatusDto = {
   packId: string;
   versionId: string;
   packStatus: string;
   canRunValidation: boolean;
+  /** Why canRunValidation is false (provider UI only). */
+  validationLockReason: ServiceValidationLockReason;
   channels: ServiceValidationChannelDto[];
   /**
    * System PASS + Provider CONFIRMED + CURRENT for all preparation channels
@@ -151,11 +162,16 @@ export function resolveRunCurrentValidity(input: {
   run: Pick<
     ServiceValidationRun,
     "status" | "fingerprint" | "indexGenerationId" | "invalidatedAt" | "channel"
-  > & { channel?: string };
+  > & { channel?: string; details?: unknown };
   bindingFingerprint?: string | null;
   bindingIndexGenerationId?: string | null;
   /** For API/MCP: PASS with 0 result items is incomplete evidence → STALE. */
   resultItemCount?: number | null;
+  /**
+   * Current retrieval ranking policy. When set, API/MCP runs missing this version
+   * (or with a different version) are STALE. DOWNLOAD ignores this.
+   */
+  expectedRankingPolicyVersion?: string | null;
 }): "CURRENT" | "STALE" {
   if (input.run.invalidatedAt) return "STALE";
   if (input.run.status !== "PASS") return "CURRENT";
@@ -181,7 +197,44 @@ export function resolveRunCurrentValidity(input: {
   ) {
     return "STALE";
   }
+  if (
+    (channel === "API" || channel === "MCP") &&
+    input.expectedRankingPolicyVersion
+  ) {
+    const details =
+      input.run.details && typeof input.run.details === "object" && !Array.isArray(input.run.details)
+        ? (input.run.details as Record<string, unknown>)
+        : null;
+    const runPolicy =
+      typeof details?.retrievalRankingPolicyVersion === "string"
+        ? details.retrievalRankingPolicyVersion.trim()
+        : "";
+    if (!runPolicy || runPolicy !== input.expectedRankingPolicyVersion) {
+      return "STALE";
+    }
+  }
   return "CURRENT";
+}
+
+export function resolveValidationLockReason(input: {
+  packStatus: string;
+  hasBinding: boolean;
+}): Exclude<ServiceValidationLockReason, "SEARCH_DATA_NOT_READY" | null> | null {
+  if (input.packStatus === PackStatus.DRAFT && input.hasBinding) return null;
+  if (input.packStatus === PackStatus.REVIEWING) return "OPEN_REVIEW";
+  if (input.packStatus !== PackStatus.DRAFT) return "PACK_NOT_DRAFT";
+  if (!input.hasBinding) return "BINDING_MISSING";
+  return null;
+}
+
+export function rankingPolicyVersionFromDetails(details: unknown): string | null {
+  const rec =
+    details && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : null;
+  return typeof rec?.retrievalRankingPolicyVersion === "string"
+    ? rec.retrievalRankingPolicyVersion.trim() || null
+    : null;
 }
 
 export function resolveConfirmationStatusDto(input: {
@@ -345,6 +398,8 @@ async function mapRunToProviderChannelDto(input: {
     bindingFingerprint: input.bindingFingerprint,
     bindingIndexGenerationId: input.bindingIndexGenerationId,
     resultItemCount: channel === "DOWNLOAD" ? null : resultRows.length,
+    expectedRankingPolicyVersion:
+      channel === "API" || channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
   });
   let effectiveValidity = validity;
   let legacyFingerprintMissing = false;
@@ -432,8 +487,12 @@ async function mapRunToProviderChannelDto(input: {
           orderBy: { rank: "asc" },
         });
         canShareConfirmationWithPeer = canShareProviderConfirmation({
-          apiRun: channel === "API" ? run : peer,
-          mcpRun: channel === "MCP" ? run : peer,
+          apiRun: channel === "API"
+            ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
+            : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
+          mcpRun: channel === "MCP"
+            ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
+            : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
           apiResults: (channel === "API" ? resultRows : peerItems).map((i) => ({
             rank: i.rank,
             chunkId: i.chunkId,
@@ -521,6 +580,10 @@ export async function getServiceValidationStatus(input: {
   const selected = new Set(SEARCH_VALIDATION_PREPARATION_CHANNELS);
 
   const canRunValidation = pack.status === PackStatus.DRAFT && Boolean(binding);
+  const validationLockReason = resolveValidationLockReason({
+    packStatus: pack.status,
+    hasBinding: Boolean(binding),
+  });
   const channels: ServiceValidationChannelDto[] = [];
   const confirmerIds = new Set<string>();
 
@@ -582,6 +645,7 @@ export async function getServiceValidationStatus(input: {
     versionId: version.id,
     packStatus: pack.status,
     canRunValidation,
+    validationLockReason,
     channels,
     allPreparationChannelsPassed,
     allSelectedPassed: allPreparationChannelsPassed,
@@ -694,7 +758,7 @@ export async function runServiceChannelValidation(input: {
   let topChunkId: string | null = null;
   let sourceDocumentId: string | null = null;
   let page: number | null = null;
-  let query = input.query?.trim() || null;
+  const query = input.query?.trim() || null;
   let latencyMs = 0;
   let details: Record<string, unknown> = {
     adapter: input.channel === "API" ? "RETRIEVAL_API" : input.channel === "MCP" ? "MCP_HANDLER" : "OBJECT_STORAGE",
@@ -751,6 +815,8 @@ export async function runServiceChannelValidation(input: {
         hitCount: resultCount,
         responseDtoReady: true,
         requestId: `provider-api-validation`,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+        rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
       };
       if (!hits.ok) {
         failureCode = hits.code;
@@ -769,6 +835,7 @@ export async function runServiceChannelValidation(input: {
           resultFingerprint = computeResultFingerprint({
             query,
             indexGenerationId: binding.indexGenerationId,
+            rankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
             items: safeItems,
           });
         }
@@ -811,6 +878,8 @@ export async function runServiceChannelValidation(input: {
         mcpProtocolVersion: result.mcpProtocolVersion,
         responseBytes: result.responseBytes,
         hitCount: resultCount,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+        rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
       };
       safeItems = await buildSafeRetrievalItems({
         contexts: retrievalContexts,
@@ -825,6 +894,7 @@ export async function runServiceChannelValidation(input: {
         resultFingerprint = computeResultFingerprint({
           query,
           indexGenerationId: binding.indexGenerationId,
+          rankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
           items: safeItems,
         });
       }
@@ -1113,6 +1183,10 @@ async function assertPreparationChannelPassed(input: {
         bindingFingerprint: input.bindingFingerprint,
         bindingIndexGenerationId: input.bindingIndexGenerationId,
         resultItemCount,
+        expectedRankingPolicyVersion:
+          input.channel === "API" || input.channel === "MCP"
+            ? RETRIEVAL_RANKING_POLICY_VERSION
+            : null,
       })
     : "STALE";
   if (!run || run.status !== "PASS" || validity !== "CURRENT") {
@@ -1304,6 +1378,8 @@ export async function assertSelectedServiceValidationsPassed(input: {
           bindingFingerprint: input.bindingFingerprint,
           bindingIndexGenerationId: input.bindingIndexGenerationId,
           resultItemCount,
+          expectedRankingPolicyVersion:
+            channel === "API" || channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
         })
       : "STALE";
     if (!run || run.status !== "PASS" || validity !== "CURRENT") {
@@ -1731,6 +1807,8 @@ async function mapAdminRunDto(
     bindingFingerprint: versionCurrentBinding?.fingerprint,
     bindingIndexGenerationId: versionCurrentBinding?.indexGenerationId,
     resultItemCount: run.channel === "DOWNLOAD" ? null : results.length,
+    expectedRankingPolicyVersion:
+      run.channel === "API" || run.channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
   });
   let invalidationReason: string | null = null;
   if (confirmation?.sharedConfirmationGroupId && (run.channel === "API" || run.channel === "MCP")) {
@@ -2092,6 +2170,8 @@ export async function listAdminServiceValidationHistory(input: {
         bindingFingerprint: versionBinding?.fingerprint,
         bindingIndexGenerationId: versionBinding?.indexGenerationId,
         resultItemCount: run.channel === "DOWNLOAD" ? null : run._count.resultItems,
+        expectedRankingPolicyVersion:
+          run.channel === "API" || run.channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
       });
       if (
         run.confirmation?.sharedConfirmationGroupId &&

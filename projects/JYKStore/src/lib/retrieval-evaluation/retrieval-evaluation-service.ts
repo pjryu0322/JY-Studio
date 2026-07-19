@@ -25,6 +25,7 @@ import type {
   RetrievalEvaluationCaseResultDraft,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 import { runRetrievalForEvaluation } from "@/lib/retrieval-service";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
 import { getLatestStructureCoverageReport } from "@/lib/structure-quality/structure-quality-evaluate-service";
 
@@ -218,7 +219,10 @@ async function recordRetrievalEvaluatePipeline(
       step: PipelineStatus.SEARCH_EVALUATING,
       status: stepStatusFromRetrievalStatus(retrievalStatus),
       message: `검색 품질 평가: ${retrievalStatus}`,
-      details: { status: retrievalStatus },
+      details: {
+        status: retrievalStatus,
+        retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION,
+      },
     });
 
     const runStatus =

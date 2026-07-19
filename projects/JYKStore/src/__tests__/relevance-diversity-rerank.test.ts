@@ -3,11 +3,15 @@ import { describe, it } from "node:test";
 import type { KnowledgeChunk, SourceDocument } from "@prisma/client";
 import {
   RELEVANCE_TIE_EPSILON,
+  RETRIEVAL_RANKING_POLICY_VERSION,
   TOP3_MAX_SAME_FAMILY,
   TOP5_MAX_SAME_FAMILY,
   computeFinalRelevanceScore,
   deduplicateScoredCandidates,
+  normalizeBodyForDedupe,
   normalizeForDedupe,
+  normalizeTitleForDedupe,
+  normalizedDiversityScore,
   selectDiverseTopK,
 } from "../lib/retrieval/relevance-diversity-rerank.ts";
 import type { ScoredCandidate } from "../lib/retrieval/retrieval-types.ts";
@@ -76,10 +80,151 @@ function withSim(
 }
 
 describe("relevance-diversity-rerank", () => {
+  it("normalizes title suffix only; body keeps numbered parentheses", () => {
+    assert.equal(
+      normalizeTitleForDedupe("기획단계 대가 산정 (1)"),
+      normalizeTitleForDedupe("기획단계 대가 산정"),
+    );
+    assert.notEqual(
+      normalizeBodyForDedupe("점검 항목 (1)"),
+      normalizeBodyForDedupe("점검 항목 (2)"),
+    );
+    assert.match(normalizeBodyForDedupe("(1) 사업관리 점검"), /\(1\)/);
+    assert.match(normalizeBodyForDedupe("제1조 목적"), /제1조/);
+    assert.equal(normalizeForDedupe("a"), normalizeBodyForDedupe("a"));
+  });
+
+  it("keeps numbered audit checklist items as distinct bodies", () => {
+    const items = [
+      "(1) 사업관리 점검",
+      "(2) 품질관리 점검",
+      "(3) 보안관리 점검",
+      "1. 적용 대상",
+      "2. 계산 방법",
+      "표 1 요약",
+      "표 2 상세",
+    ].map((content, i) =>
+      withSim(`n-${i}`, content, `${content} `.repeat(12), "점검", 0.8, {
+        splitSourceId: "ku-check",
+        pageStart: 10 + i,
+      }),
+    );
+    const { kept, removedCount } = deduplicateScoredCandidates(items);
+    assert.equal(removedCount, 0);
+    assert.equal(kept.length, items.length);
+  });
+
+  it("does not reward missing metadata as diversity", () => {
+    const withMeta = withSim(
+      "full",
+      "기획단계 대가 산정",
+      "기획단계 대가 산정 상세 설명입니다. ".repeat(5),
+      "기획",
+      0.86,
+      { splitSourceId: "f1", pageStart: 3 },
+    );
+    const noMeta = scored(
+      makeChunk({
+        id: "bare",
+        title: "기획단계 대가 산정",
+        content: "기획단계 대가 산정 다른 설명입니다. ".repeat(5),
+        section: null,
+        sourceDocumentId: null,
+      }),
+      { vectorSimilarity: 0.86, metadata: null },
+    );
+    const rankedFull = {
+      item: withMeta,
+      relevance: 0.8,
+      meta: {
+        splitSourceId: "f1",
+        parentChunkId: null,
+        pageStart: 3,
+        pageEnd: 3,
+        primaryContentLength: 100,
+        hasTableHeader: false,
+      },
+    };
+    const rankedBare = {
+      item: noMeta,
+      relevance: 0.8,
+      meta: {
+        splitSourceId: null,
+        parentChunkId: null,
+        pageStart: null,
+        pageEnd: null,
+        primaryContentLength: 100,
+        hasTableHeader: false,
+      },
+    };
+    const seed = {
+      item: withSim(
+        "seed",
+        "seed",
+        "seed body ".repeat(20),
+        "기획",
+        0.9,
+        { splitSourceId: "f0", pageStart: 1 },
+      ),
+      relevance: 0.9,
+      meta: {
+        splitSourceId: "f0",
+        parentChunkId: null,
+        pageStart: 1,
+        pageEnd: 1,
+        primaryContentLength: 100,
+        hasTableHeader: false,
+      },
+    };
+    const divFull = normalizedDiversityScore(rankedFull, seed);
+    const divBare = normalizedDiversityScore(rankedBare, seed);
+    assert.ok(divFull > divBare, `full ${divFull} vs bare ${divBare}`);
+  });
+
+  it("does not max body diversity for short texts", () => {
+    const a = {
+      item: withSim("a", "적용 대상", "적용 대상", "S", 0.5, {
+        splitSourceId: "f1",
+        pageStart: 1,
+      }),
+      relevance: 0.5,
+      meta: {
+        splitSourceId: "f1",
+        parentChunkId: null,
+        pageStart: 1,
+        pageEnd: 1,
+        primaryContentLength: 4,
+        hasTableHeader: false,
+      },
+    };
+    const b = {
+      item: withSim("b", "적용 기준", "적용 기준", "T", 0.5, {
+        splitSourceId: "f2",
+        pageStart: 2,
+      }),
+      relevance: 0.5,
+      meta: {
+        splitSourceId: "f2",
+        parentChunkId: null,
+        pageStart: 2,
+        pageEnd: 2,
+        primaryContentLength: 4,
+        hasTableHeader: false,
+      },
+    };
+    // body contribution alone must be 0 for short texts (score may still have section/page).
+    const score = normalizedDiversityScore(a, b);
+    assert.ok(score <= 0.85); // without body 0.15 max from other signals only
+  });
+
+  it("exports ranking policy v2", () => {
+    assert.equal(RETRIEVAL_RANKING_POLICY_VERSION, "relevance_diversity_v2");
+  });
+
   it("normalizes title suffix and punctuation for dedupe", () => {
     assert.equal(
-      normalizeForDedupe("기획단계 대가 산정 (1)"),
       normalizeForDedupe("기획단계 대가 산정"),
+      normalizeBodyForDedupe("기획단계 대가 산정"),
     );
   });
 
@@ -374,7 +519,7 @@ describe("relevance-diversity-rerank", () => {
     assert.ok(familyKept.length <= TOP5_MAX_SAME_FAMILY);
     assert.ok(familyKept.length >= 1);
     assert.ok(selected.some((s) => s.chunk.id === "other-sec"));
-    assert.equal(stats.rerankMode, "relevance_diversity_v1");
+    assert.equal(stats.rerankMode, RETRIEVAL_RANKING_POLICY_VERSION);
   });
 
   it("does not pad topK with low-relevance candidates", () => {

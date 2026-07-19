@@ -259,9 +259,26 @@ describe("buildSearchDataStatusResponse", () => {
         evaluationStepStatus: "PASS",
         evaluationTotalCases: 5,
         evaluationPassedCases: 5,
+        evaluationRankingPolicyVersion: "relevance_diversity_v2",
       }),
     );
     assert.equal(dto.state, "VALIDATED");
     assert.equal(dto.canRunServiceValidation, true);
+  });
+
+  it("requires re-validate when ranking policy version is outdated", () => {
+    const dto = buildSearchDataStatusResponse(
+      base({
+        generation: { ...e5Gen, status: "READY" },
+        vectorCount: 86,
+        evaluationStepStatus: "PASS",
+        evaluationTotalCases: 5,
+        evaluationPassedCases: 5,
+        evaluationRankingPolicyVersion: "relevance_diversity_v1",
+      }),
+    );
+    assert.equal(dto.state, "VALIDATED");
+    assert.equal(dto.canRunServiceValidation, false);
+    assert.equal(dto.canValidate, true);
   });
 });

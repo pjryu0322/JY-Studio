@@ -44,6 +44,25 @@ describe("provider search validation UX", () => {
     assert.doesNotMatch(tab, /검색 품질 검증 완료/);
   });
 
+  it("keeps past channel.query display and uses lock-reason specific copy", () => {
+    assert.match(tab, /channel\.query \|\| executedQuery/);
+    assert.match(tab, /validationLockReason === "OPEN_REVIEW"/);
+    assert.match(tab, /검수요청을 회수해 주세요/);
+    assert.match(tab, /BINDING_MISSING/);
+    assert.doesNotMatch(
+      tab,
+      /!status\?\.canRunValidation \? \(\s*<p[^>]*>\s*검수요청 시점의 검증 결과입니다/,
+    );
+    assert.match(
+      tab,
+      /다른 질문으로 다시 검색하고 보완 사유를 확인해 주세요/,
+    );
+    assert.doesNotMatch(
+      tab,
+      /검색 결과 품질을 개선하려면 데이터 구조화를 다시 실행하거나/,
+    );
+  });
+
   it("keeps tech info collapsed by default and results top-3 expandable", () => {
     assert.match(tab, /useState\(false\)/);
     assert.match(tab, /기술정보 보기/);

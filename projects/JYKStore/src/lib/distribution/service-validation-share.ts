@@ -10,6 +10,8 @@ export type ShareableValidationRun = {
   resultCount: number | null;
   resultFingerprint?: string | null;
   invalidatedAt?: Date | null;
+  /** From run.details.retrievalRankingPolicyVersion (API/MCP). */
+  rankingPolicyVersion?: string | null;
 };
 
 export type ShareableResultItem = {
@@ -35,6 +37,8 @@ export function computeResultFingerprint(input: {
   query: string | null | undefined;
   indexGenerationId: string | null | undefined;
   items: ShareableResultItem[];
+  /** When set, included so ranking-policy changes invalidate prior fingerprints. */
+  rankingPolicyVersion?: string | null;
 }): string {
   const normalizedQuery = normalizeValidationQuery(input.query);
   const rows = [...input.items]
@@ -47,6 +51,7 @@ export function computeResultFingerprint(input: {
   const payload = [
     normalizedQuery,
     input.indexGenerationId ?? "",
+    input.rankingPolicyVersion?.trim() || "",
     rows,
   ].join("\n");
   return createHash("sha256").update(payload, "utf8").digest("hex");
@@ -127,6 +132,10 @@ export function canShareProviderConfirmation(input: {
   if (apiResults.length === 0 || mcpResults.length === 0) return false;
   if (apiResults.length !== mcpResults.length) return false;
   if (!compareShareableResultItems(apiResults, mcpResults)) return false;
+
+  const apiPolicy = (apiRun.rankingPolicyVersion ?? "").trim();
+  const mcpPolicy = (mcpRun.rankingPolicyVersion ?? "").trim();
+  if (!apiPolicy || !mcpPolicy || apiPolicy !== mcpPolicy) return false;
 
   const apiFp = apiRun.resultFingerprint?.trim() ?? "";
   const mcpFp = mcpRun.resultFingerprint?.trim() ?? "";

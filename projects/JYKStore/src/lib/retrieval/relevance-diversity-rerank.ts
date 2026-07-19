@@ -23,6 +23,12 @@ export const RELEVANCE_TIE_EPSILON = 0.02;
 export const TOP3_MAX_SAME_FAMILY = 2;
 export const TOP5_MAX_SAME_FAMILY = 2;
 
+/**
+ * Ranking policy version for ServiceValidationRun details / fingerprints.
+ * Bump when rerank/dedupe rules change in a way that invalidates prior PASS runs.
+ */
+export const RETRIEVAL_RANKING_POLICY_VERSION = "relevance_diversity_v2";
+
 const WEIGHTS = {
   normalizedVectorScore: 0.8,
   titleMatchBonus: 0.08,
@@ -36,7 +42,7 @@ export type RerankStats = {
   candidateCount: number;
   deduplicatedCount: number;
   finalResultCount: number;
-  rerankMode: "relevance_diversity_v1";
+  rerankMode: typeof RETRIEVAL_RANKING_POLICY_VERSION;
 };
 
 export type SelectWithDiversityResult = {
@@ -53,28 +59,45 @@ type MetaFields = {
   hasTableHeader: boolean;
 };
 
-/**
- * Normalize text for duplicate comparison only (does not mutate stored chunks).
- */
-export function normalizeForDedupe(text: string): string {
+function normalizeBaseText(text: string): string {
   return text
     .normalize("NFKC")
     .toLowerCase()
     .replace(/passage:\s*/gi, " ")
-    .replace(/\(\s*\d+\s*\)/g, " ")
     .replace(/["""'''「」『』]/g, " ")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    // Keep digits and parentheses so body item numbers stay distinct.
+    .replace(/[^\p{L}\p{N}\s()]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+/** Title-only: strip trailing copy suffixes like `(1)` at end of title. */
+export function normalizeTitleForDedupe(text: string): string {
+  return normalizeBaseText(text)
+    .replace(/\(\s*\d+\s*\)\s*$/g, "")
+    .trim();
+}
+
+/** Body dedupe: preserve `(1)` / clause / list numbers. */
+export function normalizeBodyForDedupe(text: string): string {
+  return normalizeBaseText(text);
+}
+
+/**
+ * @deprecated Prefer normalizeBodyForDedupe / normalizeTitleForDedupe.
+ * Kept for query keyword matching compatibility.
+ */
+export function normalizeForDedupe(text: string): string {
+  return normalizeBodyForDedupe(text);
+}
+
 export function contentDedupeKey(text: string): string {
-  return normalizeForDedupe(text);
+  return normalizeBodyForDedupe(text);
 }
 
 export function bodySimilarity(a: string, b: string): number {
-  const na = normalizeForDedupe(a);
-  const nb = normalizeForDedupe(b);
+  const na = normalizeBodyForDedupe(a);
+  const nb = normalizeBodyForDedupe(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
   // Short bodies: only exact normalized hash counts as duplicate (caller also checks).
@@ -82,6 +105,15 @@ export function bodySimilarity(a: string, b: string): number {
     return 0;
   }
   return jaccardSimilarity(makeWordShingles(na, 3), makeWordShingles(nb, 3));
+}
+
+export function bodyDiversityScore(a: string, b: string): number {
+  const na = normalizeBodyForDedupe(a);
+  const nb = normalizeBodyForDedupe(b);
+  if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
+    return 0;
+  }
+  return clamp01(1 - bodySimilarity(a, b));
 }
 
 function metaNumber(meta: Record<string, unknown> | null, key: string): number | null {
@@ -149,8 +181,8 @@ export function pickDuplicateRepresentative(
 }
 
 function isNearDuplicateContent(a: string, b: string): boolean {
-  const na = normalizeForDedupe(a);
-  const nb = normalizeForDedupe(b);
+  const na = normalizeBodyForDedupe(a);
+  const nb = normalizeBodyForDedupe(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
   if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
@@ -334,22 +366,22 @@ export function normalizedDiversityScore(candidate: Ranked, selected: Ranked): n
   let score = 0;
   const fa = familyKey(candidate.meta);
   const fb = familyKey(selected.meta);
-  if (!fa || !fb || fa !== fb) score += 0.35;
+  // Only reward diversity when both sides have the signal and they differ.
+  if (fa && fb && fa !== fb) score += 0.35;
 
   const sa = (candidate.item.chunk.section ?? "").trim().toLowerCase();
   const sb = (selected.item.chunk.section ?? "").trim().toLowerCase();
-  if (!sa || !sb || sa !== sb) score += 0.25;
+  if (sa && sb && sa !== sb) score += 0.25;
 
   const pa = pageRangeKey(candidate.meta);
   const pb = pageRangeKey(selected.meta);
-  if (!pa || !pb || pa !== pb) score += 0.15;
+  if (pa && pb && pa !== pb) score += 0.15;
 
   const da = candidate.item.chunk.sourceDocumentId;
   const db = selected.item.chunk.sourceDocumentId;
-  if (!da || !db || da !== db) score += 0.1;
+  if (da && db && da !== db) score += 0.1;
 
-  const bodyDiff = 1 - bodySimilarity(candidate.item.chunk.content, selected.item.chunk.content);
-  score += 0.15 * clamp01(bodyDiff);
+  score += 0.15 * bodyDiversityScore(candidate.item.chunk.content, selected.item.chunk.content);
 
   return clamp01(score);
 }
@@ -483,7 +515,7 @@ export function selectDiverseTopK(input: {
         candidateCount: input.scored.length,
         deduplicatedCount: removedCount,
         finalResultCount: Math.min(kept.length, topK),
-        rerankMode: "relevance_diversity_v1",
+        rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
       },
     };
   }
@@ -562,7 +594,7 @@ export function selectDiverseTopK(input: {
       candidateCount: input.scored.length,
       deduplicatedCount: removedCount,
       finalResultCount: selected.length,
-      rerankMode: "relevance_diversity_v1",
+      rerankMode: RETRIEVAL_RANKING_POLICY_VERSION,
     },
   };
 }

@@ -4,6 +4,7 @@
  */
 
 import { mapSearchDataFailureCode } from "@/lib/search-data/search-data-error";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 
 export type SearchDataUiState =
   | "NOT_CREATED"
@@ -56,6 +57,7 @@ export type SearchDataStatusResponse = {
     totalCases: number;
     passedCases: number;
     status: "PASS" | "FAIL" | "WARNING" | "RUNNING" | "NONE";
+    retrievalRankingPolicyVersion?: string | null;
   };
 };
 
@@ -90,6 +92,8 @@ export type SearchDataStatusInput = {
   evaluationStepStatus?: string | null;
   evaluationPassedCases?: number | null;
   evaluationTotalCases?: number | null;
+  /** From SEARCH_EVALUATING step details — missing/outdated forces re-validate. */
+  evaluationRankingPolicyVersion?: string | null;
   /** True when an older local-hash index step exists but is not current Local E5 data. */
   legacyLocalHashPresent?: boolean;
 };
@@ -264,13 +268,20 @@ export function buildSearchDataStatusResponse(
     (state === "NOT_CREATED" ||
       state === "CREATE_FAILED" ||
       state === "VALIDATION_FAILED");
+  const rankingPolicyStale =
+    state === "VALIDATED" &&
+    input.evaluationRankingPolicyVersion !== RETRIEVAL_RANKING_POLICY_VERSION;
+
   const canValidate =
     input.packStatusIsDraft &&
-    (state === "CREATED" || state === "VALIDATION_FAILED") &&
+    (state === "CREATED" ||
+      state === "VALIDATION_FAILED" ||
+      rankingPolicyStale) &&
     isLocalE5Complete(input);
   const canRunServiceValidation =
     input.packStatusIsDraft &&
     state === "VALIDATED" &&
+    !rankingPolicyStale &&
     g?.status === "READY" &&
     Boolean(input.serviceChannelsReady ?? true);
 
@@ -309,7 +320,9 @@ export function buildSearchDataStatusResponse(
           message = "검색 품질이 기준을 충족하지 못했습니다.";
           break;
         case "VALIDATED":
-          message = "검색 품질 검증이 완료되었습니다.";
+          message = rankingPolicyStale
+            ? "검색 순위 정책이 변경되었습니다. 자동 검색 평가를 다시 실행해 주세요."
+            : "검색 품질 검증이 완료되었습니다.";
           break;
       }
     }
@@ -355,15 +368,19 @@ export function buildSearchDataStatusResponse(
             totalCases: input.evaluationTotalCases,
             passedCases: input.evaluationPassedCases ?? 0,
             status:
-              input.evaluationStepStatus === "PASS"
-                ? "PASS"
-                : input.evaluationStepStatus === "FAIL"
-                  ? "FAIL"
-                  : input.evaluationStepStatus === "WARNING"
-                    ? "WARNING"
-                    : input.evaluationStepStatus === "RUNNING"
-                      ? "RUNNING"
-                      : "NONE",
+              rankingPolicyStale
+                ? "WARNING"
+                : input.evaluationStepStatus === "PASS"
+                  ? "PASS"
+                  : input.evaluationStepStatus === "FAIL"
+                    ? "FAIL"
+                    : input.evaluationStepStatus === "WARNING"
+                      ? "WARNING"
+                      : input.evaluationStepStatus === "RUNNING"
+                        ? "RUNNING"
+                        : "NONE",
+            retrievalRankingPolicyVersion:
+              input.evaluationRankingPolicyVersion ?? null,
           }
         : undefined,
   };

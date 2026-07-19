@@ -312,8 +312,8 @@ function RetrievalConfirmPanel({
             반려 확정
           </button>
           <p className="text-xs text-store-muted">
-            검색 결과 품질을 개선하려면 데이터 구조화를 다시 실행하거나 자료 등록 상태를 확인해
-            주세요.
+            다른 질문으로 다시 검색하고 보완 사유를 확인해 주세요. 관련 내용이 검색 후보에도
+            나타나지 않을 때 데이터 구조화를 점검하세요.
           </p>
         </div>
       ) : null}
@@ -922,7 +922,17 @@ export function ProviderServiceValidationTab({
 
       {!status?.canRunValidation ? (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          검수요청 시점의 검증 결과입니다. 변경하려면 검수요청을 회수해 주세요.
+          {status?.validationLockReason === "OPEN_REVIEW"
+            ? "검수요청 시점의 검증 결과입니다. 변경하려면 검수요청을 회수해 주세요."
+            : status?.validationLockReason === "PACK_NOT_DRAFT"
+              ? "현재 지식팩 상태에서는 검색검증 결과를 변경할 수 없습니다."
+              : status?.validationLockReason === "BINDING_MISSING"
+                ? "현재 데이터 구조화 결과와 검색검증 연결을 확인할 수 없습니다."
+                : status?.validationLockReason === "BINDING_STALE"
+                  ? "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 확인해 주세요."
+                  : status?.validationLockReason === "SEARCH_DATA_NOT_READY"
+                    ? "검색데이터 생성과 자동 평가를 먼저 완료해 주세요."
+                    : "현재 상태에서는 검색검증을 변경할 수 없습니다."}
         </p>
       ) : null}
 

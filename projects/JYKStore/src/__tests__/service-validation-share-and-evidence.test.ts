@@ -41,12 +41,21 @@ describe("service validation share + incomplete evidence", () => {
     const fp = computeResultFingerprint({
       query: baseRun.query,
       indexGenerationId: baseRun.indexGenerationId,
+      rankingPolicyVersion: "relevance_diversity_v2",
       items: itemsA,
     });
     assert.equal(
       canShareProviderConfirmation({
-        apiRun: { ...baseRun, resultFingerprint: fp },
-        mcpRun: { ...baseRun, resultFingerprint: fp },
+        apiRun: {
+          ...baseRun,
+          resultFingerprint: fp,
+          rankingPolicyVersion: "relevance_diversity_v2",
+        },
+        mcpRun: {
+          ...baseRun,
+          resultFingerprint: fp,
+          rankingPolicyVersion: "relevance_diversity_v2",
+        },
         apiResults: itemsA,
         mcpResults: itemsB,
         binding: {
@@ -57,6 +66,38 @@ describe("service validation share + incomplete evidence", () => {
         },
       }),
       true,
+    );
+  });
+
+  it("blocks shared confirmation when ranking policy versions differ", () => {
+    const fp = computeResultFingerprint({
+      query: baseRun.query,
+      indexGenerationId: baseRun.indexGenerationId,
+      rankingPolicyVersion: "relevance_diversity_v2",
+      items: itemsA,
+    });
+    assert.equal(
+      canShareProviderConfirmation({
+        apiRun: {
+          ...baseRun,
+          resultFingerprint: fp,
+          rankingPolicyVersion: "relevance_diversity_v2",
+        },
+        mcpRun: {
+          ...baseRun,
+          resultFingerprint: fp,
+          rankingPolicyVersion: "relevance_diversity_v1",
+        },
+        apiResults: itemsA,
+        mcpResults: itemsB,
+        binding: {
+          fingerprint: "fp-1",
+          indexGenerationId: "gen-1",
+          normalizedDocumentId: "nd-1",
+          pipelineRunId: "pipe-1",
+        },
+      }),
+      false,
     );
   });
 

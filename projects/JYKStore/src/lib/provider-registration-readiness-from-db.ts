@@ -15,6 +15,7 @@ import {
   resolveRunCurrentValidity,
   SEARCH_VALIDATION_PREPARATION_CHANNELS,
 } from "@/lib/distribution/service-validation-service";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { prisma } from "@/lib/prisma";
 import type { PackLanguageCode } from "@/lib/pack-language";
 import {
@@ -97,6 +98,8 @@ export async function computePreparationChannelsPassed(input: {
       bindingFingerprint: input.bindingFingerprint,
       bindingIndexGenerationId: input.bindingIndexGenerationId,
       resultItemCount,
+      expectedRankingPolicyVersion:
+        channel === "API" || channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
     });
     if (run.status !== "PASS" || validity !== "CURRENT") return false;
     if ((channel === "API" || channel === "MCP") && (resultItemCount ?? 0) < 1) {
@@ -446,6 +449,8 @@ export async function batchResolveListRegistrationProgressInputs(input: {
         bindingFingerprint: nd?.fingerprint ?? null,
         bindingIndexGenerationId: binding?.indexGenerationId ?? null,
         resultItemCount,
+        expectedRankingPolicyVersion:
+          channel === "API" || channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
       });
       if (run.status !== "PASS" || validity !== "CURRENT") {
         allPreparationChannelsPassed = false;

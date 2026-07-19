@@ -117,11 +117,80 @@ describe("provider service quality + admin ops log", () => {
           fingerprint: "a",
           indexGenerationId: "g1",
           invalidatedAt: new Date(),
+          channel: "API",
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
       }),
       "STALE",
+    );
+  });
+
+  it("marks API/MCP runs STALE when ranking policy is missing or outdated", () => {
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: null,
+          channel: "API",
+          details: {},
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
+      }),
+      "STALE",
+    );
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: null,
+          channel: "API",
+          details: { retrievalRankingPolicyVersion: "relevance_diversity_v1" },
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
+      }),
+      "STALE",
+    );
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: null,
+          channel: "API",
+          details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
+      }),
+      "CURRENT",
+    );
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: null,
+          channel: "DOWNLOAD",
+          details: {},
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
+      }),
+      "CURRENT",
     );
   });
 

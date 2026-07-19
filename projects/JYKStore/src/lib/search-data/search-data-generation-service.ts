@@ -347,6 +347,10 @@ export async function getSearchDataStatus(input: {
     evaluationStepStatus: evaluationStatusForUi,
     evaluationPassedCases: evalPassed,
     evaluationTotalCases: evalTotal,
+    evaluationRankingPolicyVersion:
+      typeof evalDetails?.retrievalRankingPolicyVersion === "string"
+        ? evalDetails.retrievalRankingPolicyVersion
+        : null,
     legacyLocalHashPresent,
     serviceChannelsReady: true,
   });
