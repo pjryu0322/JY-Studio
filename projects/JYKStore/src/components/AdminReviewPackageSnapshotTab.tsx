@@ -66,7 +66,7 @@ export function AdminReviewPackageSnapshotTab({
               <li>출처: {detail.distribution.sourceTitle ?? detail.distribution.sourceUrl ?? "—"}</li>
               <li>라이선스: {detail.distribution.licenseName}</li>
               <li>공개범위: {detail.distribution.visibility}</li>
-              <li>다운로드 허용: {detail.distribution.allowDownload ? "예" : "아니오"}</li>
+              <li>RAG Export 제공: {detail.distribution.allowDownload ? "예" : "아니오"}</li>
               <li className="text-store-muted">
                 승인해도 공개범위·다운로드 허용 값은 임의로 변경되지 않습니다.
               </li>

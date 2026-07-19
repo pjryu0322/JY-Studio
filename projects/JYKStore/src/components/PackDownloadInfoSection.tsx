@@ -58,7 +58,7 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
           {available ? "다운로드 가능" : "다운로드 준비 중"}
         </p>
         <p className="text-xs leading-relaxed text-store-muted">
-          일반 사용자에게는 원본문서가 제공됩니다.
+          외부 RAG 환경용 Chunk·Metadata 패키지입니다. 원본문서 Binary는 기본 포함되지 않습니다.
         </p>
       </div>
       {available ? (
@@ -66,7 +66,7 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
           href={publicPayloadDownloadHref(pack.packId)}
           className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white active:opacity-90"
         >
-          원본문서 다운로드
+          RAG Export 다운로드
         </a>
       ) : null}
     </section>

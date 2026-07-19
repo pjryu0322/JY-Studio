@@ -5,7 +5,6 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
-import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
 import {
   resolveCurrentValidationBindingTx,
   type CurrentValidationBinding,
@@ -23,7 +22,6 @@ import {
 import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { canShareProviderConfirmation } from "@/lib/distribution/service-validation-share";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
-import type { ObjectStorage } from "@/lib/object-storage/object-storage";
 import { prisma } from "@/lib/prisma";
 
 export {
@@ -575,67 +573,82 @@ export async function prepareProviderDownloadTest(input: {
     run.details && typeof run.details === "object" && !Array.isArray(run.details)
       ? (run.details as Record<string, unknown>)
       : null;
+
+  if (details?.downloadMode === "RAG_EXPORT") {
+    const expectedFp =
+      typeof details.exportFingerprint === "string" ? details.exportFingerprint : null;
+    const expectedName =
+      typeof details.fileName === "string" ? details.fileName : "rag-export.zip";
+    if (!expectedFp) {
+      throw new PayloadServiceError(
+        "RAG_EXPORT_FINGERPRINT_MISMATCH",
+        "RAG Export 검증 증적이 올바르지 않습니다. 다시 검증해 주세요.",
+        409,
+      );
+    }
+    const { buildRagExportPackage, RagExportBuildError } = await import(
+      "@/lib/exports/rag-export-builder"
+    );
+    let pkg;
+    try {
+      pkg = await buildRagExportPackage({
+        packId: pack.packId,
+        versionId: version.id,
+        expectedPipelineRunId: run.pipelineRunId ?? undefined,
+        expectedSearchIndexGenerationId: run.indexGenerationId ?? undefined,
+        expectedNormalizedDocumentId: run.normalizedDocumentId ?? undefined,
+        expectedFingerprint: run.fingerprint ?? undefined,
+        includeZipBytes: true,
+      });
+    } catch (err) {
+      if (err instanceof RagExportBuildError) {
+        const code =
+          err.code === "RAG_EXPORT_BINDING_STALE" ||
+          err.code === "RAG_EXPORT_BUILD_FAILED" ||
+          err.code === "RAG_EXPORT_FINGERPRINT_MISMATCH" ||
+          err.code === "RAG_EXPORT_CHUNK_EMPTY" ||
+          err.code === "RAG_EXPORT_SOURCE_TRACE_INVALID"
+            ? err.code
+            : "RAG_EXPORT_BUILD_FAILED";
+        throw new PayloadServiceError(code, err.message, 409);
+      }
+      throw err;
+    }
+    if (pkg.exportFingerprint !== expectedFp || !pkg.zipBytes) {
+      throw new PayloadServiceError(
+        "RAG_EXPORT_FINGERPRINT_MISMATCH",
+        "검증 이후 검색데이터가 변경되었습니다. RAG Export를 다시 검증해 주세요.",
+        409,
+      );
+    }
+    const { Readable } = await import("node:stream");
+    return {
+      runId: run.id,
+      packId: pack.packId,
+      versionId: version.id,
+      fileId: expectedFp,
+      fileName: expectedName,
+      mimeType: "application/zip",
+      contentLength: pkg.zipBytes.byteLength,
+      stream: Readable.from(Buffer.from(pkg.zipBytes)),
+      existingEvidence: Boolean(run.downloadTest?.responseReady),
+    };
+  }
+
   const fileId = typeof details?.fileId === "string" ? details.fileId : null;
   if (!fileId) {
     throw new PayloadServiceError(
       "DOWNLOAD_OBJECT_NOT_FOUND",
-      "다운로드 검증에 연결된 원본파일을 찾을 수 없습니다.",
+      "RAG Export 검증을 다시 실행해 주세요.",
       404,
     );
   }
-  const file = await prisma.knowledgePackFile.findFirst({
-    where: {
-      id: fileId,
-      packId: pack.packId,
-      versionId: version.id,
-      role: "SOURCE_ORIGINAL",
-      bundle: {
-        isActive: true,
-        deletedAt: null,
-        storageStatus: "ACTIVE",
-      },
-    },
-  });
-  if (!file?.storageKey) {
-    throw new PayloadServiceError(
-      "DOWNLOAD_OBJECT_NOT_FOUND",
-      "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
-      404,
-    );
-  }
-  const storage = getConfiguredPayloadStorage() as ObjectStorage;
-  if (typeof storage.getObjectStream !== "function") {
-    throw new PayloadServiceError(
-      "DOWNLOAD_OBJECT_NOT_FOUND",
-      "Object Storage 스트림을 열 수 없습니다.",
-      503,
-    );
-  }
-  let streamed: Awaited<ReturnType<ObjectStorage["getObjectStream"]>>;
-  try {
-    streamed = await storage.getObjectStream({ objectKey: file.storageKey });
-  } catch {
-    throw new PayloadServiceError(
-      "DOWNLOAD_OBJECT_NOT_FOUND",
-      "원본파일을 Object Storage에서 열지 못했습니다.",
-      404,
-    );
-  }
-  const headLength =
-    typeof streamed.contentLength === "number" && streamed.contentLength > 0
-      ? streamed.contentLength
-      : Number(file.fileSize);
-  return {
-    runId: run.id,
-    packId: pack.packId,
-    versionId: version.id,
-    fileId: file.id,
-    fileName: file.originalFileName,
-    mimeType: file.mimeType || "application/octet-stream",
-    contentLength: Number.isFinite(headLength) ? headLength : 0,
-    stream: streamed.body,
-    existingEvidence: Boolean(run.downloadTest?.responseReady),
-  };
+  // Legacy original-file DOWNLOAD runs are STALE; do not stream SOURCE_ORIGINAL.
+  throw new PayloadServiceError(
+    "SERVICE_VALIDATION_STALE",
+    "이전 원본문서 다운로드 검증은 더 이상 유효하지 않습니다. RAG Export를 다시 검증해 주세요.",
+    409,
+  );
 }
 
 /**

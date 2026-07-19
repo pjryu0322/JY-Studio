@@ -110,8 +110,8 @@ const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
     hint: "GPT·Cursor 등 MCP 지원 AI에서 지식팩 검색이 정상 동작하는지 확인합니다.",
   },
   DOWNLOAD: {
-    title: "원본문서 다운로드 검증",
-    hint: "등록한 원본문서 다운로드와 무결성을 확인합니다.",
+    title: "RAG Export 패키지 검증",
+    hint: "외부 RAG 시스템에서 사용할 수 있는 지식팩 패키지가 정상적으로 생성되고 다운로드·검증되는지 확인합니다.",
   },
 };
 
@@ -362,7 +362,7 @@ function DownloadConfirmPanel({
 
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-3">
-      <p className="text-sm font-semibold text-slate-900">다운로드 품질 확인</p>
+      <p className="text-sm font-semibold text-slate-900">RAG Export 품질 확인</p>
       {channel.runId ? (
         <a
           href={providerServiceValidationDownloadTestUrl(packId, channel.runId)}
@@ -374,26 +374,29 @@ function DownloadConfirmPanel({
             }, 800);
           }}
         >
-          테스트 다운로드
+          RAG Export 다운로드
         </a>
       ) : null}
       {!channel.downloadTestCompleted ? (
         <p className="text-xs text-amber-800">
-          테스트 다운로드를 실행한 뒤에 아래 확인 항목을 체크할 수 있습니다.
+          RAG Export를 다운로드한 뒤에 아래 확인 항목을 체크할 수 있습니다.
         </p>
       ) : (
         <p className="text-xs text-emerald-800">
-          테스트 다운로드가 시작되고 파일 정보가 정상임을 확인했습니다.
+          RAG Export 다운로드가 시작되고 패키지 정보가 정상임을 확인했습니다.
         </p>
       )}
       {(
         [
-          ["fileNameConfirmed", "파일명이 올바릅니다."],
+          ["fileNameConfirmed", "패키지에 현재 지식팩의 Chunk가 포함되어 있습니다."],
           [
             "downloadOkConfirmed",
-            "테스트 다운로드가 시작되고 파일 정보가 정상임을 확인했습니다.",
+            "Chunk에서 원문 출처와 페이지를 확인할 수 있습니다.",
           ],
-          ["fileMatchConfirmed", "원본문서가 등록한 파일과 일치합니다."],
+          [
+            "fileMatchConfirmed",
+            "Manifest와 Checksum 검증 결과가 정상이며 원본문서 Binary가 포함되지 않았습니다.",
+          ],
         ] as const
       ).map(([key, label]) => (
         <label key={key} className="flex min-h-[44px] items-start gap-2 text-sm text-slate-800">
@@ -433,7 +436,7 @@ function DownloadConfirmPanel({
           }}
           className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
         >
-          품질 확인 완료
+          RAG Export 품질 확인 완료
         </button>
         <button
           type="button"
@@ -1284,11 +1287,36 @@ export function ProviderServiceValidationTab({
                     {channel.channel === "DOWNLOAD" && channel.downloadSummary ? (
                       <>
                         <li>파일명: {channel.downloadSummary.fileName}</li>
-                        <li>파일 크기: {channel.downloadSummary.fileSizeLabel}</li>
-                        <li>파일 형식: {channel.downloadSummary.mimeLabel}</li>
+                        {channel.downloadSummary.schemaVersion ? (
+                          <li>Schema: {channel.downloadSummary.schemaVersion}</li>
+                        ) : null}
+                        {channel.downloadSummary.chunkCount != null ? (
+                          <li>Chunk: {channel.downloadSummary.chunkCount}개</li>
+                        ) : null}
+                        {channel.downloadSummary.sourceCount != null ? (
+                          <li>Source: {channel.downloadSummary.sourceCount}개</li>
+                        ) : null}
                         <li>
-                          무결성 확인: {channel.downloadSummary.integrityOk ? "정상" : "확인 필요"}
+                          Manifest:{" "}
+                          {channel.downloadSummary.manifestValid ? "정상" : "확인 필요"}
                         </li>
+                        <li>
+                          Source Trace:{" "}
+                          {channel.downloadSummary.sourceTraceValid ? "정상" : "확인 필요"}
+                        </li>
+                        <li>
+                          Checksum:{" "}
+                          {channel.downloadSummary.checksumsValid ? "정상" : "확인 필요"}
+                        </li>
+                        <li>
+                          Vector 포함:{" "}
+                          {channel.downloadSummary.vectorsIncluded ? "예" : "아니오"}
+                        </li>
+                        <li>
+                          원본문서 포함:{" "}
+                          {channel.downloadSummary.sourceFilesIncluded ? "예" : "아니오"}
+                        </li>
+                        <li>파일 크기: {channel.downloadSummary.fileSizeLabel}</li>
                       </>
                     ) : (
                       <>
@@ -1412,10 +1440,10 @@ export function ProviderServiceValidationTab({
                   className="mt-3 min-h-[44px] rounded-xl border border-store-border bg-white px-3 text-sm font-semibold text-slate-800 disabled:opacity-60"
                 >
                   {runningChannel === "DOWNLOAD"
-                    ? "검증 중…"
-                    : channel.systemStatus === "PASS"
-                      ? "다시 검증"
-                      : "검증 실행"}
+                    ? "패키지 생성·검증 중..."
+                    : channel.systemStatus === "PASS" || channel.systemStatus === "STALE"
+                      ? "RAG Export 다시 검증"
+                      : "RAG Export 검증 실행"}
                 </button>
               ) : null}
             </div>
@@ -1426,7 +1454,7 @@ export function ProviderServiceValidationTab({
 
       {searchReady && selected.length === 0 ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          API·MCP·원본문서 다운로드 검증 채널을 준비 중입니다.
+          API·MCP·RAG Export 검증 채널을 준비 중입니다.
         </p>
       ) : null}
 

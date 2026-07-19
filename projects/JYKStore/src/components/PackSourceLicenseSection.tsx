@@ -68,9 +68,9 @@ export function PackSourceLicenseSection({ pack }: { readonly pack: KnowledgePac
           </Row>
         ) : null}
         {license?.allowDownload != null ? (
-          <Row label="다운로드 허용">{license.allowDownload ? "허용" : "비허용"}</Row>
+          <Row label="RAG Export 제공">{license.allowDownload ? "허용" : "비허용"}</Row>
         ) : downloadReady ? (
-          <Row label="다운로드 허용">허용</Row>
+          <Row label="RAG Export 제공">허용</Row>
         ) : null}
         {license?.commercialUseAllowed != null ? (
           <Row label="상업적 이용">{license.commercialUseAllowed ? "가능" : "불가 / 확인 필요"}</Row>

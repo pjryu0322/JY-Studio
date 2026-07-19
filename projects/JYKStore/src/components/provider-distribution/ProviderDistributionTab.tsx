@@ -161,7 +161,7 @@ export function ProviderDistributionTab({
         </p>
         {artifactOptions.externalImportReady ? (
           <p className="mt-1 text-xs text-store-muted">
-            공개 다운로드는 Docling 원본문서를 제공합니다.
+            공개 RAG Export는 Chunk·Metadata ZIP을 제공합니다. 원본문서는 기본 포함되지 않습니다.
           </p>
         ) : null}
       </div>
@@ -313,9 +313,10 @@ export function ProviderDistributionTab({
               disabled={!editable}
             />
             <span>
-              <span className="font-semibold">원본문서 다운로드 제공</span>
+              <span className="font-semibold">RAG Export 제공</span>
               <span className="mt-0.5 block text-xs text-store-muted">
-                승인된 원본 문서를 사용자가 직접 내려받을 수 있습니다.
+                외부 RAG 환경에서 사용할 수 있는 Chunk·Metadata 패키지 다운로드를 허용합니다.
+                원본문서 파일은 기본 포함되지 않습니다.
               </span>
             </span>
           </label>

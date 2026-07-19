@@ -24,7 +24,7 @@ export function PackPrimaryActions({ pack }: { readonly pack: KnowledgePack }) {
   const capabilities = pack.capabilities;
   const apiReady = capabilities ? isPackApiIntegrationReady(capabilities) : false;
   const downloadReady = capabilities?.download.status === "READY" || pack.downloadInfo?.available;
-  const downloadLabel = "원본문서 다운로드";
+  const downloadLabel = "RAG Export 다운로드";
 
   const onAdd = useCallback(
     (e: MouseEvent) => {

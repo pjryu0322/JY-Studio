@@ -13,7 +13,12 @@ import {
   selectedServiceChannels,
   type ServiceChannel,
 } from "@/lib/distribution/service-channel-policy";
-import { validateDownloadObjectIntegrity } from "@/lib/distribution/download-object-validation";
+import {
+  buildRagExportPackage,
+  isRagExportRunDetails,
+  ragExportDetailsFromPackage,
+  RagExportBuildError,
+} from "@/lib/exports/rag-export-builder";
 import {
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
@@ -87,12 +92,21 @@ export type ServiceValidationChannelDto = {
   /** True when API/MCP peer has identical retrieval snapshot (shared confirm OK). */
   canShareConfirmationWithPeer: boolean;
   downloadTestCompleted: boolean;
-  /** DOWNLOAD-friendly summary (no checksum/objectKey). */
+  /** DOWNLOAD / RAG Export summary (no objectKey / secrets). */
   downloadSummary: {
     fileName: string;
     fileSizeLabel: string;
     mimeLabel: string;
     integrityOk: boolean;
+    downloadMode?: "RAG_EXPORT" | "LEGACY_ORIGINAL" | null;
+    schemaVersion?: string | null;
+    chunkCount?: number | null;
+    sourceCount?: number | null;
+    manifestValid?: boolean | null;
+    sourceTraceValid?: boolean | null;
+    checksumsValid?: boolean | null;
+    vectorsIncluded?: boolean | null;
+    sourceFilesIncluded?: boolean | null;
   } | null;
   confirmation: {
     status: ProviderConfirmationStatusDto;
@@ -146,7 +160,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function adapterPathForChannel(channel: ServiceChannel): string {
   if (channel === "API") return "Retrieval API Adapter";
   if (channel === "MCP") return "MCP Tool Handler (jykstore_retrieval_query)";
-  return "Object Storage Stream + SHA-256";
+  return "RAG Export ZIP (jyk-rag-export/1.0)";
 }
 
 function formatBytes(n: number): string {
@@ -175,7 +189,8 @@ export function resolveRunCurrentValidity(input: {
   resultItemCount?: number | null;
   /**
    * Current retrieval ranking policy. When set, API/MCP runs missing this version
-   * (or with a different version) are STALE. DOWNLOAD ignores this.
+   * (or with a different version) are STALE.
+   * DOWNLOAD (RAG Export) ignores ranking policy but requires rag_export_v1 details.
    */
   expectedRankingPolicyVersion?: string | null;
 }): "CURRENT" | "STALE" {
@@ -216,6 +231,24 @@ export function resolveRunCurrentValidity(input: {
         ? details.retrievalRankingPolicyVersion.trim()
         : "";
     if (!runPolicy || runPolicy !== input.expectedRankingPolicyVersion) {
+      return "STALE";
+    }
+  }
+  if (channel === "DOWNLOAD") {
+    const details =
+      input.run.details && typeof input.run.details === "object" && !Array.isArray(input.run.details)
+        ? (input.run.details as Record<string, unknown>)
+        : null;
+    // Legacy original-file DOWNLOAD PASS is not accepted as current RAG Export evidence.
+    if (
+      details?.downloadMode !== "RAG_EXPORT" ||
+      details?.ragExportPolicyVersion !== "rag_export_v1" ||
+      details?.ragExportSchemaVersion !== "jyk-rag-export/1.0" ||
+      typeof details?.exportFingerprint !== "string" ||
+      !details.exportFingerprint ||
+      details.checksumsValid !== true ||
+      details.sourceTraceValid !== true
+    ) {
       return "STALE";
     }
   }
@@ -547,11 +580,27 @@ async function mapRunToProviderChannelDto(input: {
     const fileSize = typeof details.fileSize === "number" ? details.fileSize : null;
     const mimeType = typeof details.mimeType === "string" ? details.mimeType : null;
     if (fileName) {
+      const isRag = details.downloadMode === "RAG_EXPORT";
       downloadSummary = {
         fileName,
         fileSizeLabel: formatBytes(fileSize ?? 0),
-        mimeLabel: mimeLabel(mimeType),
-        integrityOk: details.storageVerified === true && systemStatus === "PASS",
+        mimeLabel: isRag ? "ZIP" : mimeLabel(mimeType),
+        integrityOk:
+          (isRag
+            ? details.checksumsValid === true && details.sourceTraceValid === true
+            : details.storageVerified === true) && systemStatus === "PASS",
+        downloadMode: isRag ? "RAG_EXPORT" : "LEGACY_ORIGINAL",
+        schemaVersion:
+          typeof details.ragExportSchemaVersion === "string"
+            ? details.ragExportSchemaVersion
+            : null,
+        chunkCount: typeof details.chunkCount === "number" ? details.chunkCount : null,
+        sourceCount: typeof details.sourceCount === "number" ? details.sourceCount : null,
+        manifestValid: details.manifestValid === true,
+        sourceTraceValid: details.sourceTraceValid === true,
+        checksumsValid: details.checksumsValid === true,
+        vectorsIncluded: details.vectorsIncluded === true,
+        sourceFilesIncluded: details.sourceFilesIncluded === true,
       };
     }
   }
@@ -1084,48 +1133,52 @@ export async function runServiceChannelValidation(input: {
       }
     }
   } else {
-    const file = await prisma.knowledgePackFile.findFirst({
-      where: {
-        versionId: version.id,
-        role: "SOURCE_ORIGINAL",
-        bundle: {
-          isActive: true,
-          deletedAt: null,
-          status: "REVIEW_READY",
-          storageStatus: "ACTIVE",
-        },
-      },
-      include: { bundle: { select: { storageStatus: true, status: true, isActive: true } } },
-    });
-    if (!file?.storageKey) {
-      failureCode = "DOWNLOAD_OBJECT_NOT_FOUND";
-      failureMessage = "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.";
-      latencyMs = Date.now() - started;
-    } else {
-      const verified = await validateDownloadObjectIntegrity({
-        fileId: file.id,
-        objectKey: file.storageKey,
-        originalFileName: file.originalFileName,
-        mimeType: file.mimeType,
-        expectedFileSize: file.fileSize,
-        expectedChecksumSha256: file.checksumSha256,
+    // DOWNLOAD channel = RAG Export package build + validate (not original PDF).
+    try {
+      const evalStep = await prisma.pipelineStepLog.findFirst({
+        where: { runId: binding.pipelineRunId, step: "SEARCH_EVALUATING" },
+        select: { status: true, details: true },
       });
-      latencyMs = verified.latencyMs;
-      if (!verified.ok) {
-        failureCode = verified.code;
-        failureMessage = verified.message;
+      assertSearchEvaluationCurrentForChannel({
+        channel: "API",
+        status: evalStep?.status,
+        details: evalStep?.details,
+      });
+      const pkg = await buildRagExportPackage({
+        packId: pack.packId,
+        versionId: version.id,
+        expectedPipelineRunId: binding.pipelineRunId,
+        expectedSearchIndexGenerationId: binding.indexGenerationId,
+        expectedNormalizedDocumentId: binding.normalizedDocumentId,
+        expectedFingerprint: binding.fingerprint,
+        includeZipBytes: true,
+      });
+      latencyMs = Date.now() - started;
+      if (!pkg.validation.valid) {
+        failureCode = pkg.validation.issueCodes[0] ?? "RAG_EXPORT_BUILD_FAILED";
+        failureMessage = "RAG Export 패키지 검증에 실패했습니다. 다시 실행해 주세요.";
       } else {
         status = "PASS";
-        resultCount = 1;
+        resultCount = pkg.chunkCount;
         details = {
           ...details,
-          fileId: verified.fileId,
-          fileName: verified.fileName,
-          mimeType: verified.mimeType,
-          fileSize: verified.fileSize,
-          checksumSha256: verified.checksumSha256,
-          storageVerified: true,
+          ...ragExportDetailsFromPackage(pkg),
         };
+      }
+    } catch (err) {
+      latencyMs = Date.now() - started;
+      if (err instanceof RagExportBuildError) {
+        failureCode = err.code;
+        failureMessage =
+          err.code === "RAG_EXPORT_BINDING_STALE"
+            ? err.message
+            : err.message || "RAG Export 패키지 생성에 실패했습니다.";
+      } else if (err instanceof PayloadServiceError) {
+        failureCode = err.code;
+        failureMessage = err.message;
+      } else {
+        failureCode = "RAG_EXPORT_BUILD_FAILED";
+        failureMessage = "RAG Export 패키지 생성에 실패했습니다.";
       }
     }
   }
@@ -1227,30 +1280,33 @@ export async function runServiceChannelValidation(input: {
       }
     }
     if (status === "PASS" && input.channel === "DOWNLOAD") {
-      const fileId =
-        details && typeof details.fileId === "string" ? details.fileId : null;
-      const fileInTx = fileId
-        ? await tx.knowledgePackFile.findFirst({
-            where: {
-              id: fileId,
-              packId: pack.packId,
-              versionId: version.id,
-              role: "SOURCE_ORIGINAL",
-              bundle: {
-                id: bindingInTx.bundleId,
-                isActive: true,
-                deletedAt: null,
-                storageStatus: "ACTIVE",
-                status: "REVIEW_READY",
-              },
-            },
-            select: { id: true },
-          })
-        : null;
-      if (!fileInTx) {
+      if (!isRagExportRunDetails(details)) {
         throw new PayloadServiceError(
           "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-          "다운로드 검증 원문 파일 연결이 변경되었습니다. 다시 검증해 주세요.",
+          "RAG Export 검증 증적이 올바르지 않습니다. 다시 검증해 주세요.",
+          409,
+        );
+      }
+      const expectedFp =
+        details && typeof details === "object" && !Array.isArray(details)
+          ? (details as Record<string, unknown>).exportFingerprint
+          : null;
+      const rebuilt = await buildRagExportPackage({
+        packId: pack.packId,
+        versionId: version.id,
+        expectedPipelineRunId: bindingInTx.pipelineRunId,
+        expectedSearchIndexGenerationId: bindingInTx.indexGenerationId,
+        expectedNormalizedDocumentId: bindingInTx.normalizedDocumentId,
+        expectedFingerprint: bindingInTx.fingerprint,
+        includeZipBytes: false,
+      });
+      if (
+        typeof expectedFp !== "string" ||
+        rebuilt.exportFingerprint !== expectedFp
+      ) {
+        throw new PayloadServiceError(
+          "RAG_EXPORT_BINDING_STALE",
+          "현재 검색데이터가 변경되었습니다. RAG Export 검증을 다시 실행해 주세요.",
           409,
         );
       }

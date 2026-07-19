@@ -45,7 +45,8 @@ describe("ProviderServiceValidationTab search-data UX", () => {
   });
 
   it("separates original download wording from Portable RAG Export", () => {
-    assert.match(source, /원본문서 다운로드 검증/);
+    assert.match(source, /RAG Export 패키지 검증/);
+    assert.doesNotMatch(source, /원본문서 다운로드 검증/);
     assert.doesNotMatch(source, /Portable RAG Export 생성·검증\(미구현\)/);
   });
 });

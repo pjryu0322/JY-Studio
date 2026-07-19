@@ -303,7 +303,8 @@ describe("download UI copy", () => {
   it("distinguishes package vs original document labels", () => {
     const section = readSource("components/PackDownloadInfoSection.tsx");
     assert.match(section, /지식팩 패키지 다운로드/);
-    assert.match(section, /원본문서 다운로드/);
+    assert.match(section, /RAG Export 다운로드/);
+    assert.doesNotMatch(section, /원본문서 다운로드/);
     assert.match(section, /표준 지식팩 ZIP Package가 제공됩니다/);
   });
 });

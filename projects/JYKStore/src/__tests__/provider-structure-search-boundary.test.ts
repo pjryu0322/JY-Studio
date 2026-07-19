@@ -51,7 +51,8 @@ describe("structure vs search validation UI boundaries", () => {
     assert.ok(src.includes("onGoToDistributionReview"));
     assert.ok(src.includes("검색데이터 생성"));
     assert.ok(src.includes("검색 품질 검증"));
-    assert.ok(src.includes("원본문서 다운로드 검증"));
+    assert.ok(src.includes("RAG Export 패키지 검증"));
+    assert.ok(!src.includes("원본문서 다운로드 검증"));
     assert.ok(!src.includes("Embedding provider: local-hash"));
     assert.ok(!src.includes("SEARCH_FOUNDATION_STAGE_IDS"));
   });

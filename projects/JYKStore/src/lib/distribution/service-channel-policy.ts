@@ -65,7 +65,7 @@ export function assertServiceChannelEnabled(
     return {
       ok: false,
       code: "SERVICE_CHANNEL_DISABLED",
-      message: "이 지식팩은 원본문서 다운로드 제공이 허용되지 않았습니다.",
+      message: "이 지식팩은 RAG Export 제공이 허용되지 않았습니다.",
     };
   }
   return { ok: true };

@@ -8,9 +8,12 @@ export const RETRIEVAL_REJECTION_REASONS = [
 ] as const;
 
 export const DOWNLOAD_REJECTION_REASONS = [
-  "파일명이 올바르지 않음",
-  "테스트 다운로드 실패",
-  "원본문서와 일치하지 않음",
+  "필수 파일 누락",
+  "Chunk 데이터 이상",
+  "출처 추적 정보 부족",
+  "Checksum 불일치",
+  "Manifest 정보 오류",
+  "라이선스·이용조건 오류",
   "기타",
 ] as const;
 
