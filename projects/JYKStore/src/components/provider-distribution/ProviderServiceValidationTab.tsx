@@ -45,11 +45,11 @@ function systemLabel(status: string): string {
 function confirmLabel(status: string | null | undefined): string {
   switch (status) {
     case "CONFIRMED":
-      return "제공자 품질 확인 완료";
+      return "품질 확인 완료";
     case "REJECTED":
-      return "결과 반려";
+      return "보완 필요";
     case "STALE":
-      return "확인 무효";
+      return "다시 검증 필요";
     case "NOT_REVIEWED":
       return "품질 확인 필요";
     default:
@@ -57,25 +57,48 @@ function confirmLabel(status: string | null | undefined): string {
   }
 }
 
-function badgeClass(kind: "system" | "confirm", status: string | null | undefined): string {
+function badgeClass(kind: "system" | "confirm" | "neutral", status: string | null | undefined): string {
+  if (kind === "neutral") return "bg-slate-50 text-slate-700 border-slate-200";
   if (kind === "system") {
     if (status === "PASS") return "bg-emerald-50 text-emerald-800 border-emerald-200";
     if (status === "FAIL" || status === "STALE") return "bg-rose-50 text-rose-800 border-rose-200";
-    if (status === "PENDING") return "bg-amber-50 text-amber-900 border-amber-200";
+    if (status === "PENDING" || status === "RUNNING") return "bg-sky-50 text-sky-900 border-sky-200";
     return "bg-slate-50 text-slate-700 border-slate-200";
   }
-  if (status === "CONFIRMED") return "bg-sky-50 text-sky-900 border-sky-200";
+  if (status === "CONFIRMED") return "bg-emerald-50 text-emerald-800 border-emerald-200";
   if (status === "REJECTED" || status === "STALE") return "bg-rose-50 text-rose-800 border-rose-200";
   return "bg-amber-50 text-amber-900 border-amber-200";
 }
 
+function providerConfirmAggregate(
+  channels: ServiceValidationChannelDto[],
+): "CONFIRMED" | "REJECTED" | "STALE" | "NOT_REVIEWED" {
+  const retrieval = channels.filter((c) => c.channel === "API" || c.channel === "MCP");
+  if (retrieval.some((c) => c.providerConfirmationStatus === "STALE" || c.systemStatus === "STALE")) {
+    return "STALE";
+  }
+  if (retrieval.some((c) => c.providerConfirmationStatus === "REJECTED")) return "REJECTED";
+  if (
+    retrieval.length > 0 &&
+    retrieval.every(
+      (c) =>
+        c.providerConfirmationStatus === "CONFIRMED" ||
+        (!c.selected && c.systemStatus === "NOT_SELECTED"),
+    ) &&
+    retrieval.some((c) => c.providerConfirmationStatus === "CONFIRMED")
+  ) {
+    return "CONFIRMED";
+  }
+  return "NOT_REVIEWED";
+}
+
 const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   API: {
-    title: "Retrieval API 검증",
-    hint: "실제 API와 동일한 검색 경로로 품질을 확인합니다.",
+    title: "Retrieval API 검색",
+    hint: "실제 API와 동일한 검색 경로로 결과 품질을 확인합니다.",
   },
   MCP: {
-    title: "MCP 검증",
+    title: "MCP 검색",
     hint: "GPT·Cursor 등 MCP 지원 AI에서 지식팩 검색이 정상 동작하는지 확인합니다.",
   },
   DOWNLOAD: {
@@ -242,9 +265,9 @@ function RetrievalConfirmPanel({
           type="button"
           disabled={!allChecked || busy || disabled}
           onClick={() => void handleConfirm()}
-          className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-[44px] rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-50"
         >
-          품질 확인 완료
+          결과 적절함
         </button>
         <button
           type="button"
@@ -252,13 +275,13 @@ function RetrievalConfirmPanel({
           onClick={() => setRejectOpen((v) => !v)}
           className="min-h-[44px] rounded-xl border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-800"
         >
-          결과가 적절하지 않음
+          검색 결과 보완 필요
         </button>
       </div>
       {rejectOpen ? (
         <div className="space-y-2 rounded-lg border border-rose-200 bg-white p-3">
           <label className="block text-xs font-semibold text-slate-700">
-            반려 사유
+            보완 사유
             <select
               className="mt-1 min-h-[44px] w-full rounded-lg border border-store-border px-2 text-sm"
               value={reason}
@@ -485,7 +508,9 @@ export function ProviderServiceValidationTab({
   const [searchData, setSearchData] = useState<SearchDataStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [draftQuery, setDraftQuery] = useState("");
+  const [executedQuery, setExecutedQuery] = useState<string | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
   const [runningChannel, setRunningChannel] = useState<string | null>(null);
   const [expandedRanks, setExpandedRanks] = useState<Record<string, boolean>>({});
   const [showAllResults, setShowAllResults] = useState<Record<string, boolean>>({});
@@ -510,14 +535,13 @@ export function ProviderServiceValidationTab({
       setSearchData(sd);
       onStatusChange?.(svc);
       onSearchDataStateChange?.(sd.state);
-      if (!query && svc.suggestedQuery) setQuery(svc.suggestedQuery);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색데이터 검증 상태를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [packId, onStatusChange, onSearchDataStateChange, query]);
+  }, [packId, onStatusChange, onSearchDataStateChange]);
 
   useEffect(() => {
     void load();
@@ -579,13 +603,25 @@ export function ProviderServiceValidationTab({
 
   async function handleRun(channel: "API" | "MCP" | "DOWNLOAD") {
     if (!canRun) return;
+    if (channel !== "DOWNLOAD") {
+      const trimmed = draftQuery.trim();
+      if (trimmed.length < 2) {
+        setQueryError("검색할 질문을 입력해 주세요.");
+        return;
+      }
+      setQueryError(null);
+    }
     setRunningChannel(channel);
     setError(null);
     try {
+      const trimmed = draftQuery.trim();
       await runProviderServiceValidationApi(packId, {
         channel,
-        query: channel === "DOWNLOAD" ? undefined : query,
+        query: channel === "DOWNLOAD" ? undefined : trimmed,
       });
+      if (channel !== "DOWNLOAD") {
+        setExecutedQuery(trimmed);
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "검증 실행에 실패했습니다.");
@@ -792,20 +828,58 @@ export function ProviderServiceValidationTab({
         ) : null}
 
         {sd?.state === "VALIDATED" ? (
-          <div className="mt-2 space-y-2">
-            <p className="text-sm font-semibold text-emerald-900">검색 품질 검증 완료</p>
-            {sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
+          <div className="mt-2 space-y-3">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                  생성 완료
+                </span>
+                <p className="text-sm font-semibold text-emerald-900">검색데이터 준비 완료</p>
+              </div>
               <p className="text-xs text-slate-700">
-                테스트 질문 {sd.validationSummary.totalCases}건 중 {sd.validationSummary.passedCases}
-                건 통과
+                검색 단위 {sd.chunkCount} · 벡터 {sd.vectorCount} · {sd.modelLabel ?? sd.model ?? "Local E5"}
+                {sd.dimension != null ? ` · ${sd.dimension}차원` : ""}
               </p>
+            </div>
+            {sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                      sd.validationSummary.status === "PASS"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-amber-200 bg-amber-50 text-amber-900"
+                    }`}
+                  >
+                    {sd.validationSummary.status === "PASS" ? "자동 평가 통과" : "자동 평가 보완 필요"}
+                  </span>
+                  <p className="text-sm font-semibold text-slate-900">자동 검색 평가</p>
+                </div>
+                <p className="text-xs text-slate-700">
+                  평가 질문 {sd.validationSummary.totalCases}건 중 {sd.validationSummary.passedCases}건 통과
+                </p>
+              </div>
             ) : null}
-            <ul className="grid grid-cols-2 gap-1 text-xs text-slate-700 sm:grid-cols-4">
-              <li>검색 단위 {sd.chunkCount}</li>
-              <li>벡터 {sd.vectorCount}</li>
-              <li>모델 {sd.modelLabel ?? sd.model ?? "—"}</li>
-              <li>차원 {sd.dimension ?? "—"}</li>
-            </ul>
+            {(() => {
+              const confirmState = providerConfirmAggregate(selected);
+              return (
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("confirm", confirmState)}`}
+                    >
+                      {confirmLabel(confirmState)}
+                    </span>
+                    <p className="text-sm font-semibold text-slate-900">제공자 품질 확인</p>
+                  </div>
+                  {confirmState === "NOT_REVIEWED" || confirmState === "STALE" ? (
+                    <p className="text-xs text-slate-700">
+                      실제 질문으로 검색한 뒤 결과의 관련성과 출처를 확인하세요.
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })()}
           </div>
         ) : null}
 
@@ -877,30 +951,63 @@ export function ProviderServiceValidationTab({
       selected.some((c) => c.channel === "API" || c.channel === "MCP") &&
       searchReady &&
       canRun ? (
-        <div>
+        <div className="space-y-2">
           <label className="text-xs font-semibold text-slate-700" htmlFor="svc-query">
-            테스트 질문
+            검색 질문
           </label>
-          <div className="mt-2 flex flex-col gap-2">
-            <input
-              id="svc-query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
-            />
-            {(status?.suggestedQueries?.length ?? 0) > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {status!.suggestedQueries.slice(0, 4).map((q) => (
-                  <button
-                    key={q}
-                    type="button"
-                    onClick={() => setQuery(q)}
-                    className="min-h-[36px] rounded-lg border border-store-border bg-slate-50 px-2 text-xs text-slate-700"
-                  >
-                    {q.length > 28 ? `${q.slice(0, 28)}…` : q}
-                  </button>
-                ))}
-              </div>
+          <input
+            id="svc-query"
+            value={draftQuery}
+            onChange={(e) => {
+              setDraftQuery(e.target.value);
+              if (queryError) setQueryError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (selected.some((c) => c.channel === "API")) void handleRun("API");
+                else if (selected.some((c) => c.channel === "MCP")) void handleRun("MCP");
+              }
+            }}
+            placeholder="예: 기획단계 대가 산정 방법을 알려주세요."
+            className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+            disabled={runningChannel != null}
+          />
+          {queryError ? <p className="text-xs text-rose-700">{queryError}</p> : null}
+          <div className="flex flex-wrap gap-2">
+            {selected.some((c) => c.channel === "API") ? (
+              <button
+                type="button"
+                disabled={runningChannel != null}
+                onClick={() => void handleRun("API")}
+                className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {runningChannel === "API" ? "검색 중…" : "API 검색"}
+              </button>
+            ) : null}
+            {selected.some((c) => c.channel === "MCP") ? (
+              <button
+                type="button"
+                disabled={runningChannel != null}
+                onClick={() => void handleRun("MCP")}
+                className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800 disabled:opacity-50"
+              >
+                {runningChannel === "MCP" ? "검색 중…" : "MCP 검색"}
+              </button>
+            ) : null}
+            {executedQuery || selected.some((c) => c.query && (c.channel === "API" || c.channel === "MCP")) ? (
+              <button
+                type="button"
+                disabled={runningChannel != null}
+                onClick={() => {
+                  setDraftQuery("");
+                  setQueryError(null);
+                  document.getElementById("svc-query")?.focus();
+                }}
+                className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-700"
+              >
+                다른 질문으로 다시 검색
+              </button>
             ) : null}
           </div>
         </div>
@@ -945,10 +1052,17 @@ export function ProviderServiceValidationTab({
                 </div>
               </div>
 
-              {channel.query && channel.channel !== "DOWNLOAD" ? (
-                <p className="mt-3 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-800">테스트 질문</span> · {channel.query}
-                </p>
+              {(channel.query || executedQuery) && channel.channel !== "DOWNLOAD" ? (
+                <div className="mt-3 space-y-1 text-xs text-slate-600">
+                  <p>
+                    <span className="font-semibold text-slate-800">실행 질문</span> ·{" "}
+                    {channel.query || executedQuery}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-800">검색 경로</span> ·{" "}
+                    {channel.channel === "API" ? "Retrieval API" : "MCP"}
+                  </p>
+                </div>
               ) : null}
 
               {channel.failureMessage ? (
@@ -957,7 +1071,7 @@ export function ProviderServiceValidationTab({
 
               {channel.systemStatus === "PASS" || channel.systemStatus === "STALE" ? (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-slate-700">검증 요약</p>
+                  <p className="text-xs font-semibold text-slate-700">검색 요약</p>
                   <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-700">
                     {channel.channel === "DOWNLOAD" && channel.downloadSummary ? (
                       <>
@@ -973,14 +1087,10 @@ export function ProviderServiceValidationTab({
                         {channel.resultCount != null ? (
                           <li>검색 결과 {channel.resultCount}건</li>
                         ) : null}
+                        <li>고유 결과 {channel.results.length}건</li>
                         {channel.latencyMs != null ? (
                           <li>응답시간 {channel.latencyMs}ms</li>
                         ) : null}
-                        <li>
-                          {channel.results.length > 0
-                            ? "출처와 페이지 연결 정상"
-                            : "검색 결과 요약 없음"}
-                        </li>
                         {channel.channel === "MCP" ? <li>MCP 검색 도구 실행 정상</li> : null}
                       </>
                     )}
@@ -1019,7 +1129,9 @@ export function ProviderServiceValidationTab({
                         }))
                       }
                     >
-                      {showResults ? "결과 접기" : `전체 ${channel.results.length}건 펼쳐보기`}
+                      {showResults
+                        ? "결과 접기"
+                        : `결과 ${channel.results.length - 3}건 더 보기`}
                     </button>
                   ) : null}
                 </div>
@@ -1028,26 +1140,13 @@ export function ProviderServiceValidationTab({
               {channel.systemStatus === "FAIL" &&
               channel.failureMessage?.includes("결과가 없습니다") ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                  <p>현재 질문으로 검색된 결과가 없습니다.</p>
-                  {canRun ? (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="min-h-[44px] rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold"
-                        onClick={() => {
-                          if (status?.suggestedQuery) setQuery(status.suggestedQuery);
-                        }}
-                      >
-                        추천 질문으로 다시 검증
-                      </button>
-                    </div>
-                  ) : null}
+                  <p>현재 질문으로 검색된 결과가 없습니다. 질문을 바꿔 다시 검색해 보세요.</p>
                 </div>
               ) : null}
 
               {channel.confirmation?.status === "CONFIRMED" ? (
                 <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
-                  제공자 품질 확인 완료
+                  품질 확인 완료
                   {channel.confirmation.confirmedByName
                     ? ` · 확인자: ${channel.confirmation.confirmedByName}`
                     : ""}
@@ -1062,11 +1161,11 @@ export function ProviderServiceValidationTab({
 
               {channel.confirmation?.status === "REJECTED" ? (
                 <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
-                  반려됨
+                  보완 필요
                   {channel.confirmation.rejectionReason
                     ? ` · ${channel.confirmation.rejectionReason}`
                     : ""}
-                  . 다시 검증해 주세요.
+                  . 검색데이터를 보완하거나 다른 질문으로 다시 확인하세요.
                 </p>
               ) : null}
 
@@ -1087,24 +1186,18 @@ export function ProviderServiceValidationTab({
                 />
               ) : null}
 
-              {canRun ? (
+              {canRun && channel.channel === "DOWNLOAD" ? (
                 <button
                   type="button"
                   disabled={runningChannel === channel.channel}
-                  onClick={() =>
-                    void handleRun(channel.channel as "API" | "MCP" | "DOWNLOAD")
-                  }
+                  onClick={() => void handleRun("DOWNLOAD")}
                   className="mt-3 min-h-[44px] rounded-xl border border-store-border bg-white px-3 text-sm font-semibold text-slate-800 disabled:opacity-60"
                 >
-                  {runningChannel === channel.channel
+                  {runningChannel === "DOWNLOAD"
                     ? "검증 중…"
                     : channel.systemStatus === "PASS"
                       ? "다시 검증"
-                      : channel.channel === "API"
-                        ? "API 검증"
-                        : channel.channel === "MCP"
-                          ? "MCP 검증"
-                          : "검증 실행"}
+                      : "검증 실행"}
                 </button>
               ) : null}
             </div>
@@ -1122,7 +1215,7 @@ export function ProviderServiceValidationTab({
       {preparationPassed && searchReady ? (
         <div className="space-y-2">
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            검색과 서비스 검증이 완료되었습니다.
+            자동 평가와 제공자 품질 확인이 완료되었습니다.
           </p>
           <button
             type="button"

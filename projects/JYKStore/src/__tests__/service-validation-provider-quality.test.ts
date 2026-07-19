@@ -18,15 +18,14 @@ import { evaluateRetrievalValidationHits } from "../lib/retrieval/retrieval-api-
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("provider service quality + admin ops log", () => {
-  it("hides operational ids from provider UI and DTO mapping surface", () => {
+  it("hides operational ids from provider main surface; tech panel is opt-in", () => {
     const tab = readFileSync(
       join(root, "src/components/provider-distribution/ProviderServiceValidationTab.tsx"),
       "utf8",
     );
-    assert.equal(tab.includes("Pipeline:"), false);
-    assert.equal(tab.includes("Generation:"), false);
-    assert.equal(tab.includes("Fingerprint:"), false);
-    assert.equal(tab.includes("Run:"), false);
+    assert.ok(tab.includes("기술정보 보기"));
+    assert.ok(tab.includes('useState(false)'));
+    assert.ok(tab.includes("techOpen"));
     assert.equal(tab.includes("jykstore_retrieval_query"), false);
     assert.ok(tab.includes("제공자 품질 확인"));
     assert.ok(tab.includes("원문 위치 확인"));
@@ -71,6 +70,15 @@ describe("provider service quality + admin ops log", () => {
     });
     assert.equal(bySim.label, "높음");
     assert.equal(bySim.percent, 92);
+
+    const mid = toProviderRelevance(0.2, {
+      keywordScore: 1,
+      metadataScore: 0,
+      vectorScore: 0.7,
+      vectorSimilarity: 0.7,
+    });
+    assert.equal(mid.label, "보통");
+    assert.equal(mid.percent, 70);
 
     const byScore = toProviderRelevance(9, null);
     assert.equal(byScore.label, "높음");

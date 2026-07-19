@@ -26,7 +26,7 @@ export function toProviderRelevance(
   if (similarity != null) {
     const percent = Math.round(similarity * 100);
     return {
-      label: percent >= 70 ? "높음" : percent >= 40 ? "보통" : "낮음",
+      label: percent >= 80 ? "높음" : percent >= 65 ? "보통" : "낮음",
       percent,
     };
   }

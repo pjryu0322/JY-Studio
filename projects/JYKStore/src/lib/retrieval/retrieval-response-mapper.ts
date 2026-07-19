@@ -4,6 +4,10 @@ import type {
   RetrievalFilters,
   RetrievalResponseDto,
 } from "@/lib/retrieval-dto";
+import {
+  selectDiverseTopK,
+  type RerankStats,
+} from "./relevance-diversity-rerank";
 import type { ScoredCandidate } from "./retrieval-types";
 
 function byScore(a: ScoredCandidate, b: ScoredCandidate): number {
@@ -17,23 +21,49 @@ function byScore(a: ScoredCandidate, b: ScoredCandidate): number {
  * - filters가 있으면 score가 0이어도 filter 통과 chunk를 포함하고 score로 정렬한다.
  * - filters가 없고 query가 있으면 score > 0인 chunk만 반환한다.
  * - filters/query 모두 없으면 sortOrder/createdAt 순서를 그대로 사용한다.
- * - topK slice.
+ * - query가 있으면 관련도 우선 + 중복 제거·다양화 후 topK.
  */
 export function selectRetrievalCandidates(input: {
   scored: ScoredCandidate[];
   hasFilters: boolean;
   hasQuery: boolean;
   topK: number;
+  query?: string;
 }): ScoredCandidate[] {
-  const { scored, hasFilters, hasQuery, topK } = input;
+  return selectRetrievalCandidatesWithStats(input).selected;
+}
 
-  let selected = scored;
+export function selectRetrievalCandidatesWithStats(input: {
+  scored: ScoredCandidate[];
+  hasFilters: boolean;
+  hasQuery: boolean;
+  topK: number;
+  query?: string;
+}): { selected: ScoredCandidate[]; stats: RerankStats | null } {
+  const { scored, hasFilters, hasQuery, topK } = input;
+  const query = input.query?.trim() ?? "";
+
+  let pool = scored;
   if (hasFilters) {
-    selected = [...scored].sort(byScore);
+    pool = [...scored].sort(byScore);
   } else if (hasQuery) {
-    selected = scored.filter((item) => item.score > 0).sort(byScore);
+    pool = scored.filter((item) => item.score > 0).sort(byScore);
+  } else {
+    return {
+      selected: pool.slice(0, topK),
+      stats: null,
+    };
   }
-  return selected.slice(0, topK);
+
+  if (hasQuery && query) {
+    const diversified = selectDiverseTopK({ scored: pool, query, topK });
+    return { selected: diversified.selected, stats: diversified.stats };
+  }
+
+  return {
+    selected: pool.slice(0, topK),
+    stats: null,
+  };
 }
 
 export function mapRetrievalResponse(input: {

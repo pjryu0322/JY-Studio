@@ -12,7 +12,7 @@ import {
 import { collectRetrievalCandidates } from "@/lib/retrieval/retrieval-candidate-store";
 import {
   mapRetrievalResponse,
-  selectRetrievalCandidates,
+  selectRetrievalCandidatesWithStats,
 } from "@/lib/retrieval/retrieval-response-mapper";
 import { scoreRetrievalCandidates } from "@/lib/retrieval/retrieval-score-service";
 import type { RetrievalEvaluationCandidate } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
@@ -141,11 +141,12 @@ export async function retrieveContextsForVersion(input: {
     embeddingModel = hybrid.embeddingModel;
   }
 
-  const selected = selectRetrievalCandidates({
+  const { selected } = selectRetrievalCandidatesWithStats({
     scored: hybridScored,
     hasFilters,
     hasQuery,
     topK: input.topK,
+    query: searchQuery,
   });
 
   return mapRetrievalResponse({

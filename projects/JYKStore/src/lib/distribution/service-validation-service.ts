@@ -705,7 +705,13 @@ export async function runServiceChannelValidation(input: {
   let resultFingerprint: string | null = null;
 
   if (input.channel === "API") {
-    query = query || "주요 기능을 알려주세요";
+    if (!query || query.length < 2) {
+      throw new PayloadServiceError(
+        "INCOMPLETE",
+        "검색할 질문을 입력해 주세요.",
+        400,
+      );
+    }
     const result = await executeRetrievalApiRequest({
       knowledgePackId: pack.packId,
       query,
@@ -769,7 +775,13 @@ export async function runServiceChannelValidation(input: {
       }
     }
   } else if (input.channel === "MCP") {
-    query = query || "주요 기능을 알려주세요";
+    if (!query || query.length < 2) {
+      throw new PayloadServiceError(
+        "INCOMPLETE",
+        "검색할 질문을 입력해 주세요.",
+        400,
+      );
+    }
     const result = await executeMcpValidation({
       packId: pack.packId,
       versionId: version.id,
