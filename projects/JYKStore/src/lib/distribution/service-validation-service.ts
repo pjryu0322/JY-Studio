@@ -243,6 +243,7 @@ export function resolveValidationLockReason(input: {
         : null);
   if (bindingStatus === "MISSING" || bindingStatus == null) return "BINDING_MISSING";
   if (bindingStatus === "STALE") return "BINDING_STALE";
+  if (bindingStatus === "NOT_READY") return "SEARCH_DATA_NOT_READY";
   if (input.searchDataReady === false) return "SEARCH_DATA_NOT_READY";
   return null;
 }
@@ -315,6 +316,26 @@ function rerankDetailsFromStats(stats: RerankStats | null | undefined): Record<s
     uniqueCandidateCount: Math.max(0, stats.candidateCount - stats.deduplicatedCount),
     finalResultCount: stats.finalResultCount,
   };
+}
+
+export async function assertNoOpenPackReview(
+  client: Prisma.TransactionClient | typeof prisma,
+  packId: string,
+): Promise<void> {
+  const openReview = await client.packReview.findFirst({
+    where: {
+      packId,
+      status: { in: [...OPEN_PACK_REVIEW_STATUSES] },
+    },
+    select: { id: true },
+  });
+  if (openReview) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_NOT_EDITABLE",
+      "검수요청이 진행 중입니다. 검색검증을 변경하려면 검수요청을 회수해 주세요.",
+      409,
+    );
+  }
 }
 
 export function resolveConfirmationStatusDto(input: {
@@ -868,7 +889,8 @@ export async function runServiceChannelValidation(input: {
   query?: string | null;
 }): Promise<ServiceValidationChannelDto> {
   const { pack, version, profile } = await requireOwnedDraftPackForServiceValidationRun(input);
-  const { latest, binding } = await loadBindingContext(pack.packId, version.id);
+  await assertNoOpenPackReview(prisma, pack.packId);
+  const { latest, binding, bindingState } = await loadBindingContext(pack.packId, version.id);
   if (!SEARCH_VALIDATION_PREPARATION_CHANNELS.includes(input.channel)) {
     throw new PayloadServiceError(
       "SERVICE_CHANNEL_DISABLED",
@@ -876,7 +898,21 @@ export async function runServiceChannelValidation(input: {
       400,
     );
   }
-  if (!binding || !latest) {
+  if (!binding || !latest || bindingState.status !== "CURRENT") {
+    if (bindingState.status === "NOT_READY") {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_STALE",
+        "데이터 구조화가 아직 진행 중입니다. 완료 후 다시 검증해 주세요.",
+        409,
+      );
+    }
+    if (bindingState.status === "STALE") {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_STALE",
+        "지식 데이터가 변경되어 서비스 검증을 다시 실행해야 합니다.",
+        409,
+      );
+    }
     throw new PayloadServiceError(
       "INCOMPLETE",
       "데이터 구조화가 완료되어야 검색데이터 검증을 진행할 수 있습니다.",
@@ -1121,6 +1157,7 @@ export async function runServiceChannelValidation(input: {
         409,
       );
     }
+    await assertNoOpenPackReview(tx, pack.packId);
     const bindingInTx = await resolveCurrentValidationBindingTx(tx, {
       packId: pack.packId,
       versionId: version.id,

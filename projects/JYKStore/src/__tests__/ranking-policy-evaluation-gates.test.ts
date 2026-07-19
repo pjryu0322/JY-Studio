@@ -247,12 +247,45 @@ describe("ranking policy evaluation gates", () => {
     assert.equal(stats.rerankMode, RETRIEVAL_RANKING_POLICY_VERSION);
     assert.equal(stats.candidateCount, 20);
     assert.ok(stats.deduplicatedCount >= 1);
-    assert.equal(
-      stats.candidateCount - stats.deduplicatedCount,
-      stats.candidateCount - stats.deduplicatedCount,
-    );
+    const expectedUnique = stats.candidateCount - stats.deduplicatedCount;
+    assert.ok(expectedUnique >= stats.finalResultCount);
+    assert.equal(expectedUnique, stats.candidateCount - stats.deduplicatedCount);
     assert.ok(stats.finalResultCount <= 5);
     assert.ok(stats.finalResultCount >= 1);
+  });
+
+  it("maps NOT_READY binding to SEARCH_DATA_NOT_READY lock reason", () => {
+    assert.equal(
+      resolveValidationLockReason({
+        packStatus: "DRAFT",
+        bindingStatus: "NOT_READY",
+        searchDataReady: false,
+      }),
+      "SEARCH_DATA_NOT_READY",
+    );
+  });
+
+  it("wires open-review assert and latest-only binding helpers", () => {
+    const bindingSrc = readFileSync(
+      join(root, "src/lib/distribution/service-validation-binding.ts"),
+      "utf8",
+    );
+    assert.ok(bindingSrc.includes("LATEST_RUN_PENDING"));
+    assert.ok(bindingSrc.includes("LATEST_RUN_RUNNING"));
+    assert.ok(bindingSrc.includes("Never falls back to an older PASS"));
+    assert.ok(bindingSrc.includes("staleErrorForBindingState"));
+    assert.match(bindingSrc, /resolveCurrentValidationBindingTx[\s\S]*resolveValidationBindingState/);
+
+    const service = readFileSync(
+      join(root, "src/lib/distribution/service-validation-service.ts"),
+      "utf8",
+    );
+    assert.ok(service.includes("assertNoOpenPackReview"));
+    assert.ok(service.includes("OPEN_PACK_REVIEW_STATUSES"));
+    assert.match(
+      service,
+      /requireOwnedDraftPackForServiceValidationRun[\s\S]*assertNoOpenPackReview/,
+    );
   });
 
   it("wires docling eval + service validation gate + re-eval UX", () => {

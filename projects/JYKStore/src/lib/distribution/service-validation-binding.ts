@@ -42,39 +42,145 @@ function toCurrentBinding(
   };
 }
 
+export type ValidationBindingState =
+  | {
+      status: "CURRENT";
+      binding: CurrentValidationBinding;
+      latest: { id: string; status: string };
+    }
+  | {
+      status: "MISSING";
+      binding: null;
+      latest: null;
+      reason: "NO_PIPELINE_RUN";
+    }
+  | {
+      status: "NOT_READY";
+      binding: null;
+      latest: { id: string; status: string };
+      reason: "LATEST_RUN_PENDING" | "LATEST_RUN_RUNNING";
+    }
+  | {
+      status: "STALE";
+      binding: null;
+      latest: { id: string; status: string };
+      reason:
+        | "LATEST_RUN_NOT_PASS"
+        | "LATEST_BINDING_MISSING"
+        | "LATEST_VERSION_MISMATCH"
+        | "ND_OR_BUNDLE_MISMATCH";
+    };
+
+export function staleErrorForBindingState(state: ValidationBindingState): PayloadServiceError {
+  if (state.status === "CURRENT") {
+    return staleError();
+  }
+  if (state.status === "NOT_READY") {
+    return new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "데이터 구조화가 아직 진행 중입니다. 완료 후 다시 검증해 주세요.",
+      409,
+    );
+  }
+  if (state.status === "MISSING") {
+    return new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "데이터 구조화 결과가 없습니다. 구조화를 먼저 완료해 주세요.",
+      409,
+    );
+  }
+  if (state.reason === "LATEST_RUN_NOT_PASS") {
+    return new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "최신 데이터 구조화가 완료되지 않았습니다. 다시 확인해 주세요.",
+      409,
+    );
+  }
+  return new PayloadServiceError(
+    "SERVICE_VALIDATION_STALE",
+    "지식 데이터가 변경되어 서비스 검증을 다시 실행해야 합니다.",
+    409,
+  );
+}
+
 /**
- * Resolve the current PASS knowledge pipeline binding for a pack version.
- * Prefer the latest PASS whose summary binding.versionId matches.
+ * Resolve CURRENT / MISSING / NOT_READY / STALE from the actual latest PipelineRun only.
+ * Never falls back to an older PASS run.
  */
-export async function resolveCurrentValidationBindingTx(
+export async function resolveValidationBindingState(
   tx: TxClient,
-  input: {
-    packId: string;
-    versionId: string;
-    expectedPipelineRunId?: string | null;
-  },
-): Promise<CurrentValidationBinding> {
-  const candidates = await tx.pipelineRun.findMany({
+  input: { packId: string; versionId: string },
+): Promise<ValidationBindingState> {
+  const latest = await tx.pipelineRun.findFirst({
     where: {
       packId: input.packId,
       triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-      status: "PASS",
     },
-    orderBy: { startedAt: "desc" },
-    select: { id: true, packId: true, summary: true },
+    orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      packId: true,
+      status: true,
+      summary: true,
+    },
   });
 
-  let matched: CurrentValidationBinding | null = null;
-  for (const run of candidates) {
-    if (run.packId !== input.packId) continue;
-    const binding = parseKnowledgeRunBinding(run.summary);
-    if (!binding || binding.versionId !== input.versionId) continue;
-    matched = toCurrentBinding(run.id, run.packId, binding);
-    break;
+  if (!latest) {
+    return {
+      status: "MISSING",
+      binding: null,
+      latest: null,
+      reason: "NO_PIPELINE_RUN",
+    };
   }
 
-  if (!matched) throw staleError();
+  const latestRef = { id: latest.id, status: latest.status };
 
+  if (latest.status === "PENDING") {
+    return {
+      status: "NOT_READY",
+      binding: null,
+      latest: latestRef,
+      reason: "LATEST_RUN_PENDING",
+    };
+  }
+  if (latest.status === "RUNNING") {
+    return {
+      status: "NOT_READY",
+      binding: null,
+      latest: latestRef,
+      reason: "LATEST_RUN_RUNNING",
+    };
+  }
+
+  if (latest.status !== "PASS") {
+    return {
+      status: "STALE",
+      binding: null,
+      latest: latestRef,
+      reason: "LATEST_RUN_NOT_PASS",
+    };
+  }
+
+  const parsed = parseKnowledgeRunBinding(latest.summary);
+  if (!parsed) {
+    return {
+      status: "STALE",
+      binding: null,
+      latest: latestRef,
+      reason: "LATEST_BINDING_MISSING",
+    };
+  }
+  if (parsed.versionId !== input.versionId) {
+    return {
+      status: "STALE",
+      binding: null,
+      latest: latestRef,
+      reason: "LATEST_VERSION_MISMATCH",
+    };
+  }
+
+  const matched = toCurrentBinding(latest.id, latest.packId, parsed);
   const normalizedDocument = await tx.normalizedDocument.findFirst({
     where: {
       id: matched.normalizedDocumentId,
@@ -95,17 +201,53 @@ export async function resolveCurrentValidationBindingTx(
     },
     select: { id: true },
   });
-  if (!normalizedDocument) throw staleError();
+  if (!normalizedDocument) {
+    return {
+      status: "STALE",
+      binding: null,
+      latest: latestRef,
+      reason: "ND_OR_BUNDLE_MISMATCH",
+    };
+  }
 
+  return {
+    status: "CURRENT",
+    binding: matched,
+    latest: latestRef,
+  };
+}
+
+/**
+ * Resolve the current knowledge pipeline binding for a pack version.
+ * Uses the actual latest PipelineRun only (no older PASS fallback).
+ */
+export async function resolveCurrentValidationBindingTx(
+  tx: TxClient,
+  input: {
+    packId: string;
+    versionId: string;
+    expectedPipelineRunId?: string | null;
+  },
+): Promise<CurrentValidationBinding> {
+  const state = await resolveValidationBindingState(tx, {
+    packId: input.packId,
+    versionId: input.versionId,
+  });
+  if (state.status !== "CURRENT") {
+    throw staleErrorForBindingState(state);
+  }
   if (
     input.expectedPipelineRunId &&
     input.expectedPipelineRunId.trim() &&
-    input.expectedPipelineRunId !== matched.pipelineRunId
+    state.binding.pipelineRunId !== input.expectedPipelineRunId
   ) {
-    throw staleError();
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_STALE",
+      "데이터 구조화 실행 상태가 변경되었습니다. 다시 확인해 주세요.",
+      409,
+    );
   }
-
-  return matched;
+  return state.binding;
 }
 
 /** Load binding stored on a specific PipelineRun (historical evidence). */
@@ -140,100 +282,6 @@ export function runMatchesBinding(
     run.fingerprint === binding.fingerprint &&
     run.normalizedDocumentId === binding.normalizedDocumentId
   );
-}
-
-export type ValidationBindingState =
-  | {
-      status: "CURRENT";
-      binding: CurrentValidationBinding;
-      latest: { id: string };
-    }
-  | {
-      status: "MISSING";
-      binding: null;
-      latest: { id: string } | null;
-      reason?: string;
-    }
-  | {
-      status: "STALE";
-      binding: null;
-      latest: { id: string } | null;
-      reason: string;
-    };
-
-/**
- * Resolve CURRENT / MISSING / STALE without swallowing unexpected DB errors.
- */
-export async function resolveValidationBindingState(
-  tx: TxClient,
-  input: { packId: string; versionId: string },
-): Promise<ValidationBindingState> {
-  const latestAny = await tx.pipelineRun.findFirst({
-    where: {
-      packId: input.packId,
-      triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-    },
-    orderBy: { startedAt: "desc" },
-    select: { id: true },
-  });
-
-  const candidates = await tx.pipelineRun.findMany({
-    where: {
-      packId: input.packId,
-      triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-      status: "PASS",
-    },
-    orderBy: { startedAt: "desc" },
-    select: { id: true, packId: true, summary: true },
-  });
-
-  let matched: CurrentValidationBinding | null = null;
-  for (const run of candidates) {
-    if (run.packId !== input.packId) continue;
-    const binding = parseKnowledgeRunBinding(run.summary);
-    if (!binding || binding.versionId !== input.versionId) continue;
-    matched = toCurrentBinding(run.id, run.packId, binding);
-    break;
-  }
-
-  if (!matched) {
-    return { status: "MISSING", binding: null, latest: latestAny, reason: "NO_PASS_BINDING" };
-  }
-
-  const normalizedDocument = await tx.normalizedDocument.findFirst({
-    where: {
-      id: matched.normalizedDocumentId,
-      packId: input.packId,
-      versionId: input.versionId,
-      bundleId: matched.bundleId,
-      fingerprint: matched.fingerprint,
-      isActive: true,
-      bundle: {
-        id: matched.bundleId,
-        packId: input.packId,
-        versionId: input.versionId,
-        isActive: true,
-        deletedAt: null,
-        storageStatus: "ACTIVE",
-        status: "REVIEW_READY",
-      },
-    },
-    select: { id: true },
-  });
-  if (!normalizedDocument) {
-    return {
-      status: "STALE",
-      binding: null,
-      latest: { id: matched.pipelineRunId },
-      reason: "ND_OR_BUNDLE_MISMATCH",
-    };
-  }
-
-  return {
-    status: "CURRENT",
-    binding: matched,
-    latest: { id: matched.pipelineRunId },
-  };
 }
 
 export function evidenceIntegrityForRun(
