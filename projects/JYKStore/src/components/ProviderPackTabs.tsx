@@ -84,7 +84,7 @@ export function ProviderPackTabs({
                 if (locked) return;
                 onSelectTab(tabId);
               }}
-              className={`min-h-[44px] min-w-[4.5rem] flex-1 whitespace-nowrap rounded-xl px-1.5 py-1 text-[11px] font-bold sm:min-w-0 sm:px-3 sm:text-sm ${
+              className={`min-h-[44px] min-w-[4.5rem] flex-1 rounded-xl px-1.5 py-1 text-[11px] font-bold sm:min-w-0 sm:whitespace-nowrap sm:px-3 sm:text-sm ${
                 active
                   ? "bg-store-accent text-white"
                   : locked
@@ -92,9 +92,11 @@ export function ProviderPackTabs({
                     : "bg-transparent text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <span className="sm:hidden">
-                {index + 1}. {labels.shortLabel}
-                {statusText ? ` · ${statusText}` : ""}
+              <span className="flex flex-col items-start gap-0.5 leading-tight sm:hidden">
+                <span>
+                  {index + 1}. {labels.shortLabel}
+                </span>
+                {statusText ? <span className="font-semibold opacity-90">{statusText}</span> : null}
               </span>
               <span className="hidden sm:inline">
                 {index + 1}. {labels.label}

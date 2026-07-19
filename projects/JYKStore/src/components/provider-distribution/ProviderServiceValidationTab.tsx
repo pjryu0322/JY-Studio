@@ -22,6 +22,14 @@ import {
   DOWNLOAD_REJECTION_REASONS,
   RETRIEVAL_REJECTION_REASONS,
 } from "@/lib/distribution/service-validation-confirmation-constants";
+import {
+  isRankingPolicyStaleRun,
+  resolveSearchDataNotReadyBanner,
+  resolveSearchValidationGuidance,
+  resolveSearchValidationStepDisplayState,
+  resolveSearchValidationWorkSteps,
+  type SearchValidationStepDisplayState,
+} from "@/lib/search-data/search-validation-ux-state";
 
 function systemLabel(status: string): string {
   switch (status) {
@@ -49,7 +57,7 @@ function confirmLabel(status: string | null | undefined): string {
     case "REJECTED":
       return "보완 필요";
     case "STALE":
-      return "다시 검증 필요";
+      return "다시 확인 필요";
     case "NOT_REVIEWED":
       return "품질 확인 필요";
     default:
@@ -120,32 +128,31 @@ function ResultCard({
 }) {
   const relevance =
     item.relevancePercent != null
-      ? `관련도 ${item.relevanceLabel} · ${item.relevancePercent}%`
-      : `관련도 ${item.relevanceLabel}`;
+      ? `관련도: ${item.relevanceLabel} · ${item.relevancePercent}%`
+      : `관련도: ${item.relevanceLabel}`;
+  const pageText = item.pageLabel?.trim() ? item.pageLabel : "페이지 정보 없음";
   return (
     <article className="rounded-xl border border-store-border bg-white px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold text-slate-500">상위 {item.rank}</p>
-          <h4 className="mt-0.5 text-sm font-bold text-slate-900">{item.title}</h4>
+          <h4 className="mt-0.5 line-clamp-2 text-sm font-bold text-slate-900">{item.title}</h4>
           <p className="mt-1 text-xs text-slate-600">{relevance}</p>
-          <p className="mt-1 text-xs text-store-muted">
-            {item.sourceDocumentTitle}
-            {item.pageLabel ? ` · ${item.pageLabel}` : ""}
-          </p>
+          <div className="mt-1 space-y-0.5 text-xs text-store-muted">
+            <p>
+              <span className="font-semibold text-slate-700">출처:</span>{" "}
+              {item.sourceDocumentTitle || "출처 정보 없음"}
+            </p>
+            <p>
+              <span className="font-semibold text-slate-700">페이지:</span> {pageText}
+            </p>
+          </div>
         </div>
       </div>
       <p className={`mt-2 text-sm text-slate-700 ${expanded ? "" : "line-clamp-3"}`}>
         “{item.snippet}”
       </p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="min-h-[44px] rounded-lg border border-store-border px-3 text-xs font-semibold text-slate-700"
-        >
-          {expanded ? "접기" : "펼쳐보기"}
-        </button>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {item.previewAvailable ? (
           <button
             type="button"
@@ -163,6 +170,13 @@ function ResultCard({
             원문 위치 정보
           </button>
         )}
+        <button
+          type="button"
+          onClick={onToggle}
+          className="min-h-[44px] rounded-lg border border-store-border px-3 text-xs font-semibold text-slate-700"
+        >
+          {expanded ? "접기" : "펼쳐보기"}
+        </button>
       </div>
     </article>
   );
@@ -489,6 +503,7 @@ export function ProviderServiceValidationTab({
   onGoToKnowledge,
   onStatusChange,
   onSearchDataStateChange,
+  onSearchDataMetaChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
@@ -502,6 +517,7 @@ export function ProviderServiceValidationTab({
   readonly onSearchDataStateChange?: (
     state: import("@/lib/search-data/search-data-state").SearchDataUiState | null,
   ) => void;
+  readonly onSearchDataMetaChange?: (meta: { rankingPolicyStale: boolean }) => void;
 }) {
   void _knowledgeStatus;
   const [status, setStatus] = useState<ServiceValidationStatusDto | null>(null);
@@ -518,12 +534,20 @@ export function ProviderServiceValidationTab({
   const [searchBusy, setSearchBusy] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
 
+  const notifySearchData = useCallback(
+    (data: SearchDataStatusDto) => {
+      setSearchData(data);
+      onSearchDataStateChange?.(data.state);
+      onSearchDataMetaChange?.({ rankingPolicyStale: Boolean(data.rankingPolicyStale) });
+    },
+    [onSearchDataStateChange, onSearchDataMetaChange],
+  );
+
   const loadSearchData = useCallback(async () => {
     const data = await fetchProviderSearchDataStatusApi(packId);
-    setSearchData(data);
-    onSearchDataStateChange?.(data.state);
+    notifySearchData(data);
     return data;
-  }, [packId, onSearchDataStateChange]);
+  }, [packId, notifySearchData]);
 
   const load = useCallback(async () => {
     try {
@@ -532,16 +556,15 @@ export function ProviderServiceValidationTab({
         fetchProviderSearchDataStatusApi(packId),
       ]);
       setStatus(svc);
-      setSearchData(sd);
+      notifySearchData(sd);
       onStatusChange?.(svc);
-      onSearchDataStateChange?.(sd.state);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색데이터 검증 상태를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [packId, onStatusChange, onSearchDataStateChange]);
+  }, [packId, onStatusChange, notifySearchData]);
 
   useEffect(() => {
     void load();
@@ -575,8 +598,7 @@ export function ProviderServiceValidationTab({
     try {
       await generateProviderSearchDataApi(packId, { forceRegenerate });
       // 202 enqueue → poll authoritative status (do not surface card failures as global alert).
-      const next = await loadSearchData();
-      setSearchData(next);
+      await loadSearchData();
     } catch (err) {
       // Network / unexpected server errors only — CREATE_FAILED lives in the card.
       setError(err instanceof Error ? err.message : "검색데이터 요청에 실패했습니다.");
@@ -592,7 +614,7 @@ export function ProviderServiceValidationTab({
     setError(null);
     try {
       const next = await validateProviderSearchDataApi(packId);
-      setSearchData(next);
+      notifySearchData(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색 품질 검증에 실패했습니다.");
       await loadSearchData().catch(() => undefined);
@@ -601,20 +623,24 @@ export function ProviderServiceValidationTab({
     }
   }
 
-  async function handleRun(channel: "API" | "MCP" | "DOWNLOAD") {
+  async function handleRun(
+    channel: "API" | "MCP" | "DOWNLOAD",
+    queryOverride?: string,
+  ) {
     if (!canRun) return;
     if (channel !== "DOWNLOAD") {
-      const trimmed = draftQuery.trim();
+      const trimmed = (queryOverride ?? draftQuery).trim();
       if (trimmed.length < 2) {
         setQueryError("검색할 질문을 입력해 주세요.");
         return;
       }
       setQueryError(null);
+      if (queryOverride != null) setDraftQuery(queryOverride);
     }
     setRunningChannel(channel);
     setError(null);
     try {
-      const trimmed = draftQuery.trim();
+      const trimmed = (queryOverride ?? draftQuery).trim();
       await runProviderServiceValidationApi(packId, {
         channel,
         query: channel === "DOWNLOAD" ? undefined : trimmed,
@@ -674,6 +700,35 @@ export function ProviderServiceValidationTab({
     searchData?.state === "CREATED" ||
     searchData?.state === "VALIDATED" ||
     searchData?.state === "VALIDATION_FAILED";
+
+  const channelSnap = (name: "API" | "MCP" | "DOWNLOAD") => {
+    const c = status?.channels.find((x) => x.channel === name);
+    return c
+      ? {
+          systemStatus: c.systemStatus,
+          currentValidity: c.currentValidity,
+          providerConfirmationStatus: c.providerConfirmationStatus,
+        }
+      : null;
+  };
+
+  const displayState: SearchValidationStepDisplayState = resolveSearchValidationStepDisplayState({
+    searchDataState: searchData?.state,
+    rankingPolicyStale: searchData?.rankingPolicyStale,
+    canRunServiceValidation: searchData?.canRunServiceValidation,
+    api: channelSnap("API"),
+    mcp: channelSnap("MCP"),
+    download: channelSnap("DOWNLOAD"),
+  });
+  const guidance = resolveSearchValidationGuidance({
+    displayState,
+    rankingPolicyStale: searchData?.rankingPolicyStale,
+  });
+  const workSteps = resolveSearchValidationWorkSteps(displayState);
+  const showWorkOrder =
+    displayState === "AUTO_EVALUATION_REQUIRED" ||
+    displayState === "SERVICE_REVALIDATION_REQUIRED" ||
+    displayState === "PROVIDER_REVIEW_REQUIRED";
 
   if (loading) {
     return <p className="text-sm text-store-muted">검색데이터 검증 상태를 불러오는 중…</p>;
@@ -830,32 +885,36 @@ export function ProviderServiceValidationTab({
         {sd?.state === "VALIDATED" ? (
           <div className="mt-2 space-y-3">
             <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
+                <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
                   검색데이터 생성 완료
                 </span>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                  className={`w-fit rounded-full border px-2 py-0.5 text-[11px] font-bold ${
                     sd.rankingPolicyStale
-                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      ? "border-sky-200 bg-sky-50 text-sky-900"
                       : "border-emerald-200 bg-emerald-50 text-emerald-800"
                   }`}
                 >
                   {sd.rankingPolicyStale ? "자동 평가 다시 필요" : "자동 평가 통과"}
                 </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${
-                    sd.rankingPolicyStale || providerConfirmAggregate(selected) !== "CONFIRMED"
-                      ? "border-amber-200 bg-amber-50 text-amber-900"
-                      : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  }`}
-                >
-                  {sd.rankingPolicyStale
-                    ? "제공자 품질 확인 다시 필요"
-                    : providerConfirmAggregate(selected) === "CONFIRMED"
+                {sd.rankingPolicyStale ? (
+                  <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                    제공자 품질 확인 · 검색검증 후 가능
+                  </span>
+                ) : (
+                  <span
+                    className={`w-fit rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                      providerConfirmAggregate(selected) !== "CONFIRMED"
+                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    }`}
+                  >
+                    {providerConfirmAggregate(selected) === "CONFIRMED"
                       ? "제공자 품질 확인 완료"
                       : "제공자 품질 확인 필요"}
-                </span>
+                  </span>
+                )}
               </div>
               <p className="text-sm font-semibold text-emerald-900">검색데이터 준비 완료</p>
               <p className="text-xs text-slate-700">
@@ -863,22 +922,53 @@ export function ProviderServiceValidationTab({
                 {sd.dimension != null ? ` · ${sd.dimension}차원` : ""}
               </p>
             </div>
-            {sd.rankingPolicyStale ? (
+
+            {showWorkOrder ? (
               <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-3">
-                <p className="text-sm font-semibold text-amber-950">검색 순위 정책이 변경되었습니다.</p>
-                <p className="text-xs leading-snug text-amber-900">
-                  기존 검색데이터는 유지되며 자동 검색 평가만 다시 실행하면 됩니다.
-                </p>
-                <button
-                  type="button"
-                  disabled={!editable || !sd.canValidate || searchBusy}
-                  onClick={() => void handleValidateQuality()}
-                  className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {searchBusy ? "검증 중…" : "자동 평가 다시 실행"}
-                </button>
+                <p className="text-sm font-semibold text-amber-950">{guidance.title}</p>
+                {guidance.body.map((line) => (
+                  <p key={line} className="text-xs leading-snug text-amber-900">
+                    {line}
+                  </p>
+                ))}
+                <div className="space-y-1 pt-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                    현재 작업
+                  </p>
+                  <ol className="space-y-1 text-xs text-amber-950 sm:hidden">
+                    {workSteps.map((step, idx) => (
+                      <li key={step.id}>
+                        {idx + 1}. {step.label}
+                        {step.status === "current"
+                          ? " · 현재"
+                          : step.status === "done"
+                            ? " · 완료"
+                            : " · 대기"}
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="hidden text-xs text-amber-950 sm:block">
+                    {workSteps.map((s) => s.label).join(" → ")}
+                  </p>
+                </div>
+                {sd.rankingPolicyStale ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!editable || !sd.canValidate || searchBusy}
+                      onClick={() => void handleValidateQuality()}
+                      className="min-h-[44px] w-full rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto"
+                    >
+                      {searchBusy ? "실행 중..." : "자동 평가 다시 실행"}
+                    </button>
+                    <p className="text-xs text-amber-900">
+                      기존 검색데이터는 유지하고 현재 검색 순위 정책으로 평가만 다시 실행합니다.
+                    </p>
+                  </>
+                ) : null}
               </div>
             ) : null}
+
             {!sd.rankingPolicyStale && sd.validationSummary && sd.validationSummary.totalCases > 0 ? (
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -971,7 +1061,10 @@ export function ProviderServiceValidationTab({
                 : status?.validationLockReason === "BINDING_STALE"
                   ? "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 확인해 주세요."
                   : status?.validationLockReason === "SEARCH_DATA_NOT_READY"
-                    ? "검색데이터 생성과 자동 평가를 먼저 완료해 주세요."
+                    ? resolveSearchDataNotReadyBanner({
+                        rankingPolicyStale: Boolean(sd?.rankingPolicyStale),
+                        searchDataState: sd?.state,
+                      })
                     : "현재 상태에서는 검색검증을 변경할 수 없습니다."}
         </p>
       ) : null}
@@ -1075,6 +1168,14 @@ export function ProviderServiceValidationTab({
             channel.channel !== retrievalConfirmChannel &&
             channel.canConfirm &&
             channel.canShareConfirmationWithPeer;
+          const previousPolicyResult =
+            (channel.channel === "API" || channel.channel === "MCP") &&
+            isRankingPolicyStaleRun({
+              systemStatus: channel.systemStatus,
+              currentValidity: channel.currentValidity,
+            });
+          const confirmBlockedByStale =
+            previousPolicyResult || channel.providerConfirmationStatus === "STALE";
 
           return (
             <div
@@ -1087,17 +1188,37 @@ export function ProviderServiceValidationTab({
                   <p className="mt-1 text-xs text-store-muted">{copy.hint}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("system", channel.systemStatus)}`}
-                  >
-                    {systemLabel(channel.systemStatus)}
-                  </span>
-                  {channel.providerConfirmationStatus ? (
+                  {previousPolicyResult ? (
+                    <>
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                        이전 정책 결과
+                      </span>
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-900">
+                        재검색 필요
+                      </span>
+                    </>
+                  ) : (
                     <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("confirm", channel.providerConfirmationStatus)}`}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("system", channel.systemStatus)}`}
                     >
-                      {confirmLabel(channel.providerConfirmationStatus)}
+                      {systemLabel(channel.systemStatus)}
                     </span>
+                  )}
+                  {channel.providerConfirmationStatus ? (
+                    previousPolicyResult || channel.providerConfirmationStatus === "STALE" ? (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                        {channel.providerConfirmationStatus === "CONFIRMED" ||
+                        channel.confirmation?.status === "CONFIRMED"
+                          ? "이전 확인 결과 · 다시 확인 필요"
+                          : "품질 확인 대기"}
+                      </span>
+                    ) : (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${badgeClass("confirm", channel.providerConfirmationStatus)}`}
+                      >
+                        {confirmLabel(channel.providerConfirmationStatus)}
+                      </span>
+                    )
                   ) : null}
                 </div>
               </div>
@@ -1113,6 +1234,43 @@ export function ProviderServiceValidationTab({
                     {channel.channel === "API" ? "Retrieval API" : "MCP"}
                   </p>
                 </div>
+              ) : null}
+
+              {previousPolicyResult && channel.results.length > 0 ? (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  이 결과는 이전 검색 순위 정책으로 실행한 참고용 결과입니다. 자동 평가 완료 후 같은
+                  질문 또는 새 질문으로 다시 검색해 주세요.
+                </p>
+              ) : null}
+
+              {!canRun &&
+              (channel.channel === "API" || channel.channel === "MCP") &&
+              (sd?.rankingPolicyStale || displayState === "AUTO_EVALUATION_REQUIRED") ? (
+                <p className="mt-3 text-xs text-slate-700">
+                  자동 평가를 완료하면 {channel.channel === "API" ? "API" : "MCP"} 검색을 다시 실행할
+                  수 있습니다.
+                </p>
+              ) : null}
+
+              {canRun &&
+              (channel.channel === "API" || channel.channel === "MCP") &&
+              channel.query &&
+              previousPolicyResult ? (
+                <button
+                  type="button"
+                  disabled={runningChannel != null}
+                  onClick={() => {
+                    const q = channel.query ?? "";
+                    setDraftQuery(q);
+                    setQueryError(null);
+                    void handleRun(channel.channel as "API" | "MCP", q);
+                  }}
+                  className="mt-3 min-h-[44px] w-full rounded-xl border border-sky-200 bg-sky-50 px-3 text-sm font-semibold text-sky-950 disabled:opacity-60 sm:w-auto"
+                >
+                  {runningChannel === channel.channel
+                    ? "검색 중…"
+                    : "같은 질문으로 다시 검색"}
+                </button>
               ) : null}
 
               {channel.failureMessage ? (
@@ -1194,7 +1352,7 @@ export function ProviderServiceValidationTab({
                 </div>
               ) : null}
 
-              {channel.confirmation?.status === "CONFIRMED" ? (
+              {channel.confirmation?.status === "CONFIRMED" && !confirmBlockedByStale ? (
                 <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
                   품질 확인 완료
                   {channel.confirmation.confirmedByName
@@ -1209,7 +1367,7 @@ export function ProviderServiceValidationTab({
                 </p>
               ) : null}
 
-              {channel.confirmation?.status === "REJECTED" ? (
+              {channel.confirmation?.status === "REJECTED" && !confirmBlockedByStale ? (
                 <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
                   보완 필요
                   {channel.confirmation.rejectionReason
@@ -1219,7 +1377,17 @@ export function ProviderServiceValidationTab({
                 </p>
               ) : null}
 
-              {!hideRetrievalConfirm && channel.channel !== "DOWNLOAD" ? (
+              {confirmBlockedByStale && channel.channel !== "DOWNLOAD" ? (
+                <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  품질 확인 대기
+                  <br />
+                  현재 정책으로 다시 검색한 후 확인할 수 있습니다.
+                </p>
+              ) : null}
+
+              {!hideRetrievalConfirm &&
+              channel.channel !== "DOWNLOAD" &&
+              !confirmBlockedByStale ? (
                 <RetrievalConfirmPanel
                   channel={channel}
                   packId={packId}

@@ -44,6 +44,8 @@ describe("provider search validation UX", () => {
     assert.match(tab, /품질 확인 필요/);
     assert.match(tab, /결과 적절함/);
     assert.match(tab, /검색 결과 보완 필요/);
+    assert.match(tab, /제공자 품질 확인 · 검색검증 후 가능/);
+    assert.doesNotMatch(tab, /제공자 품질 확인 다시 필요/);
     assert.doesNotMatch(tab, /검색 품질 검증 완료/);
   });
 
@@ -52,6 +54,7 @@ describe("provider search validation UX", () => {
     assert.match(tab, /validationLockReason === "OPEN_REVIEW"/);
     assert.match(tab, /검수요청을 회수해 주세요/);
     assert.match(tab, /BINDING_MISSING/);
+    assert.match(tab, /resolveSearchDataNotReadyBanner/);
     assert.doesNotMatch(
       tab,
       /!status\?\.canRunValidation \? \(\s*<p[^>]*>\s*검수요청 시점의 검증 결과입니다/,
@@ -64,6 +67,18 @@ describe("provider search validation UX", () => {
       tab,
       /검색 결과 품질을 개선하려면 데이터 구조화를 다시 실행하거나/,
     );
+  });
+
+  it("labels STALE runs as previous-policy results and keeps confirm disabled", () => {
+    assert.match(tab, /이전 정책 결과/);
+    assert.match(tab, /재검색 필요/);
+    assert.match(tab, /같은 질문으로 다시 검색/);
+    assert.match(tab, /품질 확인 대기/);
+    assert.match(tab, /현재 정책으로 다시 검색한 후 확인할 수 있습니다/);
+    assert.match(tab, /isRankingPolicyStaleRun/);
+    assert.match(tab, /line-clamp-3/);
+    assert.match(tab, /출처:/);
+    assert.match(tab, /페이지:/);
   });
 
   it("keeps tech info collapsed by default and results top-3 expandable", () => {

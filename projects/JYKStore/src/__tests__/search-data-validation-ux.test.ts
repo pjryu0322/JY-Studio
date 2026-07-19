@@ -31,6 +31,7 @@ describe("ProviderServiceValidationTab search-data UX", () => {
     assert.match(source, /sd\?\.state === "CREATED"/);
     assert.match(source, /min-h-\[44px\]/);
     assert.match(source, /canRunServiceValidation/);
+    assert.match(source, /resolveSearchDataNotReadyBanner/);
   });
 
   it("keeps CREATE_FAILED message in the card only (no duplicate global alert path)", () => {

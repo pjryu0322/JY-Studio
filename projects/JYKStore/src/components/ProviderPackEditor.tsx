@@ -22,7 +22,12 @@ import {
   isDoclingSourceMaterialsReady,
 } from "@/lib/docling-import/docling-source-materials-readiness";
 import type { SearchDataUiState } from "@/lib/search-data/search-data-state";
-import { searchDataTabStatusLabel } from "@/lib/search-data/search-data-state";
+import {
+  resolveDistributionStepLockMessage,
+  resolveSearchValidationStepDisplayState,
+  searchValidationStepRegistrationStatus,
+  searchValidationStepStatusLabel,
+} from "@/lib/search-data/search-validation-ux-state";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { PackLanguageCode } from "@/lib/pack-language";
 import {
@@ -78,6 +83,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [serviceValidation, setServiceValidation] =
     useState<ServiceValidationStatusDto | null>(null);
   const [searchDataUiState, setSearchDataUiState] = useState<SearchDataUiState | null>(null);
+  const [rankingPolicyStale, setRankingPolicyStale] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -140,7 +146,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setDoclingBundle(doclingRes.bundle);
       if (knowledgeRes) setKnowledgeStatus(knowledgeRes);
       if (serviceRes) setServiceValidation(serviceRes);
-      if (searchDataRes) setSearchDataUiState(searchDataRes.state);
+      if (searchDataRes) {
+        setSearchDataUiState(searchDataRes.state);
+        setRankingPolicyStale(Boolean(searchDataRes.rankingPolicyStale));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -332,7 +341,44 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   // §13 Single readiness source. Before load, keep everything except basic locked.
   const tabLocks = useMemo(() => {
     if (registrationReadiness) {
-      return tabLocksFromRegistrationReadiness(registrationReadiness);
+      const locks = tabLocksFromRegistrationReadiness(registrationReadiness);
+      const channel = (name: "API" | "MCP" | "DOWNLOAD") => {
+        const c = serviceValidation?.channels.find((x) => x.channel === name);
+        return c
+          ? {
+              systemStatus: c.systemStatus,
+              currentValidity: c.currentValidity,
+              providerConfirmationStatus: c.providerConfirmationStatus,
+            }
+          : null;
+      };
+      const displayState = resolveSearchValidationStepDisplayState({
+        searchDataState: searchDataUiState,
+        rankingPolicyStale,
+        api: channel("API"),
+        mcp: channel("MCP"),
+        download: channel("DOWNLOAD"),
+      });
+      if (locks.distributionReview.locked) {
+        const reason = resolveDistributionStepLockMessage({
+          displayState,
+          structurePassed,
+          // Prefer display-state copy for revalidation; only force foundation message when truly missing.
+          searchFoundationPassed: searchFoundationPassed ? undefined : false,
+          allPreparationChannelsPassed: serviceValidationPassed ? undefined : false,
+        });
+        return {
+          ...locks,
+          distributionReview: {
+            locked: true,
+            reason:
+              reason ??
+              locks.distributionReview.reason ??
+              "자동 평가, API·MCP 검색검증, 제공자 품질 확인을 완료하면 열립니다.",
+          },
+        };
+      }
+      return locks;
     }
     const lockedReason = "지식팩을 불러오는 중입니다.";
     return {
@@ -342,17 +388,42 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       serviceValidation: { locked: true, reason: lockedReason },
       distributionReview: { locked: true, reason: lockedReason },
     } satisfies Record<ProviderPackTabId, { locked: boolean; reason: string | null }>;
-  }, [registrationReadiness]);
+  }, [
+    registrationReadiness,
+    searchDataUiState,
+    rankingPolicyStale,
+    serviceValidation,
+    structurePassed,
+    searchFoundationPassed,
+    serviceValidationPassed,
+  ]);
 
   const tabStepStatuses = useMemo(() => {
     if (registrationReadiness) {
       const base = tabStepStatusesFromRegistrationReadiness(registrationReadiness);
       if (searchDataUiState) {
+        const channel = (name: "API" | "MCP" | "DOWNLOAD") => {
+          const c = serviceValidation?.channels.find((x) => x.channel === name);
+          return c
+            ? {
+                systemStatus: c.systemStatus,
+                currentValidity: c.currentValidity,
+                providerConfirmationStatus: c.providerConfirmationStatus,
+              }
+            : null;
+        };
+        const displayState = resolveSearchValidationStepDisplayState({
+          searchDataState: searchDataUiState,
+          rankingPolicyStale,
+          api: channel("API"),
+          mcp: channel("MCP"),
+          download: channel("DOWNLOAD"),
+        });
         return {
           ...base,
           serviceValidation: {
-            status: searchDataUiState === "VALIDATED" ? "COMPLETED" : "IN_PROGRESS",
-            statusLabel: searchDataTabStatusLabel(searchDataUiState),
+            status: searchValidationStepRegistrationStatus(displayState),
+            statusLabel: searchValidationStepStatusLabel(displayState),
           },
         };
       }
@@ -361,7 +432,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     return {} as Partial<
       Record<ProviderPackTabId, { status: string; statusLabel: string }>
     >;
-  }, [registrationReadiness, searchDataUiState]);
+  }, [registrationReadiness, searchDataUiState, rankingPolicyStale, serviceValidation]);
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
@@ -649,7 +720,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               onGoToDistributionReview={() => selectTab("distributionReview")}
               onGoToKnowledge={() => selectTab("knowledge")}
               onStatusChange={setServiceValidation}
-              onSearchDataStateChange={setSearchDataUiState}
+              onSearchDataStateChange={(state) => setSearchDataUiState(state)}
+              onSearchDataMetaChange={(meta) => {
+                setRankingPolicyStale(Boolean(meta.rankingPolicyStale));
+              }}
             />
           )}
         </div>
