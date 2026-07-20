@@ -4,6 +4,10 @@
  * Public surface is unchanged: this module re-exports the split helpers and
  * lifecycle writers, and `buildKnowledgeFromNormalizedDocument` orchestrates the
  * extracted context / KU-draft / retrieval-chunk builders.
+ *
+ * Used only by the legacy Docling JSON/MD knowledge pipeline.
+ * Do **not** call from `worker_zip_import` — Python Worker `chunks.json` is
+ * the source of truth on that path (`prepareWorkerOutputImport`).
  */
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";

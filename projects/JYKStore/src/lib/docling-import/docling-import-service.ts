@@ -1,3 +1,13 @@
+/**
+ * Legacy / manual Docling JSON+Markdown upload import.
+ *
+ * Import channel: `legacy_docling_upload` / `manual_docling_import`
+ * (see `src/lib/python-worker/import-channel.ts`).
+ *
+ * ZIP → Python Worker → Store import uses a separate path
+ * (`worker_zip_import`) that validates Worker output and imports
+ * `chunks.json` / `source_trace.json` without regenerating chunks here.
+ */
 import {
   AuditAction,
   DoclingBundleStorageStatus,
