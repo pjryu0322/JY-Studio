@@ -100,7 +100,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
     });
 
-    return new Response(toWebReadable(prepared.stream), {
+    const body: BodyInit | null =
+      prepared.bodyBytes != null
+        ? Uint8Array.from(prepared.bodyBytes)
+        : prepared.stream
+          ? toWebReadable(prepared.stream)
+          : null;
+    if (!body) {
+      throw new PayloadServiceError(
+        "DOWNLOAD_OBJECT_NOT_FOUND",
+        "다운로드 본문을 열 수 없습니다.",
+        404,
+      );
+    }
+
+    return new Response(body, {
       status: 200,
       headers,
     });

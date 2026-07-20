@@ -198,5 +198,7 @@
   "src/__tests__/ranking-policy-evaluation-gates.test.ts",
   "src/__tests__/search-validation-ux-state.test.ts",
   "src/__tests__/provider-search-validation-ux.test.ts",
-  "src/__tests__/rag-export-package.test.ts"
+  "src/__tests__/rag-export-package.test.ts",
+  "src/__tests__/review-submit-rag-export-evidence.test.ts",
+  "src/__tests__/context-api-connect-ux-compact.test.ts"
 ]

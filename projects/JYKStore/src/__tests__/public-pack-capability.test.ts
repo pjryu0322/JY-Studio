@@ -95,10 +95,21 @@ describe("public capability gated UI/API source contracts", () => {
   });
 
   it("API Key panel does not claim pack-specific key", () => {
-    const source = readSource("components/SelectedPackApiKeyIssuePanel.tsx");
+    const source = readSource("components/ApiConnectionInfo.tsx");
     assert.equal(source.includes("이 지식팩 연동용 API Key 발급"), false);
     assert.match(source, /특정 지식팩 전용 Key가 아닙니다/);
     assert.match(source, /"API Key 발급"/);
+  });
+
+  it("connect page uses compact API connection info panel", () => {
+    const page = readSource("components/ConnectPageClient.tsx");
+    assert.match(page, /ApiConnectionInfo/);
+    assert.match(page, /ContextApiTestPanel/);
+    assert.equal(page.includes("IntegrationStepCard"), false);
+    assert.equal(page.includes("API Key 전체 관리 →"), false);
+    assert.equal(page.includes('title="API Key 발급"'), false);
+    assert.equal(page.includes('title="Pack ID 확인"'), false);
+    assert.equal(page.includes('title="Context API Endpoint 확인"'), false);
   });
 
   it("Context and Retrieval routes return capability 409 codes", () => {

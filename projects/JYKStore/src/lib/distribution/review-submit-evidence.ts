@@ -271,7 +271,26 @@ export async function assertReviewSubmitEvidenceInTx(
       if (snapDownloadTestId != null && downloadTest.id !== snapDownloadTestId) {
         throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
       }
-      if (sourceFile && downloadTest.fileId !== sourceFile.id) {
+      const runDetails =
+        run.details && typeof run.details === "object" && !Array.isArray(run.details)
+          ? (run.details as Record<string, unknown>)
+          : null;
+      // RAG Export download-test evidence stores exportFingerprint as fileId,
+      // not KnowledgePackFile (SOURCE_ORIGINAL) id.
+      if (runDetails?.downloadMode === "RAG_EXPORT") {
+        const expectedExportId =
+          typeof runDetails.exportFingerprint === "string"
+            ? runDetails.exportFingerprint
+            : typeof runDetails.fileId === "string"
+              ? runDetails.fileId
+              : null;
+        if (!expectedExportId || downloadTest.fileId !== expectedExportId) {
+          throw new ReviewSubmitEvidenceError(
+            "VALIDATION_DRIFT",
+            "RAG Export 다운로드 테스트 증적이 검증 결과와 일치하지 않습니다. 다시 검증·다운로드해 주세요.",
+          );
+        }
+      } else if (sourceFile && downloadTest.fileId !== sourceFile.id) {
         throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
       }
     }

@@ -190,6 +190,29 @@ describe("provider service quality + admin ops log", () => {
         bindingIndexGenerationId: "g1",
         expectedRankingPolicyVersion: "relevance_diversity_v2",
       }),
+      "STALE",
+    );
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: null,
+          channel: "DOWNLOAD",
+          details: {
+            downloadMode: "RAG_EXPORT",
+            ragExportPolicyVersion: "rag_export_v1",
+            ragExportSchemaVersion: "jyk-rag-export/1.0",
+            exportFingerprint: "fp-export",
+            checksumsValid: true,
+            sourceTraceValid: true,
+          },
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+        expectedRankingPolicyVersion: "relevance_diversity_v2",
+      }),
       "CURRENT",
     );
   });
@@ -266,7 +289,16 @@ describe("provider service quality + admin ops log", () => {
     );
     assert.ok(downloadTest.includes("prepareProviderDownloadTest"));
     assert.ok(downloadTest.includes("commitSuccessfulDownloadTestEvidence"));
+    assert.ok(downloadTest.includes("bodyBytes"));
     assert.equal(downloadTest.includes("Buffer.from"), false);
+    const confirmationService = readFileSync(
+      join(root, "src/lib/distribution/service-validation-confirmation-service.ts"),
+      "utf8",
+    );
+    assert.ok(confirmationService.includes('downloadMode === "RAG_EXPORT"'));
+    assert.ok(confirmationService.includes("bodyBytes: pkg.zipBytes"));
+    assert.ok(confirmationService.includes("isRagExport"));
+    assert.equal(/Readable\.from\s*\(/.test(confirmationService), false);
     const inlinePreview = readFileSync(
       join(
         root,

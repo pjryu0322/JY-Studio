@@ -4,15 +4,13 @@ import Link from "next/link";
 import { useState } from "react";
 import type { KnowledgePack } from "@/types/pack";
 import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
+import { ApiConnectionInfo } from "@/components/ApiConnectionInfo";
 import { CodeSnippet } from "@/components/CodeSnippet";
 import { ConnectInfoCard } from "@/components/ConnectInfoCard";
 import { ContextApiTestPanel } from "@/components/ContextApiTestPanel";
-import { IntegrationStepCard } from "@/components/IntegrationStepCard";
-import { SelectedPackApiKeyIssuePanel } from "@/components/SelectedPackApiKeyIssuePanel";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useMyPacks } from "@/hooks/useMyPacks";
 import {
-  API_KEY_PLACEHOLDER,
   createCurlExample,
   createCursorPromptExample,
   createGenericLlmPromptExample,
@@ -73,51 +71,22 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-        <p className="text-sm leading-relaxed text-slate-800">
-          이 화면에서 API Key를 발급하고, 같은 화면에서 Context API 응답을 바로 확인할 수 있습니다.
-        </p>
-        <Link
-          href={ROUTES.apiKeys}
-          className="mt-3 inline-flex min-h-[44px] items-center text-sm font-bold text-store-accent"
-        >
-          API Key 전체 관리 →
-        </Link>
-      </div>
+      <ApiConnectionInfo
+        packId={pack.packId}
+        packName={pack.name}
+        endpoint={endpoint}
+        onIssued={setIssuedApiKey}
+      />
 
-      <IntegrationStepCard step={1} title="API Key 발급">
-        <SelectedPackApiKeyIssuePanel
-          packId={pack.packId}
-          packName={pack.name}
-          onIssued={setIssuedApiKey}
-        />
-        <div className="mt-4">
-          <ConnectInfoCard
-            label="Authorization 헤더 형식"
-            value={`Bearer ${API_KEY_PLACEHOLDER}`}
-            hint="발급한 Key를 Bearer 토큰으로 Context API에 전달합니다."
-          />
-        </div>
-      </IntegrationStepCard>
+      <ContextApiTestPanel
+        packId={pack.packId}
+        packName={pack.name}
+        initialApiKey={issuedApiKey}
+      />
 
-      <IntegrationStepCard step={2} title="Pack ID 확인">
-        <ConnectInfoCard label="Pack ID" value={pack.packId} />
-      </IntegrationStepCard>
-
-      <IntegrationStepCard step={3} title="Context API Endpoint 확인">
-        <ConnectInfoCard label="Endpoint" value={endpoint} />
-      </IntegrationStepCard>
-
-      <IntegrationStepCard step={4} title="Context API 테스트">
-        <ContextApiTestPanel
-          packId={pack.packId}
-          packName={pack.name}
-          initialApiKey={issuedApiKey}
-        />
-      </IntegrationStepCard>
-
-      <IntegrationStepCard step={5} title="예시 코드 복사">
-        <div className="space-y-4">
+      <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-base font-bold text-slate-900">예시 코드 복사</h2>
+        <div className="mt-4 space-y-4">
           <CodeSnippet title="cURL" language="bash" code={createCurlExample(pack.packId)} />
           <CodeSnippet
             title="JavaScript fetch"
@@ -127,10 +96,11 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
           <CodeSnippet title="Java / Spring" language="java" code={createJavaSpringExample(pack.packId)} />
           <CodeSnippet title="Python" language="python" code={createPythonExample(pack.packId)} />
         </div>
-      </IntegrationStepCard>
+      </section>
 
-      <IntegrationStepCard step={6} title="AI 도구용 Prompt 복사">
-        <div className="space-y-4">
+      <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-base font-bold text-slate-900">AI 도구용 Prompt 복사</h2>
+        <div className="mt-4 space-y-4">
           <CodeSnippet
             title="Cursor Prompt"
             description="Cursor 등 코딩 에이전트에 붙여 넣을 수 있는 안내 문구입니다."
@@ -144,20 +114,23 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
             code={createGenericLlmPromptExample(pack.packId, pack.name)}
           />
         </div>
-      </IntegrationStepCard>
+      </section>
 
       {mcpReady ? (
-        <IntegrationStepCard step={7} title="MCP 연결">
-          <p className="text-sm leading-relaxed text-store-muted">
+        <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+          <h2 className="text-base font-bold text-slate-900">MCP 연결</h2>
+          <p className="mt-2 text-sm leading-relaxed text-store-muted">
             이 지식팩은 MCP Bridge를 통해 Retrieval 도구로 연결할 수 있습니다. MCP 서버 설정과 API Key는 계정
             기준으로 사용합니다.
           </p>
-          <ConnectInfoCard
-            label="MCP Manifest"
-            value={`/api/v1/exports/mcp-manifest?knowledgePackId=${pack.packId}`}
-            hint="Bearer API Key로 조회하는 MCP-ready 계약 문서입니다."
-          />
-        </IntegrationStepCard>
+          <div className="mt-4">
+            <ConnectInfoCard
+              label="MCP Manifest"
+              value={`/api/v1/exports/mcp-manifest?knowledgePackId=${pack.packId}`}
+              hint="Bearer API Key로 조회하는 MCP-ready 계약 문서입니다."
+            />
+          </div>
+        </section>
       ) : null}
     </div>
   );

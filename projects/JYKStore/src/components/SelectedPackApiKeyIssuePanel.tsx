@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
+import { IssuedApiKeyNotice } from "@/components/IssuedApiKeyNotice";
 import { issueSelectedPackApiKey } from "@/lib/selected-pack-api-key-client";
 
+/**
+ * Compact API Key issue control used by connect flows that already render Pack ID / Endpoint elsewhere.
+ * Prefer {@link ApiConnectionInfo} on the connect page.
+ */
 export function SelectedPackApiKeyIssuePanel({
   packId,
   packName,
@@ -32,10 +37,10 @@ export function SelectedPackApiKeyIssuePanel({
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-store-muted">
-        이 Key는 사용자 계정의 API 호출에 사용되며 특정 지식팩 전용 Key가 아닙니다. Key 이름에는 지식팩 이름이 참고용으로
-        포함될 수 있습니다.
+    <div className="space-y-2">
+      <p className="text-xs leading-relaxed text-store-muted">
+        이 Key는 사용자 계정의 API 호출에 사용되며 특정 지식팩 전용 Key가 아닙니다. Key 이름에는 지식팩 이름이
+        참고용으로 포함될 수 있습니다.
       </p>
 
       {error ? (
@@ -43,36 +48,26 @@ export function SelectedPackApiKeyIssuePanel({
       ) : null}
 
       {rawKeyOnce ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm font-bold text-amber-950">API Key가 발급되었습니다</p>
-          <p className="mt-2 text-xs leading-relaxed text-amber-900">
-            API Key는 이번에만 표시됩니다. 복사한 뒤 숨길 수 있습니다. 숨긴 뒤에도 아래 Context API 테스트 패널에는 이미
-            반영되어 있습니다.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <code className="min-w-0 flex-1 break-all rounded-xl bg-white px-3 py-2 text-xs text-slate-800">
-              {rawKeyOnce}
-            </code>
-            <CopyButton value={rawKeyOnce} label="Key 복사" className="w-full sm:w-auto" />
-          </div>
-          <button
-            type="button"
-            onClick={() => setRawKeyOnce(null)}
-            className="mt-3 min-h-[44px] w-full rounded-xl bg-white px-4 text-sm font-semibold text-slate-800 active:bg-slate-50"
-          >
-            확인했습니다 / Key 숨기기
-          </button>
-        </div>
+        <IssuedApiKeyNotice rawKey={rawKeyOnce} onHide={() => setRawKeyOnce(null)} />
       ) : (
         <button
           type="button"
           onClick={() => void onIssue()}
           disabled={issuing}
-          className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
         >
           {issuing ? "발급 중…" : "API Key 발급"}
         </button>
       )}
+
+      {rawKeyOnce ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <code className="min-w-0 flex-1 overflow-x-auto break-all rounded-lg bg-slate-50 px-2.5 py-2 font-mono text-xs text-slate-800">
+            {rawKeyOnce}
+          </code>
+          <CopyButton value={rawKeyOnce} label="Key 복사" className="min-w-[5.5rem]" />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -508,7 +508,10 @@ export type PreparedProviderDownloadTest = {
   fileName: string;
   mimeType: string;
   contentLength: number;
-  stream: import("node:stream").Readable;
+  /** Object-storage stream when present; RAG Export uses `bodyBytes` instead. */
+  stream: import("node:stream").Readable | null;
+  /** In-memory ZIP bytes for RAG Export (avoids Node stream helpers under Next bundling). */
+  bodyBytes?: Uint8Array;
   existingEvidence: boolean;
 };
 
@@ -621,7 +624,6 @@ export async function prepareProviderDownloadTest(input: {
         409,
       );
     }
-    const { Readable } = await import("node:stream");
     return {
       runId: run.id,
       packId: pack.packId,
@@ -630,7 +632,8 @@ export async function prepareProviderDownloadTest(input: {
       fileName: expectedName,
       mimeType: "application/zip",
       contentLength: pkg.zipBytes.byteLength,
-      stream: Readable.from(Buffer.from(pkg.zipBytes)),
+      stream: null,
+      bodyBytes: pkg.zipBytes,
       existingEvidence: Boolean(run.downloadTest?.responseReady),
     };
   }
@@ -748,26 +751,39 @@ export async function commitSuccessfulDownloadTestEvidence(input: {
         400,
       );
     }
-    const file = await tx.knowledgePackFile.findFirst({
-      where: {
-        id: input.fileId,
-        packId: input.packId,
-        versionId: input.versionId,
-        role: "SOURCE_ORIGINAL",
-        bundle: {
-          isActive: true,
-          deletedAt: null,
-          storageStatus: "ACTIVE",
+    const isRagExport = details?.downloadMode === "RAG_EXPORT";
+    if (isRagExport) {
+      const exportFp =
+        typeof details?.exportFingerprint === "string" ? details.exportFingerprint : null;
+      if (!exportFp || exportFp !== input.fileId) {
+        throw new PayloadServiceError(
+          "RAG_EXPORT_FINGERPRINT_MISMATCH",
+          "RAG Export 검증 증적이 올바르지 않습니다. 다시 검증해 주세요.",
+          400,
+        );
+      }
+    } else {
+      const file = await tx.knowledgePackFile.findFirst({
+        where: {
+          id: input.fileId,
+          packId: input.packId,
+          versionId: input.versionId,
+          role: "SOURCE_ORIGINAL",
+          bundle: {
+            isActive: true,
+            deletedAt: null,
+            storageStatus: "ACTIVE",
+          },
         },
-      },
-      select: { id: true },
-    });
-    if (!file) {
-      throw new PayloadServiceError(
-        "DOWNLOAD_OBJECT_NOT_FOUND",
-        "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
-        404,
-      );
+        select: { id: true },
+      });
+      if (!file) {
+        throw new PayloadServiceError(
+          "DOWNLOAD_OBJECT_NOT_FOUND",
+          "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.",
+          404,
+        );
+      }
     }
 
     if (run.downloadTest?.responseReady) {
