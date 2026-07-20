@@ -14,10 +14,20 @@ describe("search-data async enqueue + failure UX", () => {
     join(root, "src/app/api/v1/provider/packs/[packId]/search-data/generate/route.ts"),
     "utf8",
   );
-  const service = readFileSync(
-    join(root, "src/lib/search-data/search-data-generation-service.ts"),
-    "utf8",
-  );
+  const service = [
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-service.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-types.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-policy.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx.ts"), "utf8"),
+    readFileSync(
+      join(root, "src/lib/search-data/search-data-generation-enqueue-preflight.ts"),
+      "utf8",
+    ),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation.ts"), "utf8"),
+  ].join("\n");
   const pkg = readFileSync(join(root, "package.json"), "utf8");
 
   it("returns HTTP 202 for accepted generate enqueue", () => {

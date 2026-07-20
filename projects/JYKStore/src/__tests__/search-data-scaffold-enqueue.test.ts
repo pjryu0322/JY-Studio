@@ -6,16 +6,19 @@ import { fileURLToPath } from "node:url";
 import { reserveSplitSuffixTokens } from "../lib/docling-knowledge/docling-nd-knowledge-builder.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const searchDataDir = join(root, "src/lib/search-data");
+
+function readSearchDataModule(name: string): string {
+  return readFileSync(join(searchDataDir, name), "utf8");
+}
 
 describe("search-data scaffold enqueue branching", () => {
-  const service = readFileSync(
-    join(root, "src/lib/search-data/search-data-generation-service.ts"),
-    "utf8",
-  );
-  const enqueueSlice = service.slice(
-    service.indexOf("export async function startSearchDataGeneration"),
-    service.indexOf("export type ClaimedSearchDataGeneration"),
-  );
+  const enqueueSlice = [
+    readSearchDataModule("search-data-generation-enqueue.ts"),
+    readSearchDataModule("search-data-generation-enqueue-tx.ts"),
+    readSearchDataModule("search-data-generation-enqueue-preflight.ts"),
+  ].join("\n");
+  const worker = readSearchDataModule("search-data-generation-worker.ts");
 
   it("treats PENDING attempt=0 as scaffold enqueue, not already_running", () => {
     assert.match(enqueueSlice, /isActivelyRunning/);
@@ -40,17 +43,17 @@ describe("search-data scaffold enqueue branching", () => {
   });
 
   it("keeps claim gated on attempt > 0", () => {
-    const claimSlice = service.slice(
-      service.indexOf("export async function claimNextSearchDataGeneration"),
-      service.indexOf("export async function processSearchDataGenerationJob"),
+    const claimSlice = worker.slice(
+      worker.indexOf("export async function claimNextSearchDataGeneration"),
+      worker.indexOf("export async function processSearchDataGenerationJob"),
     );
     assert.match(claimSlice, /j\.attempt > 0/);
   });
 
   it("checks SEARCH_DATA_RECOVERY_CONFLICT before markSearchGenerationFailed", () => {
-    const recoverSlice = service.slice(
-      service.indexOf("export async function recoverOneStaleSearchDataGeneration"),
-      service.indexOf("export async function claimNextSearchDataGeneration"),
+    const recoverSlice = worker.slice(
+      worker.indexOf("export async function recoverOneStaleSearchDataGeneration"),
+      worker.indexOf("export async function claimNextSearchDataGeneration"),
     );
     const conflictIdx = recoverSlice.indexOf('SEARCH_DATA_RECOVERY_CONFLICT');
     const failIdx = recoverSlice.lastIndexOf("markSearchGenerationFailed");

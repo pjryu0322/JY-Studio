@@ -252,10 +252,16 @@ describe("pipeline ownership boundary (static)", () => {
       join(projectRoot, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
       "utf8",
     );
-    const worker = readFileSync(
-      join(projectRoot, "src/lib/search-data/search-data-generation-service.ts"),
-      "utf8",
-    );
+    const worker = [
+      readFileSync(
+        join(projectRoot, "src/lib/search-data/search-data-generation-worker.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(projectRoot, "src/lib/search-data/search-data-generation-process.ts"),
+        "utf8",
+      ),
+    ].join("\n");
     assert.ok(!builder.includes("shrunk[0]"));
     assert.ok(builder.includes("assertPrimaryContentCoverage"));
     assert.ok(!pipeline.includes("rebuildPackEmbeddings"));

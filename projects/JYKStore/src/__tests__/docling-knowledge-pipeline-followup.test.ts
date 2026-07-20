@@ -127,10 +127,11 @@ describe("docling knowledge pipeline follow-up hardening", () => {
         "utf8",
       ),
     ].join("\n");
-    const searchData = readFileSync(
-      join(root, "src/lib/search-data/search-data-generation-service.ts"),
-      "utf8",
-    );
+    const searchData = [
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation.ts"), "utf8"),
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
+    ].join("\n");
     assert.ok(!executeModules.includes("rebuildPackEmbeddings"));
     assert.ok(!executeModules.includes("activateDraftIndexGeneration"));
     assert.ok(!executeModules.includes("runDoclingRetrievalEvaluation"));

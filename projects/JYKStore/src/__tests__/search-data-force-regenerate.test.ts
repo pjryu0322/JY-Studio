@@ -24,10 +24,19 @@ describe("forceRegenerate wiring", () => {
     join(root, "src/app/api/v1/provider/packs/[packId]/search-data/generate/route.ts"),
     "utf8",
   );
-  const service = readFileSync(
-    join(root, "src/lib/search-data/search-data-generation-service.ts"),
-    "utf8",
-  );
+  const enqueue = [
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx.ts"), "utf8"),
+    readFileSync(
+      join(root, "src/lib/search-data/search-data-generation-enqueue-preflight.ts"),
+      "utf8",
+    ),
+  ].join("\n");
+  const worker = [
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
+  ].join("\n");
+  const service = [enqueue, worker].join("\n");
 
   it("UI sends forceRegenerate=true for regenerate CTAs", () => {
     assert.match(tab, /handleGenerate\(true\)/);
@@ -43,18 +52,14 @@ describe("forceRegenerate wiring", () => {
     assert.match(service, /provisionalEnqueueLocalE5Descriptor/);
     assert.match(service, /assertGenerationDescriptorMatchesRuntime/);
     assert.doesNotMatch(service, /embeddingModel:\s*descriptor\.embeddingModel/);
-    const enqueueSlice = service.slice(
-      service.indexOf("export async function startSearchDataGeneration"),
-      service.indexOf("export type ClaimedSearchDataGeneration"),
-    );
-    assert.doesNotMatch(enqueueSlice, /resolveSearchGenerationEmbeddingDescriptor/);
-    assert.doesNotMatch(enqueueSlice, /assertPgvectorRuntimeReady/);
+    assert.doesNotMatch(enqueue, /resolveSearchGenerationEmbeddingDescriptor/);
+    assert.doesNotMatch(enqueue, /assertPgvectorRuntimeReady/);
   });
 
   it("recovers stale EMBEDDING inside a single transaction", () => {
-    const recoverSlice = service.slice(
-      service.indexOf("export async function recoverOneStaleSearchDataGeneration"),
-      service.indexOf("export async function claimNextSearchDataGeneration"),
+    const recoverSlice = worker.slice(
+      worker.indexOf("export async function recoverOneStaleSearchDataGeneration"),
+      worker.indexOf("export async function claimNextSearchDataGeneration"),
     );
     assert.match(recoverSlice, /prisma\.\$transaction/);
     assert.match(recoverSlice, /FOR UPDATE SKIP LOCKED/);

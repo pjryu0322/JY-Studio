@@ -317,7 +317,7 @@ describe("ranking policy evaluation gates", () => {
     assert.ok(evalSrc.includes("RETRIEVAL_RANKING_POLICY_VERSION"));
 
     const validateSrc = readFileSync(
-      join(root, "src/lib/search-data/search-data-generation-service.ts"),
+      join(root, "src/lib/search-data/search-data-generation-evaluation.ts"),
       "utf8",
     );
     assert.ok(validateSrc.includes("retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION"));
