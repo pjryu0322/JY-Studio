@@ -209,10 +209,20 @@ describe("docling knowledge stage nextAction", () => {
 describe("docling knowledge pipeline structure stage wiring", () => {
   it("uses STRUCTURE_ONLY and separate binding failure codes", () => {
     const root = join(import.meta.dirname, "../..");
-    const service = readFileSync(
-      join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
-      "utf8",
-    );
+    const service = [
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-status.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-status-policy.ts"),
+        "utf8",
+      ),
+    ].join("\n");
     assert.ok(service.includes("evaluateNormalizedDocumentStructureQuality"));
     assert.ok(!service.includes("files: []"));
     assert.ok(service.includes("DOCLING_BUNDLE_MISMATCH"));

@@ -94,6 +94,7 @@
   "src/__tests__/docling-knowledge-pipeline-hardening.test.ts",
   "src/__tests__/docling-knowledge-pipeline-followup.test.ts",
   "src/__tests__/docling-knowledge-structure-gate.test.ts",
+  "src/__tests__/docling-knowledge-pipeline-status-policy.test.ts",
   "src/__tests__/docling-knowledge-unit-plan.test.ts",
   "src/__tests__/docling-knowledge-export.test.ts",
   "src/__tests__/provider-pack-tabs-ux.test.ts",

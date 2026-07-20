@@ -1,3 +1,8 @@
+/**
+ * Docling knowledge pipeline start/execute orchestration.
+ * Status DTOs, pass gates, and CTA policy live in *-status* / *-shared* modules.
+ * Public imports remain stable via re-exports below.
+ */
 import type {
   NormalizedFigure,
   NormalizedSection,
@@ -13,7 +18,6 @@ import {
 import { randomUUID } from "node:crypto";
 import {
   createKnowledgeRunBinding,
-  humanSummaryFromBinding,
   parseKnowledgeRunBinding,
   serializeKnowledgeRunBinding,
   type KnowledgeRunBinding,
@@ -24,25 +28,24 @@ import {
   failDraftIndexGeneration,
 } from "@/lib/docling-knowledge/docling-nd-knowledge-builder";
 import {
-  isFullKnowledgePipelineStagesPassed,
-  isSearchFoundationStagesPassed,
-  isStructureStagesPassed,
-} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
-import {
   DOCLING_KNOWLEDGE_PIPELINE_STEPS,
   DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-  DOCLING_KNOWLEDGE_STAGES,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
-  type DoclingKnowledgeStageId,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { evaluateNormalizedDocumentStructureQuality } from "@/lib/docling-import/docling-quality-gate";
-import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
+import {
+  asPipelineRecord,
+  loadActiveDoclingContext,
+  loadOwnedPackForKnowledgePipeline,
+} from "@/lib/docling-knowledge/docling-knowledge-pipeline-shared";
+import {
+  BINDING_FAILURE_USER_MESSAGE,
+} from "@/lib/docling-knowledge/docling-knowledge-pipeline-status-policy";
 import {
   completePipelineStep,
   finishPipelineRun,
   updatePackPipelineStatus,
 } from "@/lib/pipeline-service";
-import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
 import { logSafeRouteError } from "@/lib/safe-logging";
@@ -51,22 +54,15 @@ import {
   touchKnowledgeRunHeartbeat,
 } from "@/workers/knowledge-pipeline-job-claim";
 
-const BINDING_FAILURE_CODES = new Set([
-  "DOCLING_BUNDLE_NOT_READY",
-  "DOCLING_BUNDLE_MISMATCH",
-  "NORMALIZED_DOCUMENT_MISMATCH",
-  "FINGERPRINT_MISMATCH",
-]);
-
-const BINDING_FAILURE_USER_MESSAGE =
-  "등록 자료 상태가 변경되어 지식 데이터를 다시 생성할 수 없습니다. 자료 등록 상태를 새로고침한 뒤 다시 시도해 주세요.";
-
-const PRIOR_FAIL_WAIT_BY_STAGE: Partial<Record<DoclingKnowledgeStageId, string>> = {
-  KNOWLEDGE_UNIT: "문서 구조 확인을 통과해야 지식 단위 생성이 진행됩니다.",
-  RETRIEVAL_CHUNK: "지식 단위 생성이 완료되어야 Retrieval Chunk 생성이 진행됩니다.",
-  SEARCH_INDEX: "Retrieval Chunk 생성이 완료되어야 Draft 검색 인덱스 준비가 진행됩니다.",
-  RETRIEVAL_EVALUATION: "Draft 검색 인덱스 준비가 완료되어야 검색 결과 검증이 진행됩니다.",
-};
+export {
+  resolveDoclingKnowledgeStageNextAction,
+  type DoclingKnowledgeStageView,
+  type DoclingKnowledgePipelineStatusDto,
+  isDoclingStructurePassed,
+  isDoclingSearchFoundationPassed,
+  isDoclingKnowledgePipelinePassed,
+  getDoclingKnowledgePipelineStatus,
+} from "@/lib/docling-knowledge/docling-knowledge-pipeline-status";
 
 /** Import-only gate codes that must never fail the knowledge STRUCTURE stage. */
 const IMPORT_ONLY_QUALITY_CODES = new Set([
@@ -75,461 +71,8 @@ const IMPORT_ONLY_QUALITY_CODES = new Set([
   "MARKDOWN_BASE64_PRESENT",
 ]);
 
-export function resolveDoclingKnowledgeStageNextAction(input: {
-  stageId: DoclingKnowledgeStageId;
-  status: string;
-  providerConfirmed: boolean;
-  running: boolean;
-  priorFailed: boolean;
-  failureCode?: string | null;
-}): string | null {
-  const { stageId, status, providerConfirmed, running, priorFailed, failureCode } = input;
-  if (status === "FAIL") {
-    if (stageId === "STRUCTURE" && failureCode && BINDING_FAILURE_CODES.has(failureCode)) {
-      return "자료 등록 상태를 새로고침한 뒤 다시 시도해 주세요.";
-    }
-    if (stageId === "STRUCTURE") {
-      return "표시된 구조 문제를 확인한 뒤 파일을 교체하거나 다시 처리해 주세요.";
-    }
-    if (stageId === "RETRIEVAL_EVALUATION") {
-      return "미통과 질문을 확인한 뒤 검색 데이터를 다시 생성하거나 재검증해 주세요.";
-    }
-    return "실패 원인을 확인한 뒤 해당 단계부터 다시 실행해 주세요.";
-  }
-  if (status === "STALE") {
-    return "원본 또는 정규화 결과가 변경되었습니다. 지식 데이터를 다시 생성해 주세요.";
-  }
-  if (status === "SKIPPED") {
-    return "지식 데이터를 다시 생성해 주세요.";
-  }
-  if (status === "PENDING") {
-    if (priorFailed) {
-      return PRIOR_FAIL_WAIT_BY_STAGE[stageId] ?? "선행 단계 실패로 대기 중입니다.";
-    }
-    if (running) {
-      return "선행 단계가 완료되면 자동으로 진행됩니다.";
-    }
-    if (providerConfirmed) {
-      return "지식 데이터 생성을 시작해 주세요.";
-    }
-  }
-  return null;
-}
-
-export type DoclingKnowledgeStageView = {
-  id: DoclingKnowledgeStageId;
-  label: string;
-  description: string;
-  pipelineStep: string;
-  status: string;
-  message: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  details: Record<string, unknown> | null;
-  nextAction: string | null;
-};
-
-export type DoclingKnowledgePipelineStatusDto = {
-  packId: string;
-  enabled: boolean;
-  providerConfirmed: boolean;
-  pipelineStatus: string | null;
-  runId: string | null;
-  runStatus: string | null;
-  fingerprint: string | null;
-  stale: boolean;
-  /**
-   * Full knowledge pipeline pass (structure + search foundation + READY_FOR_REVIEW).
-   * Prefer structurePassed / searchFoundationPassed for registration locks.
-   * @deprecated for UI lock calculation — kept for Public/compat consumers.
-   */
-  passed: boolean;
-  /** STRUCTURE + KNOWLEDGE_UNIT + RETRIEVAL_CHUNK on current binding. */
-  structurePassed: boolean;
-  /** SEARCH_INDEX + RETRIEVAL_EVALUATION on current binding. */
-  searchFoundationPassed: boolean;
-  /** Pack·Version·Bundle·NormalizedDocument·Fingerprint binding matches active materials. */
-  pipelineCurrent: boolean;
-  stages: DoclingKnowledgeStageView[];
-  canStart: boolean;
-  canRetry: boolean;
-  canOpenDistribution: boolean;
-  primaryCta:
-    | "start"
-    | "retry"
-    | "distribution"
-    | "warning_retry"
-    | "search_validation"
-    | "none";
-  lockReason: string | null;
-  summary: string | null;
-};
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
-
-async function loadOwnedPack(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-}) {
-  const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
-  if (!profile) return { error: "PROFILE_REQUIRED" as const };
-
-  const pack = await prisma.knowledgePack.findFirst({
-    where: { packId: input.packId, providerProfileId: profile.id },
-    include: {
-      versions: {
-        orderBy: latestKnowledgePackVersionOrderBy,
-        take: 1,
-        include: { distributionMetadata: true },
-      },
-    },
-  });
-  if (!pack) return { error: "NOT_FOUND" as const };
-  return { profile, pack };
-}
-
-async function loadActiveDoclingContext(packId: string, versionId: string) {
-  const bundle = await prisma.doclingImportBundle.findFirst({
-    where: {
-      packId,
-      versionId,
-      isActive: true,
-      status: DoclingImportBundleStatus.REVIEW_READY,
-    },
-    include: {
-      normalizedDocuments: { where: { isActive: true }, take: 1 },
-    },
-  });
-  return { bundle, nd: bundle?.normalizedDocuments[0] ?? null };
-}
-
-function bindingMatchesActive(input: {
-  binding: KnowledgeRunBinding | null;
-  versionId: string;
-  ndId: string;
-  fingerprint: string | null;
-  bundleId: string;
-}): boolean {
-  if (!input.binding || !input.fingerprint) return false;
-  return (
-    input.binding.versionId === input.versionId &&
-    input.binding.normalizedDocumentId === input.ndId &&
-    input.binding.fingerprint === input.fingerprint &&
-    input.binding.bundleId === input.bundleId
-  );
-}
-
-async function loadLatestKnowledgePipelineContext(packId: string): Promise<{
-  versionId: string;
-  bundleId: string;
-  ndId: string;
-  fingerprint: string;
-  runStatus: string | null;
-  steps: Array<{ step: string; status: string; details: Record<string, unknown> | null }>;
-  pipelineCurrent: boolean;
-} | null> {
-  const version = await prisma.knowledgePackVersion.findFirst({
-    where: { packId },
-    orderBy: latestKnowledgePackVersionOrderBy,
-    select: { id: true },
-  });
-  if (!version) return null;
-
-  const { bundle, nd } = await loadActiveDoclingContext(packId, version.id);
-  if (!bundle || !nd?.fingerprint) return null;
-
-  const latest = await prisma.pipelineRun.findFirst({
-    where: {
-      packId,
-      triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-    },
-    orderBy: { startedAt: "desc" },
-    include: { steps: true },
-  });
-  if (!latest) return null;
-
-  const readyStep = latest.steps.find((s) => s.step === "READY_FOR_REVIEW");
-  const binding =
-    parseKnowledgeRunBinding(latest.summary) ??
-    (() => {
-      const details = asRecord(readyStep?.details);
-      if (!details) return null;
-      return {
-        v: 1 as const,
-        versionId: String(details.versionId ?? ""),
-        normalizedDocumentId: String(details.normalizedDocumentId ?? ""),
-        fingerprint: String(details.fingerprint ?? ""),
-        bundleId: String(details.bundleId ?? ""),
-        indexGenerationId: String(details.indexGenerationId ?? ""),
-        heartbeatAt: null,
-        cancelRequestedAt: null,
-        lockOwner: null,
-        lockExpiresAt: null,
-        attempt: 0,
-        failureCode: null,
-        failureMessage: null,
-        requestedByUserId: null,
-        requestedByClientId: null,
-        userMessage: null,
-      };
-    })();
-
-  const pipelineCurrent = bindingMatchesActive({
-    binding,
-    versionId: version.id,
-    ndId: nd.id,
-    fingerprint: nd.fingerprint,
-    bundleId: bundle.id,
-  });
-
-  return {
-    versionId: version.id,
-    bundleId: bundle.id,
-    ndId: nd.id,
-    fingerprint: nd.fingerprint,
-    runStatus: latest.status,
-    steps: latest.steps.map((s) => ({
-      step: s.step,
-      status: s.status,
-      details: asRecord(s.details),
-    })),
-    pipelineCurrent,
-  };
-}
-
-/** STRUCTURE + KU + Chunk on current Pack·Version·Bundle·ND binding. */
-export async function isDoclingStructurePassed(packId: string): Promise<boolean> {
-  const ctx = await loadLatestKnowledgePipelineContext(packId);
-  if (!ctx) return false;
-  return isStructureStagesPassed({
-    steps: ctx.steps,
-    pipelineCurrent: ctx.pipelineCurrent,
-  });
-}
-
-/** SEARCH_INDEX + RETRIEVAL_EVALUATION on current binding (implies structure). */
-export async function isDoclingSearchFoundationPassed(packId: string): Promise<boolean> {
-  const ctx = await loadLatestKnowledgePipelineContext(packId);
-  if (!ctx) return false;
-  return isSearchFoundationStagesPassed({
-    steps: ctx.steps,
-    pipelineCurrent: ctx.pipelineCurrent,
-  });
-}
-
-/**
- * Server gate: fingerprint/version/ND-bound PASS only.
- * Pack pipelineStatus alone is never sufficient.
- * Equals search-foundation + READY_FOR_REVIEW on a PASS run (historical `passed`).
- */
-export async function isDoclingKnowledgePipelinePassed(packId: string): Promise<boolean> {
-  const ctx = await loadLatestKnowledgePipelineContext(packId);
-  if (!ctx || ctx.runStatus !== "PASS") return false;
-  return isFullKnowledgePipelineStagesPassed({
-    steps: ctx.steps,
-    pipelineCurrent: ctx.pipelineCurrent,
-  });
-}
-
-export async function getDoclingKnowledgePipelineStatus(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-}): Promise<
-  DoclingKnowledgePipelineStatusDto | { error: "PROFILE_REQUIRED" | "NOT_FOUND" }
-> {
-  const owned = await loadOwnedPack(input);
-  if ("error" in owned && owned.error) {
-    return { error: owned.error };
-  }
-  if (!("pack" in owned) || !owned.pack) {
-    return { error: "NOT_FOUND" };
-  }
-  const version = owned.pack.versions[0];
-
-  if (!version) {
-    return {
-      packId: input.packId,
-      enabled: true,
-      providerConfirmed: false,
-      pipelineStatus: owned.pack.pipelineStatus,
-      runId: null,
-      runStatus: null,
-      fingerprint: null,
-      stale: false,
-      passed: false,
-      structurePassed: false,
-      searchFoundationPassed: false,
-      pipelineCurrent: false,
-      stages: DOCLING_KNOWLEDGE_STAGES.map((s) => ({
-        id: s.id,
-        label: s.label,
-        description: s.description,
-        pipelineStep: s.pipelineStep,
-        status: "PENDING",
-        message: null,
-        startedAt: null,
-        finishedAt: null,
-        details: null,
-        nextAction: "자료 등록에서 정규화 결과를 확인해 주세요.",
-      })),
-      canStart: false,
-      canRetry: false,
-      canOpenDistribution: false,
-      primaryCta: "none",
-      lockReason: "자료 등록과 대표 샘플 확인이 필요합니다.",
-      summary: null,
-    };
-  }
-
-  const { bundle, nd } = await loadActiveDoclingContext(input.packId, version.id);
-  const providerConfirmed = Boolean(bundle && nd);
-  const latest = await prisma.pipelineRun.findFirst({
-    where: { packId: input.packId, triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER },
-    orderBy: { startedAt: "desc" },
-    include: { steps: { orderBy: { createdAt: "asc" } } },
-  });
-
-  const binding = parseKnowledgeRunBinding(latest?.summary);
-  const ndFingerprint = nd?.fingerprint ?? null;
-  const stale = Boolean(
-    latest &&
-      providerConfirmed &&
-      nd &&
-      bundle &&
-      (!binding ||
-        !bindingMatchesActive({
-          binding,
-          versionId: version.id,
-          ndId: nd.id,
-          fingerprint: ndFingerprint,
-          bundleId: bundle.id,
-        })),
-  );
-
-  const passed = await isDoclingKnowledgePipelinePassed(input.packId);
-  const pipelineCurrent = Boolean(providerConfirmed && nd && bundle && !stale);
-  const stepLikes =
-    latest?.steps.map((s) => ({
-      step: s.step,
-      status: s.status,
-      details: asRecord(s.details),
-    })) ?? [];
-  const structurePassed = isStructureStagesPassed({
-    steps: stepLikes,
-    pipelineCurrent,
-  });
-  const searchFoundationPassed = isSearchFoundationStagesPassed({
-    steps: stepLikes,
-    pipelineCurrent,
-  });
-  const running = latest?.status === "RUNNING" || latest?.status === "PENDING";
-  const failed =
-    latest?.status === "FAIL" ||
-    latest?.status === "SKIPPED" ||
-    owned.pack.pipelineStatus === "FAILED";
-  const evalStep = latest?.steps.find((s) => s.step === "SEARCH_EVALUATING");
-  const warningOnly =
-    !passed &&
-    !stale &&
-    !running &&
-    (latest?.status === "WARNING" || evalStep?.status === "WARNING");
-
-  const stages: DoclingKnowledgeStageView[] = DOCLING_KNOWLEDGE_STAGES.map((s, index) => {
-    const step = latest?.steps.find((x) => x.step === s.pipelineStep);
-    const status = stale ? "STALE" : (step?.status ?? "PENDING");
-    const priorFailed =
-      !stale &&
-      DOCLING_KNOWLEDGE_STAGES.slice(0, index).some((prior) => {
-        const priorStep = latest?.steps.find((x) => x.step === prior.pipelineStep);
-        return priorStep?.status === "FAIL";
-      });
-    const details = asRecord(step?.details);
-    const failureCode =
-      (typeof details?.code === "string" ? details.code : null) ??
-      (Array.isArray(details?.blockers) &&
-      details.blockers[0] &&
-      typeof (details.blockers[0] as { code?: unknown }).code === "string"
-        ? String((details.blockers[0] as { code: string }).code)
-        : null);
-    const nextAction = resolveDoclingKnowledgeStageNextAction({
-      stageId: s.id,
-      status,
-      providerConfirmed,
-      running,
-      priorFailed,
-      failureCode,
-    });
-    return {
-      id: s.id,
-      label: s.label,
-      description: s.description,
-      pipelineStep: s.pipelineStep,
-      status,
-      message: step?.message ?? null,
-      startedAt: step?.startedAt?.toISOString() ?? null,
-      finishedAt: step?.finishedAt?.toISOString() ?? null,
-      details,
-      nextAction,
-    };
-  });
-
-  let lockReason: string | null = null;
-  if (!providerConfirmed) {
-    lockReason =
-      "자료 등록에서 대표 샘플 확인을 완료해야 지식 데이터를 시작할 수 있습니다.";
-  } else if (!structurePassed) {
-    lockReason =
-      "데이터 구조화(구조·Knowledge Unit·Chunk)가 완료되어야 검색 검증을 진행할 수 있습니다.";
-  } else if (!searchFoundationPassed) {
-    lockReason = "검색 인덱스·검색 평가가 완료되어야 유통정보를 입력할 수 있습니다.";
-  }
-
-  let primaryCta: DoclingKnowledgePipelineStatusDto["primaryCta"] = "none";
-  if (running) primaryCta = "none";
-  else if (passed) primaryCta = "distribution";
-  else if (structurePassed && !searchFoundationPassed && !stale && !failed) {
-    primaryCta = "search_validation";
-  } else if (warningOnly) primaryCta = "warning_retry";
-  else if (failed || stale) primaryCta = "retry";
-  else if (providerConfirmed && owned.pack.status === PackStatus.DRAFT) primaryCta = "start";
-
-  return {
-    packId: input.packId,
-    enabled: true,
-    providerConfirmed,
-    pipelineStatus: owned.pack.pipelineStatus,
-    runId: latest?.id ?? null,
-    runStatus: latest?.status ?? null,
-    fingerprint: ndFingerprint,
-    stale,
-    passed,
-    structurePassed,
-    searchFoundationPassed,
-    pipelineCurrent,
-    stages,
-    canStart:
-      providerConfirmed &&
-      owned.pack.status === PackStatus.DRAFT &&
-      !running &&
-      primaryCta === "start",
-    canRetry:
-      providerConfirmed &&
-      owned.pack.status === PackStatus.DRAFT &&
-      !running &&
-      (primaryCta === "retry" || primaryCta === "warning_retry"),
-    canOpenDistribution: passed && owned.pack.status === PackStatus.DRAFT,
-    primaryCta,
-    lockReason,
-    summary: humanSummaryFromBinding(binding, "") || null,
-  };
-}
+const asRecord = asPipelineRecord;
+const loadOwnedPack = loadOwnedPackForKnowledgePipeline;
 
 async function assertRunStillActive(runId: string): Promise<KnowledgeRunBinding | null> {
   const run = await prisma.pipelineRun.findUnique({

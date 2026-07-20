@@ -168,7 +168,7 @@ describe("docling knowledge pipeline hardening", () => {
   it("isDoclingKnowledgePipelinePassed does not trust pack pipelineStatus alone", () => {
     const root = join(import.meta.dirname, "../..");
     const service = readFileSync(
-      join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
+      join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-status.ts"),
       "utf8",
     );
     const fnStart = service.indexOf("export async function isDoclingKnowledgePipelinePassed");

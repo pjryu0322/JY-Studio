@@ -70,10 +70,16 @@ describe("structure-complete CTA", () => {
     join(root, "src/components/provider-distribution/ProviderKnowledgeGenerationTab.tsx"),
     "utf8",
   );
-  const pipeline = readFileSync(
-    join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
-    "utf8",
-  );
+  const pipeline = [
+    readFileSync(
+      join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
+      "utf8",
+    ),
+    readFileSync(
+      join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-status-policy.ts"),
+      "utf8",
+    ),
+  ].join("\n");
 
   it("hides start button when structure is complete", () => {
     assert.match(tab, /primary === "start" && !structureComplete/);
@@ -86,7 +92,7 @@ describe("structure-complete CTA", () => {
     assert.match(pipeline, /search_validation/);
     assert.match(
       pipeline,
-      /structurePassed && !searchFoundationPassed/,
+      /structurePassed && !(?:input\.)?searchFoundationPassed/,
     );
   });
 });
