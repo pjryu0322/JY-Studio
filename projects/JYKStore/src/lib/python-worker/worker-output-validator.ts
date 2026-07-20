@@ -4,6 +4,7 @@ import {
   WORKER_NON_CHUNKABLE_CLASSIFICATIONS,
   WORKER_OUTPUT_REQUIRED_FILES,
   type WorkerChunk,
+  type WorkerEmbedding,
   type WorkerInventoryEntry,
   type WorkerNormalizedDocument,
   type WorkerOutputBundle,
@@ -229,6 +230,56 @@ function normalizeTraces(raw: unknown, errors: WorkerOutputValidationIssue[]): W
   return traces;
 }
 
+function normalizeEmbeddings(
+  raw: unknown,
+  errors: WorkerOutputValidationIssue[],
+): WorkerEmbedding[] {
+  if (!Array.isArray(raw)) {
+    errors.push(issue("EMBEDDINGS_SHAPE", "embeddings.json must be an array", "embeddings.json"));
+    return [];
+  }
+  const embeddings: WorkerEmbedding[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const obj = asObject(raw[i]);
+    if (!obj) {
+      errors.push(issue("EMBEDDING_ENTRY", `embeddings[${i}] must be an object`, "embeddings.json"));
+      continue;
+    }
+    const chunkId = requireString(obj, "chunkId");
+    const provider = requireString(obj, "provider");
+    const model = requireString(obj, "model");
+    const contentHash = requireString(obj, "contentHash");
+    const dimension = obj.dimension;
+    const vector = obj.vector;
+    const dimensionOk = typeof dimension === "number" && Number.isInteger(dimension) && dimension > 0;
+    const vectorOk = Array.isArray(vector) && vector.every((n) => typeof n === "number");
+    if (!chunkId || !provider || !model || !contentHash || !dimensionOk || !vectorOk) {
+      errors.push(
+        issue(
+          "EMBEDDING_ENTRY",
+          `embeddings[${i}] requires chunkId, provider, model, contentHash, positive-integer dimension, and number[] vector`,
+          "embeddings.json",
+        ),
+      );
+      continue;
+    }
+    embeddings.push({
+      ...obj,
+      chunkId,
+      provider,
+      model,
+      contentHash,
+      dimension,
+      vector: vector as number[],
+      embeddingTextHash:
+        typeof obj.embeddingTextHash === "string" ? obj.embeddingTextHash : undefined,
+      modelRevision: typeof obj.modelRevision === "string" ? obj.modelRevision : null,
+      createdAt: typeof obj.createdAt === "string" ? obj.createdAt : undefined,
+    });
+  }
+  return embeddings;
+}
+
 function normalizeValidationReport(
   raw: unknown,
   errors: WorkerOutputValidationIssue[],
@@ -368,6 +419,52 @@ function crossValidate(
       );
     }
   }
+
+  const chunkIds = new Set(bundle.chunks.map((c) => c.chunkId));
+  const embeddingByChunk = new Map<string, WorkerEmbedding>();
+  for (const embedding of bundle.embeddings) {
+    if (!chunkIds.has(embedding.chunkId)) {
+      errors.push(
+        issue(
+          "EMBEDDING_CHUNK_NOT_FOUND",
+          `embedding chunkId not in chunks.json: ${embedding.chunkId}`,
+          "embeddings.json",
+        ),
+      );
+    }
+    if (embeddingByChunk.has(embedding.chunkId)) {
+      errors.push(
+        issue(
+          "EMBEDDING_DUPLICATE_CHUNK",
+          `duplicate embedding for chunkId: ${embedding.chunkId}`,
+          "embeddings.json",
+        ),
+      );
+    } else {
+      embeddingByChunk.set(embedding.chunkId, embedding);
+    }
+    if (embedding.vector.length !== embedding.dimension) {
+      errors.push(
+        issue(
+          "EMBEDDING_VECTOR_DIMENSION_MISMATCH",
+          `embedding ${embedding.chunkId} vector length ${embedding.vector.length} != dimension ${embedding.dimension}`,
+          "embeddings.json",
+        ),
+      );
+    }
+  }
+
+  for (const chunk of bundle.chunks) {
+    if (!embeddingByChunk.has(chunk.chunkId)) {
+      errors.push(
+        issue(
+          "CHUNK_EMBEDDING_MISSING",
+          `chunk ${chunk.chunkId} has no embedding in embeddings.json`,
+          "embeddings.json",
+        ),
+      );
+    }
+  }
 }
 
 /**
@@ -388,6 +485,7 @@ export function validateWorkerOutputDirectory(
   const inventoryRaw = loadRequiredJson(outputDir, "inventory.json", errors);
   const docsRaw = loadRequiredJson(outputDir, "normalized_documents.json", errors);
   const chunksRaw = loadRequiredJson(outputDir, "chunks.json", errors);
+  const embeddingsRaw = loadRequiredJson(outputDir, "embeddings.json", errors);
   const tracesRaw = loadRequiredJson(outputDir, "source_trace.json", errors);
   const reportRaw = loadRequiredJson(outputDir, "validation_report.json", errors);
 
@@ -398,6 +496,7 @@ export function validateWorkerOutputDirectory(
   const inventory = normalizeInventory(inventoryRaw, errors);
   const normalizedDocuments = normalizeDocuments(docsRaw, errors);
   const chunks = normalizeChunks(chunksRaw, errors);
+  const embeddings = normalizeEmbeddings(embeddingsRaw, errors);
   const sourceTraces = normalizeTraces(tracesRaw, errors);
   const validationReport = normalizeValidationReport(reportRaw, errors);
 
@@ -409,6 +508,7 @@ export function validateWorkerOutputDirectory(
     inventory,
     normalizedDocuments,
     chunks,
+    embeddings,
     sourceTraces,
     validationReport,
   };

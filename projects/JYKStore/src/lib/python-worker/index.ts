@@ -17,6 +17,7 @@ export {
   WORKER_OUTPUT_OPTIONAL_FILES,
   WORKER_OUTPUT_REQUIRED_FILES,
   type WorkerChunk,
+  type WorkerEmbedding,
   type WorkerInventoryEntry,
   type WorkerNormalizedDocument,
   type WorkerOutputBundle,

@@ -9,6 +9,7 @@ export const WORKER_OUTPUT_REQUIRED_FILES = [
   "inventory.json",
   "normalized_documents.json",
   "chunks.json",
+  "embeddings.json",
   "source_trace.json",
   "validation_report.json",
 ] as const;
@@ -73,6 +74,25 @@ export type WorkerSourceTrace = {
   [key: string]: unknown;
 };
 
+/**
+ * Embedding vector produced by the Python Worker for a chunk.
+ *
+ * The Worker computes vectors locally; Store validates and imports them.
+ * Store does not regenerate embeddings on this path.
+ */
+export type WorkerEmbedding = {
+  chunkId: string;
+  provider: string;
+  model: string;
+  dimension: number;
+  vector: number[];
+  contentHash: string;
+  embeddingTextHash?: string;
+  modelRevision?: string | null;
+  createdAt?: string;
+  [key: string]: unknown;
+};
+
 export type WorkerValidationReport = {
   status?: string;
   errors: string[];
@@ -88,6 +108,7 @@ export type WorkerOutputBundle = {
   inventory: WorkerInventoryEntry[];
   normalizedDocuments: WorkerNormalizedDocument[];
   chunks: WorkerChunk[];
+  embeddings: WorkerEmbedding[];
   sourceTraces: WorkerSourceTrace[];
   validationReport: WorkerValidationReport;
 };

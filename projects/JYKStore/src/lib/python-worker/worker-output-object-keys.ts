@@ -63,6 +63,7 @@ export const WORKER_OUTPUT_OBJECT_FILES = [
   "normalized_documents.json",
   "normalized_documents.md",
   "chunks.json",
+  "embeddings.json",
   "source_trace.json",
   "validation_report.json",
 ] as const;
@@ -93,6 +94,11 @@ export function planWorkerOutputObjectKeys(
     {
       relativePath: "chunks.json",
       objectKey: buildWorkerRunOutputObjectKey(ctx, "chunks.json"),
+      required: true,
+    },
+    {
+      relativePath: "embeddings.json",
+      objectKey: buildWorkerRunOutputObjectKey(ctx, "embeddings.json"),
       required: true,
     },
     {

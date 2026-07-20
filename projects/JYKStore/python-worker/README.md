@@ -70,9 +70,15 @@ Written under `--output`:
 | `parser_artifacts/**/*.json` | Raw parser results |
 | `normalized_documents.json` | Store-shaped documents |
 | `normalized_documents.md` | Human review summary |
-| `chunks.json` | Embedding-ready chunks (no embedding call) |
+| `chunks.json` | Embedding-ready chunks |
+| `embeddings.json` | Per-chunk embedding vectors (contract-extension stage; real generation lands in a later step) |
 | `source_trace.json` | Chunk → source traceability |
 | `validation_report.json` | Counts, warnings, errors |
+
+Source-of-truth rule: Python Worker produces chunks and embedding vectors as
+local output. Store validates worker output, stores artifacts, imports
+chunks/embeddings, and performs DB/vector-index reflection. Python Worker must
+not write Store DB or Object Storage.
 
 ## Classification (defaults)
 

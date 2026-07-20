@@ -38,6 +38,11 @@ export type WorkerOutputImportPayload = {
   storedFiles: WorkerOutputFileMeta[];
   /** Chunks imported as-is from worker chunks.json (source of truth). */
   chunks: WorkerOutputBundle["chunks"];
+  /**
+   * Embeddings imported as-is from worker embeddings.json.
+   * DB/vector-index reflection is a later step; included here only.
+   */
+  embeddings: WorkerOutputBundle["embeddings"];
   sourceTraces: WorkerOutputBundle["sourceTraces"];
   normalizedDocuments: WorkerOutputBundle["normalizedDocuments"];
   inventory: WorkerOutputBundle["inventory"];
@@ -194,6 +199,7 @@ export function prepareWorkerOutputImport(
     },
     storedFiles: metas,
     chunks: validated.bundle.chunks,
+    embeddings: validated.bundle.embeddings,
     sourceTraces: validated.bundle.sourceTraces,
     normalizedDocuments: validated.bundle.normalizedDocuments,
     inventory: validated.bundle.inventory,

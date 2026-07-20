@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -14,6 +14,7 @@ import {
   prepareWorkerOutputImport,
   validateWorkerOutputBundle,
   validateWorkerOutputDirectory,
+  type WorkerEmbedding,
   type WorkerOutputBundle,
 } from "../lib/python-worker/index.ts";
 
@@ -60,6 +61,16 @@ function fixtureBundle(overrides?: Partial<WorkerOutputBundle>): WorkerOutputBun
         traceId: "trace-grid-section-001",
       },
     ],
+    embeddings: [
+      {
+        chunkId: "grid-section-001",
+        provider: "local",
+        model: "e5-small",
+        dimension: 3,
+        vector: [0.1, 0.2, 0.3],
+        contentHash: "hash-grid-001",
+      },
+    ],
     sourceTraces: [
       {
         traceId: "trace-grid-section-001",
@@ -89,6 +100,7 @@ function writeBundleDir(bundle: WorkerOutputBundle): string {
     "utf8",
   );
   writeFileSync(path.join(dir, "chunks.json"), JSON.stringify(bundle.chunks), "utf8");
+  writeFileSync(path.join(dir, "embeddings.json"), JSON.stringify(bundle.embeddings), "utf8");
   writeFileSync(path.join(dir, "source_trace.json"), JSON.stringify(bundle.sourceTraces), "utf8");
   writeFileSync(
     path.join(dir, "validation_report.json"),
@@ -221,6 +233,97 @@ describe("python worker output contract", () => {
       "payloads/packs/pack1/versions/ver1/runs/run1/worker-output/chunks.json",
     );
     assert.ok(chunksKey!.sha256.length === 64);
+
+    assert.equal(prepared.payload.embeddings.length, 1);
+    assert.equal(prepared.payload.embeddings[0]?.chunkId, "grid-section-001");
+    assert.deepEqual(prepared.payload.embeddings[0]?.vector, [0.1, 0.2, 0.3]);
+    const embeddingsKey = prepared.payload.storedFiles.find(
+      (f) => f.relativePath === "embeddings.json",
+    );
+    assert.ok(embeddingsKey?.present);
+    assert.equal(embeddingsKey?.required, true);
+    assert.equal(
+      embeddingsKey?.objectKey,
+      "payloads/packs/pack1/versions/ver1/runs/run1/worker-output/embeddings.json",
+    );
+    assert.equal(embeddingsKey!.sha256.length, 64);
+  });
+
+  it("fails when embeddings.json is missing", () => {
+    const bundle = fixtureBundle();
+    const dir = writeBundleDir(bundle);
+    rmSync(path.join(dir, "embeddings.json"));
+    const result = validateWorkerOutputDirectory(dir);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "MISSING_FILE" && e.path === "embeddings.json"));
+    }
+  });
+
+  it("fails when embedding references a non-existent chunk", () => {
+    const bundle = fixtureBundle({
+      embeddings: [
+        {
+          chunkId: "ghost-chunk",
+          provider: "local",
+          model: "e5-small",
+          dimension: 3,
+          vector: [0.1, 0.2, 0.3],
+          contentHash: "hash-ghost",
+        },
+      ],
+    });
+    const result = validateWorkerOutputBundle(bundle);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "EMBEDDING_CHUNK_NOT_FOUND"));
+    }
+  });
+
+  it("fails when a chunk has no embedding", () => {
+    const bundle = fixtureBundle({ embeddings: [] });
+    const result = validateWorkerOutputBundle(bundle);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "CHUNK_EMBEDDING_MISSING"));
+    }
+  });
+
+  it("fails when vector length does not match dimension", () => {
+    const bundle = fixtureBundle({
+      embeddings: [
+        {
+          chunkId: "grid-section-001",
+          provider: "local",
+          model: "e5-small",
+          dimension: 4,
+          vector: [0.1, 0.2, 0.3],
+          contentHash: "hash-grid-001",
+        },
+      ],
+    });
+    const result = validateWorkerOutputBundle(bundle);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "EMBEDDING_VECTOR_DIMENSION_MISMATCH"));
+    }
+  });
+
+  it("fails when the same chunk has duplicate embeddings", () => {
+    const dup: WorkerEmbedding = {
+      chunkId: "grid-section-001",
+      provider: "local",
+      model: "e5-small",
+      dimension: 3,
+      vector: [0.1, 0.2, 0.3],
+      contentHash: "hash-grid-001",
+    };
+    const bundle = fixtureBundle({ embeddings: [dup, { ...dup }] });
+    const result = validateWorkerOutputBundle(bundle);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "EMBEDDING_DUPLICATE_CHUNK"));
+    }
   });
 
   it("builds expected Object Storage keys", () => {
