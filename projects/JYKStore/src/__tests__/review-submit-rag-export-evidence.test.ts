@@ -457,7 +457,7 @@ describe("assertReviewSubmitEvidenceInTx RAG Export download binding", () => {
         return { ...row, id: "run-from-other-execution" };
       }
       return row;
-    }) as typeof client.serviceValidationRun.findFirst;
+    }) as unknown as typeof client.serviceValidationRun.findFirst;
 
     await assert.rejects(
       () => assertReviewSubmitEvidenceInTx(client, input),

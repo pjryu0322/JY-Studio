@@ -106,14 +106,18 @@ async function assertReviewSubmitChannelDownloadEvidence(
   if (snap.downloadTestId != null && downloadTest.id !== snap.downloadTestId) {
     throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
   }
+  const downloadTestFileId = downloadTest.fileId?.trim() ?? "";
+  if (!downloadTestFileId) {
+    throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
+  }
   const runDetails =
     run.details && typeof run.details === "object" && !Array.isArray(run.details)
       ? (run.details as Record<string, unknown>)
       : null;
   // RAG Export fail-closed: downloadTest.fileId must equal exportFingerprint only (no fileId fallback).
   if (runDetails?.downloadMode === "RAG_EXPORT") {
-    assertRagExportDownloadEvidenceBinding({ runDetails, downloadTestFileId: downloadTest.fileId });
-  } else if (sourceFile && downloadTest.fileId !== sourceFile.id) {
+    assertRagExportDownloadEvidenceBinding({ runDetails, downloadTestFileId });
+  } else if (sourceFile && downloadTestFileId !== sourceFile.id) {
     throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
   }
 }
