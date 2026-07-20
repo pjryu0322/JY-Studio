@@ -183,6 +183,8 @@
   "src/__tests__/search-generation-backfill.db.test.ts",
   "src/__tests__/search-vector-runtime.db.test.ts",
   "src/__tests__/search-data-ui-state.test.ts",
+  "src/__tests__/search-data-state-policy.test.ts",
+  "src/__tests__/search-data-state-response.test.ts",
   "src/__tests__/search-data-validation-ux.test.ts",
   "src/__tests__/search-data-error.test.ts",
   "src/__tests__/search-data-async-ux.test.ts",

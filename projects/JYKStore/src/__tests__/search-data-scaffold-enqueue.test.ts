@@ -40,13 +40,13 @@ describe("search-data scaffold enqueue branching", () => {
   });
 
   it("UI state distinguishes scaffold from enqueued PENDING", () => {
-    const state = readFileSync(
-      join(root, "src/lib/search-data/search-data-state.ts"),
-      "utf8",
-    );
-    assert.match(state, /isScaffoldGeneration/);
-    assert.match(state, /isRunningGeneration/);
-    assert.doesNotMatch(state, /RUNNING_GEN/);
+    const state = [
+    readFileSync(join(root, "src/lib/search-data/search-data-state.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-state-policy.ts"), "utf8"),
+  ].join("\n");
+  assert.match(state, /isScaffoldGeneration/);
+  assert.match(state, /isRunningGeneration/);
+  assert.doesNotMatch(state, /RUNNING_GEN/);
   });
 
   it("keeps claim gated on attempt > 0", () => {

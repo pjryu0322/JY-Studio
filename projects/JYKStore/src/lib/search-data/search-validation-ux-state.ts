@@ -3,7 +3,7 @@
  * Does not change server gates; aligns tab labels, guidance, and CTAs.
  */
 
-import type { SearchDataUiState } from "@/lib/search-data/search-data-state";
+import type { SearchDataUiState } from "@/lib/search-data/search-data-state-types";
 
 export type SearchValidationStepDisplayState =
   | "NOT_STARTED"
@@ -78,6 +78,56 @@ function channelNeedsProviderReview(
   return channel.providerConfirmationStatus !== "CONFIRMED";
 }
 
+/** Maps search-data UI state before preparation-channel checks. */
+function resolveDisplayFromSearchDataState(input: {
+  state: string;
+  rankingPolicyStale: boolean;
+}): SearchValidationStepDisplayState | "CHECK_CHANNELS" {
+  const { state, rankingPolicyStale } = input;
+  if (state === "CREATE_FAILED" || state === "VALIDATION_FAILED" || state === "STALE") {
+    return "FAILED";
+  }
+  if (state === "CREATING" || state === "VALIDATING") {
+    return "GENERATING";
+  }
+  if (state === "NOT_CREATED") {
+    return "NOT_STARTED";
+  }
+  if (state === "CREATED" || rankingPolicyStale) {
+    return "AUTO_EVALUATION_REQUIRED";
+  }
+  if (state === "VALIDATED") {
+    return "CHECK_CHANNELS";
+  }
+  return "NOT_STARTED";
+}
+
+function resolveValidatedChannelsDisplayState(input: {
+  api?: SearchValidationChannelSnapshot | null;
+  mcp?: SearchValidationChannelSnapshot | null;
+  download?: SearchValidationChannelSnapshot | null;
+}): SearchValidationStepDisplayState {
+  const { api, mcp, download } = input;
+  if (
+    channelNeedsRevalidation(api) ||
+    channelNeedsRevalidation(mcp) ||
+    channelNeedsRevalidation(download)
+  ) {
+    return "SERVICE_REVALIDATION_REQUIRED";
+  }
+  if (
+    channelNeedsProviderReview(api) ||
+    channelNeedsProviderReview(mcp) ||
+    channelNeedsProviderReview(download)
+  ) {
+    return "PROVIDER_REVIEW_REQUIRED";
+  }
+  if (channelReady(api) && channelReady(mcp) && channelReady(download)) {
+    return "COMPLETED";
+  }
+  return "SERVICE_REVALIDATION_REQUIRED";
+}
+
 /**
  * Single source for step-4 tab badge / progress label.
  * COMPLETED only when generation + auto-eval (current policy) + all preparation
@@ -91,49 +141,19 @@ export function resolveSearchValidationStepDisplayState(input: {
   mcp?: SearchValidationChannelSnapshot | null;
   download?: SearchValidationChannelSnapshot | null;
 }): SearchValidationStepDisplayState {
-  const state = input.searchDataState ?? "NOT_CREATED";
-  const rankingPolicyStale = Boolean(input.rankingPolicyStale);
-
-  if (state === "CREATE_FAILED" || state === "VALIDATION_FAILED" || state === "STALE") {
-    return "FAILED";
+  const early = resolveDisplayFromSearchDataState({
+    state: input.searchDataState ?? "NOT_CREATED",
+    rankingPolicyStale: Boolean(input.rankingPolicyStale),
+  });
+  if (early !== "CHECK_CHANNELS") {
+    return early;
   }
-  if (state === "CREATING" || state === "VALIDATING") {
-    return "GENERATING";
-  }
-  if (state === "NOT_CREATED") {
-    return "NOT_STARTED";
-  }
-  if (state === "CREATED" || rankingPolicyStale) {
-    return "AUTO_EVALUATION_REQUIRED";
-  }
-
   // VALIDATED + current ranking policy
-  if (state === "VALIDATED") {
-    const api = input.api;
-    const mcp = input.mcp;
-    const download = input.download;
-
-    if (
-      channelNeedsRevalidation(api) ||
-      channelNeedsRevalidation(mcp) ||
-      channelNeedsRevalidation(download)
-    ) {
-      return "SERVICE_REVALIDATION_REQUIRED";
-    }
-    if (
-      channelNeedsProviderReview(api) ||
-      channelNeedsProviderReview(mcp) ||
-      channelNeedsProviderReview(download)
-    ) {
-      return "PROVIDER_REVIEW_REQUIRED";
-    }
-    if (channelReady(api) && channelReady(mcp) && channelReady(download)) {
-      return "COMPLETED";
-    }
-    return "SERVICE_REVALIDATION_REQUIRED";
-  }
-
-  return "NOT_STARTED";
+  return resolveValidatedChannelsDisplayState({
+    api: input.api,
+    mcp: input.mcp,
+    download: input.download,
+  });
 }
 
 export function searchValidationStepStatusLabel(
