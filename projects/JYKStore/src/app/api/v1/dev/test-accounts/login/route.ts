@@ -9,6 +9,10 @@ export const dynamic = "force-dynamic";
 
 const MAX_USER_ID_LENGTH = 128;
 
+export type LoginTestAccountRouteDeps = {
+  findAccountById?: typeof findTestAccountById;
+};
+
 function withNoStore(response: NextResponse) {
   response.headers.set("Cache-Control", "no-store");
   return response;
@@ -18,7 +22,12 @@ function notFound(clientId: string) {
   return withNoStore(jsonWithClientIdCookie({ error: "NOT_FOUND" }, clientId, { status: 404 }));
 }
 
-export async function POST(request: NextRequest) {
+/** Third `deps` arg is test-only; Next.js only passes request (+ route context). */
+export async function POST(
+  request: NextRequest,
+  _context?: unknown,
+  deps: LoginTestAccountRouteDeps = {},
+) {
   const clientId = ensureClientId(request);
 
   if (!canUseTestAccountSwitcher(request)) {
@@ -39,7 +48,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await findTestAccountById(userId);
+    const user = await (deps.findAccountById ?? findTestAccountById)(userId);
     if (!user) {
       return notFound(clientId);
     }

@@ -31,6 +31,29 @@ const PREPARATION_CHANNELS: ServiceChannel[] = ["API", "MCP", "DOWNLOAD"];
 const EVIDENCE_DRIFT_MESSAGE =
   "검수요청 증적이 현재 지식 데이터와 일치하지 않습니다. 다시 검증한 뒤 검수요청해 주세요.";
 
+const RAG_EXPORT_DOWNLOAD_EVIDENCE_MESSAGE =
+  "RAG Export 다운로드 테스트 증적이 검증 결과와 일치하지 않습니다. 다시 검증·다운로드해 주세요.";
+
+/**
+ * Fail-closed RAG Export download evidence: only a non-empty `exportFingerprint`
+ * may bind downloadTest.fileId. Never fall back to details.fileId or SOURCE_ORIGINAL.
+ */
+export function assertRagExportDownloadEvidenceBinding(input: {
+  runDetails: Record<string, unknown> | null;
+  downloadTestFileId: string;
+}): void {
+  if (input.runDetails?.downloadMode !== "RAG_EXPORT") {
+    throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", RAG_EXPORT_DOWNLOAD_EVIDENCE_MESSAGE);
+  }
+  const exportFingerprint = input.runDetails.exportFingerprint;
+  if (typeof exportFingerprint !== "string" || exportFingerprint.trim().length < 1) {
+    throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", RAG_EXPORT_DOWNLOAD_EVIDENCE_MESSAGE);
+  }
+  if (input.downloadTestFileId !== exportFingerprint) {
+    throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", RAG_EXPORT_DOWNLOAD_EVIDENCE_MESSAGE);
+  }
+}
+
 /**
  * Re-validate the full review-submit binding inside the commit transaction (§7-§10).
  *
@@ -275,21 +298,12 @@ export async function assertReviewSubmitEvidenceInTx(
         run.details && typeof run.details === "object" && !Array.isArray(run.details)
           ? (run.details as Record<string, unknown>)
           : null;
-      // RAG Export download-test evidence stores exportFingerprint as fileId,
-      // not KnowledgePackFile (SOURCE_ORIGINAL) id.
+      // RAG Export: downloadTest.fileId must equal exportFingerprint only (no fileId fallback).
       if (runDetails?.downloadMode === "RAG_EXPORT") {
-        const expectedExportId =
-          typeof runDetails.exportFingerprint === "string"
-            ? runDetails.exportFingerprint
-            : typeof runDetails.fileId === "string"
-              ? runDetails.fileId
-              : null;
-        if (!expectedExportId || downloadTest.fileId !== expectedExportId) {
-          throw new ReviewSubmitEvidenceError(
-            "VALIDATION_DRIFT",
-            "RAG Export 다운로드 테스트 증적이 검증 결과와 일치하지 않습니다. 다시 검증·다운로드해 주세요.",
-          );
-        }
+        assertRagExportDownloadEvidenceBinding({
+          runDetails,
+          downloadTestFileId: downloadTest.fileId,
+        });
       } else if (sourceFile && downloadTest.fileId !== sourceFile.id) {
         throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
       }
