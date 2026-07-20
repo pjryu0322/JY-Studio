@@ -382,6 +382,7 @@ describe("P26 GitHub auto collect E2E", () => {
       {
         fetchImpl: fetchImpl as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async (_userId, _clientId, _packId, input) => {
           pushSourceDocument(state, {
             title: input.title,

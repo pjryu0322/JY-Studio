@@ -4,7 +4,6 @@
 import {
   type ServiceValidationChannel,
   type ServiceValidationRun,
-  type ServiceValidationStatus,
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import type { ServiceChannel } from "@/lib/distribution/service-channel-policy";
@@ -24,7 +23,20 @@ import {
   resolveConfirmationStatusDto,
   resolveRunCurrentValidity,
 } from "@/lib/distribution/service-validation-policy";
-import { findLatestServiceValidationRun } from "@/lib/distribution/service-validation-queries";
+import {
+  adminHistoryNeedsComputedFilter,
+  adminHistoryPaginationMeta,
+  buildAdminHistoryBaseWhere,
+  normalizeAdminHistoryPagination,
+  resolveAdminHistoryVersionScope,
+  resolveAdminRunInvalidationReason,
+  resolveAdminRunSharedConfirmationStaleOverride,
+  type AdminHistoryWhere,
+} from "@/lib/distribution/service-validation-admin-listing-helpers";
+import {
+  findLatestServiceValidationRun,
+  loadSharedConfirmationPeerFingerprints,
+} from "@/lib/distribution/service-validation-queries";
 
 /** Admin-only ops log DTO (includes internal identifiers). */
 export type AdminServiceValidationRunDto = {
@@ -101,71 +113,116 @@ export type AdminServiceValidationListResult = {
   };
 };
 
-async function mapAdminRunDto(
-  run: ServiceValidationRun,
-  versionCurrentBinding: CurrentValidationBinding | null,
-  runPipelineBinding: CurrentValidationBinding | null,
-  userNames: Map<string, string>,
-  versionLabelById?: Map<string, string>,
-): Promise<AdminServiceValidationRunDto> {
-  const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
-    where: { runId: run.id },
-  });
-  const results = await prisma.serviceValidationResultItem.findMany({
-    where: { runId: run.id },
-    orderBy: { rank: "asc" },
-  });
-  const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
-    where: { runId: run.id },
-  });
-  const evidenceIntegrity = evidenceIntegrityForRun(run, runPipelineBinding);
-  let validity = resolveRunCurrentValidity({
+type AdminRunRecords = {
+  confirmation: Awaited<
+    ReturnType<typeof prisma.serviceValidationProviderConfirmation.findUnique>
+  >;
+  results: Awaited<ReturnType<typeof prisma.serviceValidationResultItem.findMany>>;
+  downloadTest: Awaited<ReturnType<typeof prisma.serviceValidationDownloadTest.findUnique>>;
+};
+
+/** DB-only: load the per-run rows needed to build the admin DTO. No policy here. */
+async function loadAdminRunRecords(runId: string): Promise<AdminRunRecords> {
+  const [confirmation, results, downloadTest] = await Promise.all([
+    prisma.serviceValidationProviderConfirmation.findUnique({ where: { runId } }),
+    prisma.serviceValidationResultItem.findMany({ where: { runId }, orderBy: { rank: "asc" } }),
+    prisma.serviceValidationDownloadTest.findUnique({ where: { runId } }),
+  ]);
+  return { confirmation, results, downloadTest };
+}
+
+/** Pure: resolve current validity + invalidation reason from run/records/bindings. */
+function resolveAdminRunValidityAndReason(input: {
+  run: ServiceValidationRun;
+  versionCurrentBinding: CurrentValidationBinding | null;
+  runPipelineBinding: CurrentValidationBinding | null;
+  records: AdminRunRecords;
+  evidenceIntegrity: "VALID" | "INVALID";
+  sharedStaleOverride: boolean;
+}): { validity: "CURRENT" | "STALE"; invalidationReason: string | null } {
+  const { run, versionCurrentBinding, records } = input;
+  const baseValidity = resolveRunCurrentValidity({
     run,
     bindingFingerprint: versionCurrentBinding?.fingerprint,
     bindingIndexGenerationId: versionCurrentBinding?.indexGenerationId,
-    resultItemCount: run.channel === "DOWNLOAD" ? null : results.length,
+    resultItemCount: run.channel === "DOWNLOAD" ? null : records.results.length,
     expectedRankingPolicyVersion:
       run.channel === "API" || run.channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
   });
-  let invalidationReason: string | null = null;
-  if (confirmation?.sharedConfirmationGroupId && (run.channel === "API" || run.channel === "MCP")) {
-    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
-      where: { sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId },
-      include: { run: { select: { channel: true, resultFingerprint: true } } },
-    });
-    const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
-    const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
-    if (
-      isLegacySharedConfirmationMissingFingerprint({
-        sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId,
-        apiResultFingerprint: apiPeer?.resultFingerprint,
-        mcpResultFingerprint: mcpPeer?.resultFingerprint,
-      })
-    ) {
-      validity = "STALE";
-      invalidationReason = "RESULT_FINGERPRINT_MISSING";
-    }
-  }
+  const validity = input.sharedStaleOverride ? "STALE" : baseValidity;
+  const invalidationReason = resolveAdminRunInvalidationReason({
+    invalidatedAt: run.invalidatedAt,
+    evidenceIntegrity: input.evidenceIntegrity,
+    status: run.status,
+    validity,
+    channel: run.channel,
+    resultCount: records.results.length,
+    sharedStaleOverride: input.sharedStaleOverride,
+  });
+  return { validity, invalidationReason };
+}
+
+/** Pure: assemble the admin result-item DTOs (rank/score/source columns only). */
+function buildAdminRunResultDtos(
+  results: AdminRunRecords["results"],
+): AdminServiceValidationRunDto["results"] {
+  return results.map((r) => ({
+    rank: r.rank,
+    chunkId: r.chunkId,
+    title: r.title,
+    snippet: r.snippet,
+    score: r.score,
+    sourceDocumentId: r.sourceDocumentId,
+    sourceDocumentTitle: r.sourceDocumentTitle,
+    pageStart: r.pageStart,
+    pageEnd: r.pageEnd,
+  }));
+}
+
+/** Pure: assemble the tested/confirmed/downloadTested user-attribution fields. */
+function buildAdminRunAttributionFields(
+  run: ServiceValidationRun,
+  records: AdminRunRecords,
+  userNames: Map<string, string>,
+) {
+  const { confirmation, downloadTest } = records;
+  return {
+    testedByUserId: run.testedByUserId,
+    testedByName: run.testedByUserId ? userNames.get(run.testedByUserId) ?? null : null,
+    testedAt: run.testedAt?.toISOString() ?? null,
+    confirmedByUserId: confirmation?.confirmedByUserId ?? null,
+    confirmedByName: confirmation?.confirmedByUserId
+      ? userNames.get(confirmation.confirmedByUserId) ?? null
+      : null,
+    confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
+    downloadTestCompleted: Boolean(downloadTest?.responseReady),
+    downloadTestedAt: downloadTest?.testedAt.toISOString() ?? null,
+    downloadTestedByUserId: downloadTest?.testedByUserId ?? null,
+    downloadTestedByName: downloadTest?.testedByUserId
+      ? userNames.get(downloadTest.testedByUserId) ?? null
+      : null,
+    downloadTestFileId: downloadTest?.fileId ?? null,
+  };
+}
+
+/** Pure: assemble the final admin DTO from run + records + resolved policy fields. */
+function buildAdminRunDto(input: {
+  run: ServiceValidationRun;
+  records: AdminRunRecords;
+  evidenceIntegrity: "VALID" | "INVALID";
+  validity: "CURRENT" | "STALE";
+  invalidationReason: string | null;
+  userNames: Map<string, string>;
+  versionLabelById?: Map<string, string>;
+}): AdminServiceValidationRunDto {
+  const { run, records, evidenceIntegrity, validity, invalidationReason } = input;
+  const { confirmation, results } = records;
   const details = asRecord(run.details);
-  if (!invalidationReason) {
-    if (run.invalidatedAt) invalidationReason = "INVALIDATED_AT";
-    else if (evidenceIntegrity === "INVALID" && run.status === "PASS") {
-      invalidationReason = "PIPELINE_EVIDENCE_MISMATCH";
-    } else if (
-      validity === "STALE" &&
-      (run.channel === "API" || run.channel === "MCP") &&
-      results.length < 1
-    ) {
-      invalidationReason = "RESULT_SNAPSHOT_EMPTY";
-    } else if (validity === "STALE") {
-      invalidationReason = "BINDING_DRIFT";
-    }
-  }
   return {
     runId: run.id,
     packId: run.packId,
     versionId: run.versionId,
-    versionLabel: versionLabelById?.get(run.versionId) ?? null,
+    versionLabel: input.versionLabelById?.get(run.versionId) ?? null,
     channel: run.channel,
     historicalStatus: run.status,
     evidenceIntegrity,
@@ -196,37 +253,53 @@ async function mapAdminRunDto(
     query: run.query,
     failureCode: run.failureCode,
     failureMessage: run.failureMessage,
-    testedByUserId: run.testedByUserId,
-    testedByName: run.testedByUserId
-      ? userNames.get(run.testedByUserId) ?? null
-      : null,
-    testedAt: run.testedAt?.toISOString() ?? null,
-    confirmedByUserId: confirmation?.confirmedByUserId ?? null,
-    confirmedByName: confirmation?.confirmedByUserId
-      ? userNames.get(confirmation.confirmedByUserId) ?? null
-      : null,
-    confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
-    downloadTestCompleted: Boolean(downloadTest?.responseReady),
-    downloadTestedAt: downloadTest?.testedAt.toISOString() ?? null,
-    downloadTestedByUserId: downloadTest?.testedByUserId ?? null,
-    downloadTestedByName: downloadTest?.testedByUserId
-      ? userNames.get(downloadTest.testedByUserId) ?? null
-      : null,
-    downloadTestFileId: downloadTest?.fileId ?? null,
+    ...buildAdminRunAttributionFields(run, records, input.userNames),
     createdAt: run.createdAt.toISOString(),
     details,
-    results: results.map((r) => ({
-      rank: r.rank,
-      chunkId: r.chunkId,
-      title: r.title,
-      snippet: r.snippet,
-      score: r.score,
-      sourceDocumentId: r.sourceDocumentId,
-      sourceDocumentTitle: r.sourceDocumentTitle,
-      pageStart: r.pageStart,
-      pageEnd: r.pageEnd,
-    })),
+    results: buildAdminRunResultDtos(results),
   };
+}
+
+async function mapAdminRunDto(
+  run: ServiceValidationRun,
+  versionCurrentBinding: CurrentValidationBinding | null,
+  runPipelineBinding: CurrentValidationBinding | null,
+  userNames: Map<string, string>,
+  versionLabelById?: Map<string, string>,
+): Promise<AdminServiceValidationRunDto> {
+  const records = await loadAdminRunRecords(run.id);
+  const evidenceIntegrity = evidenceIntegrityForRun(run, runPipelineBinding);
+
+  const isSearchChannel = run.channel === "API" || run.channel === "MCP";
+  const peerFingerprints =
+    records.confirmation?.sharedConfirmationGroupId && isSearchChannel
+      ? await loadSharedConfirmationPeerFingerprints(prisma, records.confirmation.sharedConfirmationGroupId)
+      : null;
+  const sharedStaleOverride = resolveAdminRunSharedConfirmationStaleOverride({
+    channel: run.channel,
+    sharedConfirmationGroupId: records.confirmation?.sharedConfirmationGroupId,
+    apiResultFingerprint: peerFingerprints?.apiResultFingerprint,
+    mcpResultFingerprint: peerFingerprints?.mcpResultFingerprint,
+  });
+
+  const { validity, invalidationReason } = resolveAdminRunValidityAndReason({
+    run,
+    versionCurrentBinding,
+    runPipelineBinding,
+    records,
+    evidenceIntegrity,
+    sharedStaleOverride,
+  });
+
+  return buildAdminRunDto({
+    run,
+    records,
+    evidenceIntegrity,
+    validity,
+    invalidationReason,
+    userNames,
+    versionLabelById,
+  });
 }
 
 /** @deprecated Prefer listAdminServiceValidationHistory — returns latest-by-channel only. */
@@ -275,16 +348,6 @@ async function loadAdminBindingMaps(input: {
   return { versionCurrentById, pipelineById };
 }
 
-function parseAdminHistoryDateBound(raw: string, endOfDay: boolean): Date {
-  const trimmed = raw.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const d = new Date(`${trimmed}T00:00:00.000`);
-    if (endOfDay) d.setHours(23, 59, 59, 999);
-    return d;
-  }
-  return new Date(trimmed);
-}
-
 export async function listAdminServiceValidationHistory(input: {
   packId: string;
   versionId?: string | null;
@@ -317,59 +380,30 @@ export async function listAdminServiceValidationHistory(input: {
     isLatest: v.id === latestVersion.id,
   }));
 
-  const explicitVersionId = input.versionId?.trim() || null;
-  const scopeRaw = (input.versionScope ?? "").toUpperCase();
-  let versionScope: "ALL" | "LATEST" | "VERSION" = "ALL";
-  let filterVersionId: string | null = null;
+  const { versionScope, filterVersionId } = resolveAdminHistoryVersionScope({
+    versions: pack.versions,
+    latestVersionId: latestVersion.id,
+    versionId: input.versionId,
+    versionScope: input.versionScope,
+  });
 
-  if (explicitVersionId) {
-    const owned = pack.versions.find((v) => v.id === explicitVersionId);
-    if (!owned) {
-      throw new PayloadServiceError(
-        "NOT_FOUND",
-        "선택한 버전이 이 지식팩에 속하지 않습니다.",
-        404,
-      );
-    }
-    versionScope = "VERSION";
-    filterVersionId = owned.id;
-  } else if (scopeRaw === "LATEST") {
-    versionScope = "LATEST";
-    filterVersionId = latestVersion.id;
-  } else {
-    versionScope = "ALL";
-    filterVersionId = null;
-  }
+  const { page, pageSize } = normalizeAdminHistoryPagination({
+    page: input.page,
+    pageSize: input.pageSize,
+  });
 
-  const page = Math.max(1, input.page ?? 1);
-  const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 20));
+  const baseWhere = buildAdminHistoryBaseWhere({
+    packId: input.packId,
+    filterVersionId,
+    channel: input.channel,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+  });
 
-  type AdminWhere = {
-    packId: string;
-    versionId?: string;
-    channel?: ServiceValidationChannel;
-    status?: ServiceValidationStatus;
-    createdAt?: { gte?: Date; lte?: Date };
-  };
-
-  const baseWhere: AdminWhere = { packId: input.packId };
-  if (filterVersionId) baseWhere.versionId = filterVersionId;
-  if (input.channel) baseWhere.channel = input.channel as ServiceValidationChannel;
-  if (input.dateFrom || input.dateTo) {
-    baseWhere.createdAt = {};
-    if (input.dateFrom) baseWhere.createdAt.gte = parseAdminHistoryDateBound(input.dateFrom, false);
-    if (input.dateTo) baseWhere.createdAt.lte = parseAdminHistoryDateBound(input.dateTo, true);
-  }
-
-  const confFilter = input.providerConfirmationStatus?.trim().toUpperCase() || null;
-  const systemFilter = input.systemStatus?.trim().toUpperCase() || null;
-  const needsComputedFilter =
-    systemFilter === "STALE" ||
-    systemFilter === "PASS" ||
-    confFilter === "STALE" ||
-    confFilter === "CONFIRMED" ||
-    confFilter === "REJECTED" ||
-    confFilter === "NOT_REVIEWED";
+  const { needsComputedFilter, systemFilter, confFilter } = adminHistoryNeedsComputedFilter({
+    systemStatus: input.systemStatus,
+    providerConfirmationStatus: input.providerConfirmationStatus,
+  });
 
   async function latestRunsInScope(): Promise<ServiceValidationRun[]> {
     const out: ServiceValidationRun[] = [];
@@ -429,7 +463,7 @@ export async function listAdminServiceValidationHistory(input: {
   let totalCount = 0;
 
   if (needsComputedFilter) {
-    const whereForCandidates: AdminWhere = { ...baseWhere };
+    const whereForCandidates: AdminHistoryWhere = { ...baseWhere };
     if (systemFilter === "FAIL") {
       whereForCandidates.status = "FAIL";
     } else if (systemFilter === "PASS" || systemFilter === "STALE") {
@@ -526,7 +560,7 @@ export async function listAdminServiceValidationHistory(input: {
     totalCount = matched.length;
     runs = matched.slice((page - 1) * pageSize, page * pageSize);
   } else {
-    const where: AdminWhere = { ...baseWhere };
+    const where: AdminHistoryWhere = { ...baseWhere };
     if (systemFilter === "FAIL") where.status = "FAIL";
 
     totalCount = await prisma.serviceValidationRun.count({ where });
@@ -605,12 +639,7 @@ export async function listAdminServiceValidationHistory(input: {
     versions: versionsDto,
     versionScope,
     selectedVersionId: filterVersionId,
-    pagination: {
-      page,
-      pageSize,
-      totalCount,
-      totalPages: Math.max(1, Math.ceil(totalCount / pageSize) || 1),
-    },
+    pagination: adminHistoryPaginationMeta({ page, pageSize, totalCount }),
   };
 }
 

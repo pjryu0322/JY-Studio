@@ -19,6 +19,7 @@ import {
   loadOwnedPackForServiceValidationRead,
   rankingPolicyVersionFromDetails,
 } from "@/lib/distribution/service-validation-service";
+import { asRecord } from "@/lib/distribution/service-validation-policy";
 import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { canShareProviderConfirmation } from "@/lib/distribution/service-validation-share";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
@@ -515,17 +516,8 @@ export type PreparedProviderDownloadTest = {
   existingEvidence: boolean;
 };
 
-/**
- * Validates download-test eligibility and opens the object stream.
- * Does not write evidence — call commitSuccessfulDownloadTestEvidence after headers/body are ready.
- */
-export async function prepareProviderDownloadTest(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-  runId: string;
-}): Promise<PreparedProviderDownloadTest> {
-  const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
+/** Pure: only DRAFT packs may run a test download. */
+function assertPackDraftEditableForDownloadTest(pack: { status: PackStatus }): void {
   if (pack.status !== PackStatus.DRAFT) {
     throw new PayloadServiceError(
       "SERVICE_VALIDATION_NOT_EDITABLE",
@@ -533,11 +525,26 @@ export async function prepareProviderDownloadTest(input: {
       403,
     );
   }
+}
+
+type DownloadTestRun = NonNullable<
+  Awaited<ReturnType<typeof prisma.serviceValidationRun.findUnique>>
+> & {
+  confirmation: unknown;
+  downloadTest: { responseReady: boolean } | null;
+};
+
+/** DB + policy: load the run and require it be a confirmable, PASSing DOWNLOAD run. */
+async function loadEligibleDownloadTestRun(input: {
+  runId: string;
+  packId: string;
+  versionId: string;
+}): Promise<DownloadTestRun> {
   const run = await prisma.serviceValidationRun.findUnique({
     where: { id: input.runId },
     include: { confirmation: true, downloadTest: true },
   });
-  if (!run || run.packId !== pack.packId || run.versionId !== version.id) {
+  if (!run || run.packId !== input.packId || run.versionId !== input.versionId) {
     throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
   }
   if (run.confirmation) {
@@ -554,9 +561,18 @@ export async function prepareProviderDownloadTest(input: {
       400,
     );
   }
+  return run as DownloadTestRun;
+}
+
+/** DB + policy: the run must still be CURRENT against the live knowledge binding. */
+async function assertDownloadTestRunCurrent(
+  run: Pick<DownloadTestRun, "pipelineRunId" | "fingerprint" | "indexGenerationId" | "invalidatedAt" | "status" | "channel">,
+  packId: string,
+  versionId: string,
+): Promise<void> {
   const binding = await resolveCurrentValidationBindingTx(prisma, {
-    packId: pack.packId,
-    versionId: version.id,
+    packId,
+    versionId,
     expectedPipelineRunId: run.pipelineRunId,
   });
   const validity = resolveRunCurrentValidity({
@@ -572,72 +588,75 @@ export async function prepareProviderDownloadTest(input: {
       400,
     );
   }
-  const details =
-    run.details && typeof run.details === "object" && !Array.isArray(run.details)
-      ? (run.details as Record<string, unknown>)
-      : null;
+}
 
-  if (details?.downloadMode === "RAG_EXPORT") {
-    const expectedFp =
-      typeof details.exportFingerprint === "string" ? details.exportFingerprint : null;
-    const expectedName =
-      typeof details.fileName === "string" ? details.fileName : "rag-export.zip";
-    if (!expectedFp) {
-      throw new PayloadServiceError(
-        "RAG_EXPORT_FINGERPRINT_MISMATCH",
-        "RAG Export 검증 증적이 올바르지 않습니다. 다시 검증해 주세요.",
-        409,
-      );
-    }
-    const { buildRagExportPackage, RagExportBuildError } = await import(
-      "@/lib/exports/rag-export-builder"
-    );
-    let pkg;
-    try {
-      pkg = await buildRagExportPackage({
-        packId: pack.packId,
-        versionId: version.id,
-        expectedPipelineRunId: run.pipelineRunId ?? undefined,
-        expectedSearchIndexGenerationId: run.indexGenerationId ?? undefined,
-        expectedNormalizedDocumentId: run.normalizedDocumentId ?? undefined,
-        expectedFingerprint: run.fingerprint ?? undefined,
-        includeZipBytes: true,
-      });
-    } catch (err) {
-      if (err instanceof RagExportBuildError) {
-        const code =
-          err.code === "RAG_EXPORT_BINDING_STALE" ||
-          err.code === "RAG_EXPORT_BUILD_FAILED" ||
-          err.code === "RAG_EXPORT_FINGERPRINT_MISMATCH" ||
-          err.code === "RAG_EXPORT_CHUNK_EMPTY" ||
-          err.code === "RAG_EXPORT_SOURCE_TRACE_INVALID"
-            ? err.code
-            : "RAG_EXPORT_BUILD_FAILED";
-        throw new PayloadServiceError(code, err.message, 409);
-      }
-      throw err;
-    }
-    if (pkg.exportFingerprint !== expectedFp || !pkg.zipBytes) {
-      throw new PayloadServiceError(
-        "RAG_EXPORT_FINGERPRINT_MISMATCH",
-        "검증 이후 검색데이터가 변경되었습니다. RAG Export를 다시 검증해 주세요.",
-        409,
-      );
-    }
-    return {
-      runId: run.id,
-      packId: pack.packId,
-      versionId: version.id,
-      fileId: expectedFp,
-      fileName: expectedName,
-      mimeType: "application/zip",
-      contentLength: pkg.zipBytes.byteLength,
-      stream: null,
-      bodyBytes: pkg.zipBytes,
-      existingEvidence: Boolean(run.downloadTest?.responseReady),
-    };
+/** Pure: map a caught RAG-export build error to the matching payload error code. */
+async function ragExportBuildErrorToPayloadError(err: unknown): Promise<never> {
+  const { RagExportBuildError } = await import("@/lib/exports/rag-export-builder");
+  if (err instanceof RagExportBuildError) {
+    const code =
+      err.code === "RAG_EXPORT_BINDING_STALE" ||
+      err.code === "RAG_EXPORT_BUILD_FAILED" ||
+      err.code === "RAG_EXPORT_FINGERPRINT_MISMATCH" ||
+      err.code === "RAG_EXPORT_CHUNK_EMPTY" ||
+      err.code === "RAG_EXPORT_SOURCE_TRACE_INVALID"
+        ? err.code
+        : "RAG_EXPORT_BUILD_FAILED";
+    throw new PayloadServiceError(code, err.message, 409);
   }
+  throw err;
+}
 
+/** Rebuilds the RAG Export package and validates it still matches the run's recorded fingerprint. */
+async function prepareRagExportDownloadTest(input: {
+  run: DownloadTestRun;
+  packId: string;
+  versionId: string;
+  details: Record<string, unknown>;
+}): Promise<PreparedProviderDownloadTest> {
+  const { run, details } = input;
+  const expectedFp = typeof details.exportFingerprint === "string" ? details.exportFingerprint : null;
+  const expectedName = typeof details.fileName === "string" ? details.fileName : "rag-export.zip";
+  if (!expectedFp) {
+    throw new PayloadServiceError(
+      "RAG_EXPORT_FINGERPRINT_MISMATCH",
+      "RAG Export 검증 증적이 올바르지 않습니다. 다시 검증해 주세요.",
+      409,
+    );
+  }
+  const { buildRagExportPackage } = await import("@/lib/exports/rag-export-builder");
+  const pkg = await buildRagExportPackage({
+    packId: input.packId,
+    versionId: input.versionId,
+    expectedPipelineRunId: run.pipelineRunId ?? undefined,
+    expectedSearchIndexGenerationId: run.indexGenerationId ?? undefined,
+    expectedNormalizedDocumentId: run.normalizedDocumentId ?? undefined,
+    expectedFingerprint: run.fingerprint ?? undefined,
+    includeZipBytes: true,
+  }).catch(ragExportBuildErrorToPayloadError);
+  if (pkg.exportFingerprint !== expectedFp || !pkg.zipBytes) {
+    throw new PayloadServiceError(
+      "RAG_EXPORT_FINGERPRINT_MISMATCH",
+      "검증 이후 검색데이터가 변경되었습니다. RAG Export를 다시 검증해 주세요.",
+      409,
+    );
+  }
+  return {
+    runId: run.id,
+    packId: input.packId,
+    versionId: input.versionId,
+    fileId: expectedFp,
+    fileName: expectedName,
+    mimeType: "application/zip",
+    contentLength: pkg.zipBytes.byteLength,
+    stream: null,
+    bodyBytes: pkg.zipBytes,
+    existingEvidence: Boolean(run.downloadTest?.responseReady),
+  };
+}
+
+/** Legacy original-file DOWNLOAD runs are always STALE; never stream SOURCE_ORIGINAL. */
+function rejectLegacyDownloadTest(details: Record<string, unknown> | null): never {
   const fileId = typeof details?.fileId === "string" ? details.fileId : null;
   if (!fileId) {
     throw new PayloadServiceError(
@@ -646,12 +665,37 @@ export async function prepareProviderDownloadTest(input: {
       404,
     );
   }
-  // Legacy original-file DOWNLOAD runs are STALE; do not stream SOURCE_ORIGINAL.
   throw new PayloadServiceError(
     "SERVICE_VALIDATION_STALE",
     "이전 원본문서 다운로드 검증은 더 이상 유효하지 않습니다. RAG Export를 다시 검증해 주세요.",
     409,
   );
+}
+
+/**
+ * Validates download-test eligibility and opens the object stream.
+ * Does not write evidence — call commitSuccessfulDownloadTestEvidence after headers/body are ready.
+ */
+export async function prepareProviderDownloadTest(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  runId: string;
+}): Promise<PreparedProviderDownloadTest> {
+  const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
+  assertPackDraftEditableForDownloadTest(pack);
+  const run = await loadEligibleDownloadTestRun({
+    runId: input.runId,
+    packId: pack.packId,
+    versionId: version.id,
+  });
+  await assertDownloadTestRunCurrent(run, pack.packId, version.id);
+  const details = asRecord(run.details);
+
+  if (details?.downloadMode === "RAG_EXPORT") {
+    return prepareRagExportDownloadTest({ run, packId: pack.packId, versionId: version.id, details });
+  }
+  rejectLegacyDownloadTest(details);
 }
 
 /**

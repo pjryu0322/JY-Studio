@@ -53,6 +53,11 @@ export type ApplyHybridVectorRankingInput = {
    * Test injection: override adapter resolution so embed() can be spied without a live worker.
    */
   resolveAdapter?: (descriptor: EmbeddingDescriptor) => EmbeddingProviderAdapter;
+  /**
+   * Test injection: override the pgvector query used on the generation path
+   * (default: querySearchIndexVectorsByGeneration). Production callers must not pass this.
+   */
+  queryVectorsByGeneration?: typeof querySearchIndexVectorsByGeneration;
 };
 
 export type ApplyHybridVectorRankingResult = {
@@ -101,7 +106,9 @@ export async function applyHybridVectorRanking(
     const filters = input.filters ?? {};
     const tokens = input.tokens ?? [];
 
-    const vectorHits = await querySearchIndexVectorsByGeneration({
+    const queryVectorsByGeneration =
+      input.queryVectorsByGeneration ?? querySearchIndexVectorsByGeneration;
+    const vectorHits = await queryVectorsByGeneration({
       searchIndexGenerationId,
       provider: descriptor.provider,
       model: descriptor.model,
@@ -141,18 +148,21 @@ export async function applyHybridVectorRanking(
     // Fall back to generation-scoped JSON KnowledgeChunkEmbedding rows.
     // Still not legacy local-hash — scoped to this generation's descriptor.
     const chunkIds = scored.map((item) => item.chunk.id);
-    const jsonEmbeddings = await prisma.knowledgeChunkEmbedding.findMany({
-      where: {
-        chunkId: { in: chunkIds },
-        provider: descriptor.provider,
-        model: descriptor.model,
-        searchIndexGenerationId,
-      },
-      select: { chunkId: true, vector: true },
-    });
     const jsonVectorByChunk = new Map<string, number[]>();
-    for (const row of jsonEmbeddings) {
-      if (isValidVector(row.vector)) jsonVectorByChunk.set(row.chunkId, row.vector);
+    if (chunkIds.length > 0) {
+      // Querying with an empty `in` filter is always empty, so skip the round trip.
+      const jsonEmbeddings = await prisma.knowledgeChunkEmbedding.findMany({
+        where: {
+          chunkId: { in: chunkIds },
+          provider: descriptor.provider,
+          model: descriptor.model,
+          searchIndexGenerationId,
+        },
+        select: { chunkId: true, vector: true },
+      });
+      for (const row of jsonEmbeddings) {
+        if (isValidVector(row.vector)) jsonVectorByChunk.set(row.chunkId, row.vector);
+      }
     }
     applyVectorScores(scored, queryVector, jsonVectorByChunk);
     return {

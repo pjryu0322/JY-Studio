@@ -17,6 +17,15 @@ function readSource(relativePath: string): string {
   return readFileSync(join(projectRoot, relativePath), "utf8");
 }
 
+/** commitDistributionPackForReview is split across the service + its step/tx helpers. */
+function readDistributionSubmitModules(): string {
+  return (
+    readSource("src/lib/distribution/distribution-submit-service.ts") +
+    readSource("src/lib/distribution/distribution-submit-commit-steps.ts") +
+    readSource("src/lib/distribution/distribution-submit-commit-tx.ts")
+  );
+}
+
 describe("P0-A.3 docling safe replace and staging", () => {
   it("replacement UX does not delete active on replace start", () => {
     const ui = readSource("src/components/provider-distribution/ProviderDoclingImportTab.tsx");
@@ -67,7 +76,7 @@ describe("P0-A.3 docling safe replace and staging", () => {
   });
 
   it("no longer ships automatic document-language detection", () => {
-    const submit = readSource("src/lib/distribution/distribution-submit-service.ts");
+    const submit = readDistributionSubmitModules();
     assert.ok(submit.includes("toPackLanguageCode") || submit.includes("문서 언어"));
     assert.ok(!submit.includes("files.length >= 3"));
     assert.ok(!readSource("src/lib/docling-import/docling-import-service.ts").includes("resolveDocumentLanguage"));
@@ -102,7 +111,7 @@ describe("P0-A.3 docling safe replace and staging", () => {
   });
 
   it("review submit blocks live staging", () => {
-    const submit = readSource("src/lib/distribution/distribution-submit-service.ts");
+    const submit = readDistributionSubmitModules();
     assert.ok(submit.includes("findLatestStagingBundleForVersion"));
     assert.ok(submit.includes("DOCLING_STAGING_BUNDLE_MUST_BE_RESOLVED") || submit.includes("Staging Bundle"));
     assert.ok(submit.includes("acquireVersionUploadLock"));

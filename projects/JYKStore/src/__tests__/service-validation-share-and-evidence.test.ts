@@ -20,8 +20,12 @@ const SERVICE_VALIDATION_MODULE_FILES = [
   "service-validation-queries.ts",
   "service-validation-provider-status.ts",
   "service-validation-run-commands.ts",
+  "service-validation-run-execute.ts",
+  "service-validation-run-persist-tx.ts",
   "service-validation-evidence-asserts.ts",
+  "service-validation-evidence-asserts-helpers.ts",
   "service-validation-admin-listing.ts",
+  "service-validation-admin-listing-helpers.ts",
 ];
 
 function readServiceValidationModules(rootDir: string): string {

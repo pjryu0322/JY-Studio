@@ -23,6 +23,80 @@ import {
 } from "@/lib/provider-pack/provider-pack-shared";
 import { getProviderPackForClient } from "@/lib/provider-pack/provider-pack-query-service";
 
+/** Build KnowledgePack scalar patch from update input (omit unchanged fields). */
+export function buildProviderPackScalarPatch(input: UpdateProviderPackInput): {
+  name?: string;
+  categoryId?: string;
+  shortDescription?: string;
+  description?: string;
+  tags?: string[];
+  icon?: string;
+  pricing?: PackPricing;
+} {
+  const data: {
+    name?: string;
+    categoryId?: string;
+    shortDescription?: string;
+    description?: string;
+    tags?: string[];
+    icon?: string;
+    pricing?: PackPricing;
+  } = {};
+  if (input.name !== undefined) data.name = input.name.trim();
+  if (input.categoryId !== undefined) data.categoryId = input.categoryId.trim();
+  if (input.shortDescription !== undefined) {
+    data.shortDescription = input.shortDescription.trim();
+  }
+  if (input.description !== undefined) data.description = input.description.trim();
+  if (input.tags !== undefined) data.tags = input.tags.map((t) => t.trim()).filter(Boolean);
+  if (input.icon !== undefined) data.icon = input.icon.trim() || "📦";
+  if (input.pricing !== undefined) data.pricing = input.pricing;
+  return data;
+}
+
+/** Build KnowledgePackVersion patch from update input + parsed language. */
+export function buildProviderPackVersionPatch(
+  input: UpdateProviderPackInput,
+  parsedLanguage: "ko" | "en" | null | undefined,
+): {
+  overview?: string;
+  features?: string[];
+  includedKnowledge?: string[];
+  supportedEnvironments?: string[];
+  targetUsers?: string[];
+  useCases?: string[];
+  versionSummary?: string;
+  language?: "KO" | "EN" | null;
+} {
+  const versionData: {
+    overview?: string;
+    features?: string[];
+    includedKnowledge?: string[];
+    supportedEnvironments?: string[];
+    targetUsers?: string[];
+    useCases?: string[];
+    versionSummary?: string;
+    language?: "KO" | "EN" | null;
+  } = {};
+  if (input.versionOverview !== undefined) versionData.overview = input.versionOverview.trim();
+  if (input.versionFeatures !== undefined) versionData.features = input.versionFeatures;
+  if (input.versionIncludedKnowledge !== undefined) {
+    versionData.includedKnowledge = input.versionIncludedKnowledge;
+  }
+  if (input.versionSupportedEnvironments !== undefined) {
+    versionData.supportedEnvironments = input.versionSupportedEnvironments;
+  }
+  if (input.versionTargetUsers !== undefined) versionData.targetUsers = input.versionTargetUsers;
+  if (input.versionUseCases !== undefined) versionData.useCases = input.versionUseCases;
+  if (input.versionSummary !== undefined) {
+    versionData.versionSummary = input.versionSummary.trim();
+  }
+  if (parsedLanguage !== undefined) {
+    versionData.language = toPrismaPackLanguage(parsedLanguage);
+  }
+  return versionData;
+}
+
 export async function createProviderPackForClient(
   userId: string,
   clientId: string,
@@ -164,24 +238,7 @@ export async function updateProviderPackForClient(
     }
   }
 
-  const data: {
-    name?: string;
-    categoryId?: string;
-    shortDescription?: string;
-    description?: string;
-    tags?: string[];
-    icon?: string;
-    pricing?: PackPricing;
-  } = {};
-
-  if (input.name !== undefined) data.name = input.name.trim();
-  if (input.categoryId !== undefined) data.categoryId = input.categoryId.trim();
-  if (input.shortDescription !== undefined) data.shortDescription = input.shortDescription.trim();
-  if (input.description !== undefined) data.description = input.description.trim();
-  if (input.tags !== undefined) data.tags = input.tags.map((t) => t.trim()).filter(Boolean);
-  if (input.icon !== undefined) data.icon = input.icon.trim() || "📦";
-  if (input.pricing !== undefined) data.pricing = input.pricing;
-
+  const data = buildProviderPackScalarPatch(input);
   await prisma.knowledgePack.update({
     where: { packId },
     data,
@@ -189,39 +246,13 @@ export async function updateProviderPackForClient(
 
   const latestVersion = pack.versions[0];
   if (latestVersion) {
-    const versionData: {
-      overview?: string;
-      features?: string[];
-      includedKnowledge?: string[];
-      supportedEnvironments?: string[];
-      targetUsers?: string[];
-      useCases?: string[];
-      versionSummary?: string;
-      language?: "KO" | "EN" | null;
-    } = {};
-
-    if (input.versionOverview !== undefined) versionData.overview = input.versionOverview.trim();
-    if (input.versionFeatures !== undefined) versionData.features = input.versionFeatures;
-    if (input.versionIncludedKnowledge !== undefined) {
-      versionData.includedKnowledge = input.versionIncludedKnowledge;
-    }
-    if (input.versionSupportedEnvironments !== undefined) {
-      versionData.supportedEnvironments = input.versionSupportedEnvironments;
-    }
-    if (input.versionTargetUsers !== undefined) versionData.targetUsers = input.versionTargetUsers;
-    if (input.versionUseCases !== undefined) versionData.useCases = input.versionUseCases;
-    if (input.versionSummary !== undefined) versionData.versionSummary = input.versionSummary.trim();
-    if (parsedLanguage !== undefined) {
-      versionData.language = toPrismaPackLanguage(parsedLanguage);
-    }
-
+    const versionData = buildProviderPackVersionPatch(input, parsedLanguage);
     if (Object.keys(versionData).length > 0) {
       await prisma.knowledgePackVersion.update({
         where: { id: latestVersion.id },
         data: versionData,
       });
     }
-
   }
 
   await recordProviderAudit({

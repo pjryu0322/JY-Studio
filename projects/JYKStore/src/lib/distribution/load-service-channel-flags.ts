@@ -2,14 +2,24 @@ import { prisma } from "@/lib/prisma";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import type { ServiceChannelFlags } from "@/lib/distribution/service-channel-policy";
 
+export type LoadServiceChannelFlagsDeps = {
+  /**
+   * Test injection: override the Prisma client used to look up the pack/version.
+   * Production callers must not pass this.
+   */
+  prismaClient?: typeof prisma;
+};
+
 /**
  * Load service channel flags for the latest version of a pack.
  * Defaults preserve pre-migration behavior (API/MCP on) when metadata is missing.
  */
 export async function loadServiceChannelFlagsForPack(
   packId: string,
+  deps: LoadServiceChannelFlagsDeps = {},
 ): Promise<ServiceChannelFlags | null> {
-  const pack = await prisma.knowledgePack.findFirst({
+  const db = deps.prismaClient ?? prisma;
+  const pack = await db.knowledgePack.findFirst({
     where: { packId },
     include: {
       versions: {

@@ -49,7 +49,9 @@ describe("P29 distribution foundation", () => {
     const service = readSource("src/lib/provider-pack/provider-pack-review-submit-service.ts");
     assert.ok(service.includes("commitDistributionPackForReview"));
     assert.ok(!service.includes("knowledgePayload"));
-    const submit = readSource("src/lib/distribution/distribution-submit-service.ts");
+    const submit =
+      readSource("src/lib/distribution/distribution-submit-service.ts") +
+      readSource("src/lib/distribution/distribution-submit-commit-tx.ts");
     assert.ok(submit.includes("DOCLING_BUNDLE"));
     assert.ok(!submit.includes("version.payload"));
   });

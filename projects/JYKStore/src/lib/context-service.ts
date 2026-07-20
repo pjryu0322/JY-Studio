@@ -60,7 +60,7 @@ export async function getPackContext(
   const { assertServiceChannelEnabled } = await import(
     "@/lib/distribution/service-channel-policy"
   );
-  const flags = await loadServiceChannelFlagsForPack(input.packId);
+  const flags = await loadServiceChannelFlagsForPack(input.packId, { prismaClient: db });
   if (flags) {
     const channelCheck = assertServiceChannelEnabled("API", flags);
     if (!channelCheck.ok) {

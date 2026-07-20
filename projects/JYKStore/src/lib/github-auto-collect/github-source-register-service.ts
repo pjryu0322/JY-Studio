@@ -2,7 +2,7 @@ import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   assertProviderPackEditableForClient,
   createSourceDocumentForProviderPack,
-  getProviderPackForClient,
+  getProviderPackForClient as getProviderPackForClientDefault,
 } from "@/lib/provider-pack-service";
 import type { GitHubApiFetch } from "./github-api-client";
 import { fetchRecursiveTree } from "./github-api-client";
@@ -46,6 +46,18 @@ export type RegisterGitHubSourceDeps = {
     owner: string,
     repo: string,
   ) => Promise<number>;
+  /**
+   * Test injection: override the Prisma client used for the (lazy) latest-version
+   * lookup that backs the default syncRepositorySources implementation.
+   * Production callers must not pass this.
+   */
+  prismaClient?: typeof prisma;
+  /**
+   * Test injection: override the fallback pack-detail lookup used when no
+   * documents were registered (default: getProviderPackForClient).
+   * Production callers must not pass this.
+   */
+  getProviderPackForClient?: typeof getProviderPackForClientDefault;
 };
 
 function throwRegisterPreflightError(
@@ -82,12 +94,13 @@ function mapCreateError(message: string | undefined): string {
 }
 
 async function removeRepositorySourceDocumentsFromVersion(
+  db: typeof prisma,
   versionId: string,
   owner: string,
   repo: string,
 ): Promise<number> {
   const prefix = `https://github.com/${owner}/${repo}/blob/`;
-  const existing = await prisma.sourceDocument.findMany({
+  const existing = await db.sourceDocument.findMany({
     where: {
       versionId,
       sourceUrl: { startsWith: prefix },
@@ -95,10 +108,22 @@ async function removeRepositorySourceDocumentsFromVersion(
     select: { id: true },
   });
   if (existing.length === 0) return 0;
-  await prisma.sourceDocument.deleteMany({
+  await db.sourceDocument.deleteMany({
     where: { id: { in: existing.map((row) => row.id) } },
   });
   return existing.length;
+}
+
+/** Lazily resolves the latest version id for a pack (only used by the default syncRepositorySources). */
+async function resolveLatestVersionIdForPack(
+  db: typeof prisma,
+  packId: string,
+): Promise<string | undefined> {
+  const packVersionRow = await db.knowledgePack.findFirst({
+    where: { packId },
+    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  return packVersionRow?.versions[0]?.id;
 }
 
 export async function registerGitHubSourceDocumentsForPack(
@@ -112,6 +137,8 @@ export async function registerGitHubSourceDocumentsForPack(
   const trimmedPackId = packId.trim();
   const normalized = normalizeGitHubSourceRegisterInput(input, warnings);
   const createSourceDocument = deps.createSourceDocument ?? createSourceDocumentForProviderPack;
+  const getProviderPackForClient =
+    deps.getProviderPackForClient ?? getProviderPackForClientDefault;
   const fetchImpl = deps.fetchImpl;
   const token = deps.token ?? process.env.GITHUB_TOKEN;
 
@@ -137,17 +164,13 @@ export async function registerGitHubSourceDocumentsForPack(
   const parsed = parseGitHubRepositoryUrl(normalized.repositoryUrl);
   const branch = parsed.ref ?? discovery.repository.defaultBranch;
 
-  const packVersionRow = await prisma.knowledgePack.findFirst({
-    where: { packId: effectivePackId },
-    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
-  });
-  const versionId = packVersionRow?.versions[0]?.id;
-
+  const db = deps.prismaClient ?? prisma;
   const syncRepositorySources =
     deps.syncRepositorySources ??
     (async (targetPackId, owner, repo) => {
+      const versionId = await resolveLatestVersionIdForPack(db, targetPackId);
       if (!versionId) return 0;
-      return removeRepositorySourceDocumentsFromVersion(versionId, owner, repo);
+      return removeRepositorySourceDocumentsFromVersion(db, versionId, owner, repo);
     });
 
   let removedRepositorySourceCount = 0;

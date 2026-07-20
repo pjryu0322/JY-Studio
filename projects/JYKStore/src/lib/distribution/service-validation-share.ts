@@ -104,6 +104,58 @@ function isCurrentAgainstBinding(
   return true;
 }
 
+/** Pure: both runs PASSed and are still current against the shared binding. */
+function runsPassAndCurrent(
+  apiRun: ShareableValidationRun,
+  mcpRun: ShareableValidationRun,
+  binding?: ShareBinding | null,
+): boolean {
+  if (apiRun.status !== "PASS" || mcpRun.status !== "PASS") return false;
+  return isCurrentAgainstBinding(apiRun, binding) && isCurrentAgainstBinding(mcpRun, binding);
+}
+
+/** Pure: both runs were tested with the same query against the same knowledge binding. */
+function runsShareSameQueryAndBinding(
+  apiRun: ShareableValidationRun,
+  mcpRun: ShareableValidationRun,
+): boolean {
+  if (normalizeValidationQuery(apiRun.query) !== normalizeValidationQuery(mcpRun.query)) {
+    return false;
+  }
+  return (
+    (apiRun.pipelineRunId ?? "") === (mcpRun.pipelineRunId ?? "") &&
+    (apiRun.indexGenerationId ?? "") === (mcpRun.indexGenerationId ?? "") &&
+    (apiRun.fingerprint ?? "") === (mcpRun.fingerprint ?? "") &&
+    (apiRun.normalizedDocumentId ?? "") === (mcpRun.normalizedDocumentId ?? "") &&
+    (apiRun.resultCount ?? -1) === (mcpRun.resultCount ?? -2)
+  );
+}
+
+/** Pure: both retrieval snapshots are non-empty, equal length, and item-for-item equal. */
+function resultSnapshotsMatch(
+  apiResults: ShareableResultItem[],
+  mcpResults: ShareableResultItem[],
+): boolean {
+  if (apiResults.length === 0 || mcpResults.length === 0) return false;
+  if (apiResults.length !== mcpResults.length) return false;
+  return compareShareableResultItems(apiResults, mcpResults);
+}
+
+/** Pure: both runs used the same ranking policy and have equal, non-empty result fingerprints. */
+function rankingPolicyAndFingerprintMatch(
+  apiRun: ShareableValidationRun,
+  mcpRun: ShareableValidationRun,
+): boolean {
+  const apiPolicy = (apiRun.rankingPolicyVersion ?? "").trim();
+  const mcpPolicy = (mcpRun.rankingPolicyVersion ?? "").trim();
+  if (!apiPolicy || !mcpPolicy || apiPolicy !== mcpPolicy) return false;
+
+  const apiFp = apiRun.resultFingerprint?.trim() ?? "";
+  const mcpFp = mcpRun.resultFingerprint?.trim() ?? "";
+  if (!apiFp || !mcpFp) return false;
+  return apiFp === mcpFp;
+}
+
 /**
  * Shared API+MCP provider confirmation is allowed only when system runs
  * and retrieval snapshots are effectively identical.
@@ -117,30 +169,12 @@ export function canShareProviderConfirmation(input: {
 }): boolean {
   const { apiRun, mcpRun, apiResults, mcpResults, binding } = input;
   if (!apiRun || !mcpRun) return false;
-  if (apiRun.status !== "PASS" || mcpRun.status !== "PASS") return false;
-  if (!isCurrentAgainstBinding(apiRun, binding) || !isCurrentAgainstBinding(mcpRun, binding)) {
-    return false;
-  }
-  if (normalizeValidationQuery(apiRun.query) !== normalizeValidationQuery(mcpRun.query)) {
-    return false;
-  }
-  if ((apiRun.pipelineRunId ?? "") !== (mcpRun.pipelineRunId ?? "")) return false;
-  if ((apiRun.indexGenerationId ?? "") !== (mcpRun.indexGenerationId ?? "")) return false;
-  if ((apiRun.fingerprint ?? "") !== (mcpRun.fingerprint ?? "")) return false;
-  if ((apiRun.normalizedDocumentId ?? "") !== (mcpRun.normalizedDocumentId ?? "")) return false;
-  if ((apiRun.resultCount ?? -1) !== (mcpRun.resultCount ?? -2)) return false;
-  if (apiResults.length === 0 || mcpResults.length === 0) return false;
-  if (apiResults.length !== mcpResults.length) return false;
-  if (!compareShareableResultItems(apiResults, mcpResults)) return false;
-
-  const apiPolicy = (apiRun.rankingPolicyVersion ?? "").trim();
-  const mcpPolicy = (mcpRun.rankingPolicyVersion ?? "").trim();
-  if (!apiPolicy || !mcpPolicy || apiPolicy !== mcpPolicy) return false;
-
-  const apiFp = apiRun.resultFingerprint?.trim() ?? "";
-  const mcpFp = mcpRun.resultFingerprint?.trim() ?? "";
-  if (!apiFp || !mcpFp) return false;
-  return apiFp === mcpFp;
+  return (
+    runsPassAndCurrent(apiRun, mcpRun, binding) &&
+    runsShareSameQueryAndBinding(apiRun, mcpRun) &&
+    resultSnapshotsMatch(apiResults, mcpResults) &&
+    rankingPolicyAndFingerprintMatch(apiRun, mcpRun)
+  );
 }
 
 export type SharedConfirmationEvidenceFailure = {
@@ -212,4 +246,23 @@ export function isLegacySharedConfirmationMissingFingerprint(input: {
   const apiFp = input.apiResultFingerprint?.trim() ?? "";
   const mcpFp = input.mcpResultFingerprint?.trim() ?? "";
   return !apiFp || !mcpFp;
+}
+
+/**
+ * Pure policy: does a shared API/MCP confirmation legacy-fingerprint gap force STALE
+ * for this channel? DB reads for the peer runs happen in the caller.
+ */
+export function resolveSharedConfirmationStaleOverride(input: {
+  channel: string;
+  sharedConfirmationGroupId: string | null | undefined;
+  apiResultFingerprint: string | null | undefined;
+  mcpResultFingerprint: string | null | undefined;
+}): boolean {
+  if (!input.sharedConfirmationGroupId) return false;
+  if (input.channel !== "API" && input.channel !== "MCP") return false;
+  return isLegacySharedConfirmationMissingFingerprint({
+    sharedConfirmationGroupId: input.sharedConfirmationGroupId,
+    apiResultFingerprint: input.apiResultFingerprint,
+    mcpResultFingerprint: input.mcpResultFingerprint,
+  });
 }

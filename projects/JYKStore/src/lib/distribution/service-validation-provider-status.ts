@@ -6,7 +6,7 @@ import type { ServiceChannel } from "@/lib/distribution/service-channel-policy";
 import { toProviderResultItemDtos } from "@/lib/distribution/service-validation-result-snapshot";
 import {
   canShareProviderConfirmation,
-  isLegacySharedConfirmationMissingFingerprint,
+  resolveSharedConfirmationStaleOverride,
 } from "@/lib/distribution/service-validation-share";
 import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 import { OPEN_PACK_REVIEW_STATUSES } from "@/lib/pack-review-status";
@@ -21,6 +21,7 @@ import {
   resolveSearchEvaluationValidity,
   resolveValidationLockReason,
   SEARCH_VALIDATION_PREPARATION_CHANNELS,
+  type ProviderConfirmationStatusDto,
   type ServiceValidationChannelDto,
   type ServiceValidationStatusDto,
 } from "@/lib/distribution/service-validation-policy";
@@ -28,8 +29,187 @@ import {
   findLatestServiceValidationRun,
   loadBindingContext,
   loadOwnedPackForServiceValidationRead,
+  loadSharedConfirmationPeerFingerprints,
   loadSuggestedQueries,
 } from "@/lib/distribution/service-validation-queries";
+
+type ProviderConfirmationRow = NonNullable<
+  Awaited<ReturnType<typeof prisma.serviceValidationProviderConfirmation.findUnique>>
+>;
+
+/** DB-only: result rows, download test, and confirmation for a single run. */
+async function loadProviderChannelRunRecords(runId: string) {
+  const [resultRows, downloadTest, confirmation] = await Promise.all([
+    prisma.serviceValidationResultItem.findMany({
+      where: { runId },
+      orderBy: { rank: "asc" },
+    }),
+    prisma.serviceValidationDownloadTest.findUnique({ where: { runId } }),
+    prisma.serviceValidationProviderConfirmation.findUnique({ where: { runId } }),
+  ]);
+  return { resultRows, downloadTest, confirmation };
+}
+
+/** DB + pure: apply the legacy shared-confirmation stale override to a run's validity. */
+async function resolveProviderChannelEffectiveValidity(input: {
+  channel: ServiceChannel;
+  validity: "CURRENT" | "STALE";
+  confirmation: ProviderConfirmationRow | null;
+}): Promise<{ effectiveValidity: "CURRENT" | "STALE"; legacyFingerprintMissing: boolean }> {
+  const sharedConfirmationGroupId = input.confirmation?.sharedConfirmationGroupId;
+  if (!sharedConfirmationGroupId) {
+    return { effectiveValidity: input.validity, legacyFingerprintMissing: false };
+  }
+  const peers = await loadSharedConfirmationPeerFingerprints(prisma, sharedConfirmationGroupId);
+  const staleOverride = resolveSharedConfirmationStaleOverride({
+    channel: input.channel,
+    sharedConfirmationGroupId,
+    apiResultFingerprint: peers.apiResultFingerprint,
+    mcpResultFingerprint: peers.mcpResultFingerprint,
+  });
+  return {
+    effectiveValidity: staleOverride ? "STALE" : input.validity,
+    legacyFingerprintMissing: staleOverride,
+  };
+}
+
+/** Pure: build the DOWNLOAD-channel summary DTO from run details, if present. */
+function buildProviderDownloadSummary(
+  details: Record<string, unknown> | null,
+  systemStatus: string,
+): ServiceValidationChannelDto["downloadSummary"] {
+  if (!details) return null;
+  const fileName = typeof details.fileName === "string" ? details.fileName : null;
+  if (!fileName) return null;
+  const fileSize = typeof details.fileSize === "number" ? details.fileSize : null;
+  const mimeType = typeof details.mimeType === "string" ? details.mimeType : null;
+  const isRag = details.downloadMode === "RAG_EXPORT";
+  return {
+    fileName,
+    fileSizeLabel: formatBytes(fileSize ?? 0),
+    mimeLabel: isRag ? "ZIP" : mimeLabel(mimeType),
+    integrityOk:
+      (isRag
+        ? details.checksumsValid === true && details.sourceTraceValid === true
+        : details.storageVerified === true) && systemStatus === "PASS",
+    downloadMode: isRag ? "RAG_EXPORT" : "LEGACY_ORIGINAL",
+    schemaVersion:
+      typeof details.ragExportSchemaVersion === "string" ? details.ragExportSchemaVersion : null,
+    chunkCount: typeof details.chunkCount === "number" ? details.chunkCount : null,
+    sourceCount: typeof details.sourceCount === "number" ? details.sourceCount : null,
+    manifestValid: details.manifestValid === true,
+    sourceTraceValid: details.sourceTraceValid === true,
+    checksumsValid: details.checksumsValid === true,
+    vectorsIncluded: details.vectorsIncluded === true,
+    sourceFilesIncluded: details.sourceFilesIncluded === true,
+  };
+}
+
+/** DB-only: channels (other than this run's own) sharing this run's confirmation group. */
+async function loadProviderChannelSharedWithChannels(input: {
+  sharedConfirmationGroupId: string | null | undefined;
+  runId: string;
+}): Promise<ServiceChannel[]> {
+  if (!input.sharedConfirmationGroupId) return [];
+  const peers = await prisma.serviceValidationProviderConfirmation.findMany({
+    where: { sharedConfirmationGroupId: input.sharedConfirmationGroupId },
+    include: { run: { select: { channel: true, id: true } } },
+  });
+  return peers
+    .filter((p) => p.run.id !== input.runId)
+    .map((p) => p.run.channel as ServiceChannel);
+}
+
+/** Pure: is this channel/run eligible to attempt sharing its confirmation with the peer channel? */
+function isEligibleToShareConfirmationWithPeer(input: {
+  channel: ServiceChannel;
+  systemStatus: string;
+  effectiveValidity: "CURRENT" | "STALE";
+  providerConfirmationStatus: string;
+  resultRowCount: number;
+}): boolean {
+  return (
+    (input.channel === "API" || input.channel === "MCP") &&
+    input.systemStatus === "PASS" &&
+    input.effectiveValidity === "CURRENT" &&
+    input.providerConfirmationStatus === "NOT_REVIEWED" &&
+    input.resultRowCount > 0
+  );
+}
+
+/** DB + pure: can this run's provider confirmation be shared with its unconfirmed peer channel? */
+async function resolveCanShareConfirmationWithPeer(input: {
+  channel: ServiceChannel;
+  run: ServiceValidationRun;
+  resultRows: Array<{
+    rank: number;
+    chunkId: string;
+    sourceDocumentId: string;
+    pageStart: number | null;
+    pageEnd: number | null;
+  }>;
+  bindingFingerprint?: string | null;
+  bindingIndexGenerationId?: string | null;
+}): Promise<boolean> {
+  const { channel, run, resultRows } = input;
+  const peerChannel = channel === "API" ? "MCP" : "API";
+  const peer = await findLatestServiceValidationRun({ versionId: run.versionId, channel: peerChannel });
+  if (!peer) return false;
+
+  const peerConf = await prisma.serviceValidationProviderConfirmation.findUnique({
+    where: { runId: peer.id },
+  });
+  if (peerConf) return false;
+
+  const peerItems = await prisma.serviceValidationResultItem.findMany({
+    where: { runId: peer.id },
+    orderBy: { rank: "asc" },
+  });
+  const runWithPolicy = { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) };
+  const peerWithPolicy = {
+    ...peer,
+    rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details),
+  };
+  const toResultDto = (i: (typeof resultRows)[number]) => ({
+    rank: i.rank,
+    chunkId: i.chunkId,
+    sourceDocumentId: i.sourceDocumentId,
+    pageStart: i.pageStart,
+    pageEnd: i.pageEnd,
+  });
+
+  return canShareProviderConfirmation({
+    apiRun: channel === "API" ? runWithPolicy : peerWithPolicy,
+    mcpRun: channel === "MCP" ? runWithPolicy : peerWithPolicy,
+    apiResults: (channel === "API" ? resultRows : peerItems).map(toResultDto),
+    mcpResults: (channel === "MCP" ? resultRows : peerItems).map(toResultDto),
+    binding: {
+      fingerprint: input.bindingFingerprint,
+      indexGenerationId: input.bindingIndexGenerationId,
+      pipelineRunId: run.pipelineRunId,
+      normalizedDocumentId: run.normalizedDocumentId,
+    },
+  });
+}
+
+/** Pure: build the provider-facing confirmation DTO block. */
+function buildProviderConfirmationDto(input: {
+  confirmation: ProviderConfirmationRow | null;
+  providerConfirmationStatus: ProviderConfirmationStatusDto;
+  userNames: Map<string, string>;
+  sharedWithChannels: ServiceChannel[];
+}): ServiceValidationChannelDto["confirmation"] {
+  const { confirmation } = input;
+  if (!confirmation) return null;
+  return {
+    status: input.providerConfirmationStatus,
+    confirmedAt: confirmation.confirmedAt.toISOString(),
+    confirmedByName: input.userNames.get(confirmation.confirmedByUserId) ?? "제공자",
+    rejectionReason: confirmation.rejectionReason,
+    comment: confirmation.comment,
+    sharedWithChannels: input.sharedWithChannels,
+  };
+}
 
 export async function mapRunToProviderChannelDto(input: {
   channel: ServiceChannel;
@@ -63,13 +243,7 @@ export async function mapRunToProviderChannelDto(input: {
     };
   }
 
-  const resultRows = await prisma.serviceValidationResultItem.findMany({
-    where: { runId: run.id },
-    orderBy: { rank: "asc" },
-  });
-  const downloadTest = await prisma.serviceValidationDownloadTest.findUnique({
-    where: { runId: run.id },
-  });
+  const { resultRows, downloadTest, confirmation } = await loadProviderChannelRunRecords(run.id);
 
   const validity = resolveRunCurrentValidity({
     run,
@@ -79,138 +253,42 @@ export async function mapRunToProviderChannelDto(input: {
     expectedRankingPolicyVersion:
       channel === "API" || channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
   });
-  let effectiveValidity = validity;
-  let legacyFingerprintMissing = false;
-  const confirmationEarly = await prisma.serviceValidationProviderConfirmation.findUnique({
-    where: { runId: run.id },
-  });
-  if (confirmationEarly?.sharedConfirmationGroupId && (channel === "API" || channel === "MCP")) {
-    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
-      where: { sharedConfirmationGroupId: confirmationEarly.sharedConfirmationGroupId },
-      include: { run: { select: { channel: true, resultFingerprint: true } } },
-    });
-    const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
-    const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
-    if (
-      isLegacySharedConfirmationMissingFingerprint({
-        sharedConfirmationGroupId: confirmationEarly.sharedConfirmationGroupId,
-        apiResultFingerprint: apiPeer?.resultFingerprint,
-        mcpResultFingerprint: mcpPeer?.resultFingerprint,
-      })
-    ) {
-      effectiveValidity = "STALE";
-      legacyFingerprintMissing = true;
-    }
-  }
+  const { effectiveValidity, legacyFingerprintMissing } =
+    await resolveProviderChannelEffectiveValidity({ channel, validity, confirmation });
   const systemStatus =
     run.status === "PASS" && effectiveValidity === "STALE" ? ("STALE" as const) : run.status;
 
-  const confirmation = confirmationEarly;
   const providerConfirmationStatus = resolveConfirmationStatusDto({
     confirmationStatus: confirmation?.status,
     runValidity: effectiveValidity,
   });
 
   const results = toProviderResultItemDtos(resultRows);
+  const downloadSummary =
+    channel === "DOWNLOAD"
+      ? buildProviderDownloadSummary(asRecord(run.details), systemStatus)
+      : null;
 
-  const details = asRecord(run.details);
-  let downloadSummary: ServiceValidationChannelDto["downloadSummary"] = null;
-  if (channel === "DOWNLOAD" && details) {
-    const fileName = typeof details.fileName === "string" ? details.fileName : null;
-    const fileSize = typeof details.fileSize === "number" ? details.fileSize : null;
-    const mimeType = typeof details.mimeType === "string" ? details.mimeType : null;
-    if (fileName) {
-      const isRag = details.downloadMode === "RAG_EXPORT";
-      downloadSummary = {
-        fileName,
-        fileSizeLabel: formatBytes(fileSize ?? 0),
-        mimeLabel: isRag ? "ZIP" : mimeLabel(mimeType),
-        integrityOk:
-          (isRag
-            ? details.checksumsValid === true && details.sourceTraceValid === true
-            : details.storageVerified === true) && systemStatus === "PASS",
-        downloadMode: isRag ? "RAG_EXPORT" : "LEGACY_ORIGINAL",
-        schemaVersion:
-          typeof details.ragExportSchemaVersion === "string"
-            ? details.ragExportSchemaVersion
-            : null,
-        chunkCount: typeof details.chunkCount === "number" ? details.chunkCount : null,
-        sourceCount: typeof details.sourceCount === "number" ? details.sourceCount : null,
-        manifestValid: details.manifestValid === true,
-        sourceTraceValid: details.sourceTraceValid === true,
-        checksumsValid: details.checksumsValid === true,
-        vectorsIncluded: details.vectorsIncluded === true,
-        sourceFilesIncluded: details.sourceFilesIncluded === true,
-      };
-    }
-  }
+  const sharedWithChannels = await loadProviderChannelSharedWithChannels({
+    sharedConfirmationGroupId: confirmation?.sharedConfirmationGroupId,
+    runId: run.id,
+  });
 
-  const sharedWithChannels: ServiceChannel[] = [];
-  if (confirmation?.sharedConfirmationGroupId) {
-    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
-      where: { sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId },
-      include: { run: { select: { channel: true, id: true } } },
-    });
-    for (const p of peers) {
-      if (p.run.id !== run.id) {
-        sharedWithChannels.push(p.run.channel as ServiceChannel);
-      }
-    }
-  }
-
-  let canShareConfirmationWithPeer = false;
-  if (
-    (channel === "API" || channel === "MCP") &&
-    systemStatus === "PASS" &&
-    effectiveValidity === "CURRENT" &&
-    providerConfirmationStatus === "NOT_REVIEWED" &&
-    resultRows.length > 0
-  ) {
-    const peerChannel = channel === "API" ? "MCP" : "API";
-    const peer = await findLatestServiceValidationRun({
-      versionId: run.versionId,
-      channel: peerChannel,
-    });
-    if (peer) {
-      const peerConf = await prisma.serviceValidationProviderConfirmation.findUnique({
-        where: { runId: peer.id },
-      });
-      if (!peerConf) {
-        const peerItems = await prisma.serviceValidationResultItem.findMany({
-          where: { runId: peer.id },
-          orderBy: { rank: "asc" },
-        });
-        canShareConfirmationWithPeer = canShareProviderConfirmation({
-          apiRun: channel === "API"
-            ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
-            : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
-          mcpRun: channel === "MCP"
-            ? { ...run, rankingPolicyVersion: rankingPolicyVersionFromDetails(run.details) }
-            : { ...peer, rankingPolicyVersion: rankingPolicyVersionFromDetails(peer.details) },
-          apiResults: (channel === "API" ? resultRows : peerItems).map((i) => ({
-            rank: i.rank,
-            chunkId: i.chunkId,
-            sourceDocumentId: i.sourceDocumentId,
-            pageStart: i.pageStart,
-            pageEnd: i.pageEnd,
-          })),
-          mcpResults: (channel === "MCP" ? resultRows : peerItems).map((i) => ({
-            rank: i.rank,
-            chunkId: i.chunkId,
-            sourceDocumentId: i.sourceDocumentId,
-            pageStart: i.pageStart,
-            pageEnd: i.pageEnd,
-          })),
-          binding: {
-            fingerprint: input.bindingFingerprint,
-            indexGenerationId: input.bindingIndexGenerationId,
-            pipelineRunId: run.pipelineRunId,
-            normalizedDocumentId: run.normalizedDocumentId,
-          },
-        });
-      }
-    }
-  }
+  const canShareConfirmationWithPeer = isEligibleToShareConfirmationWithPeer({
+    channel,
+    systemStatus,
+    effectiveValidity,
+    providerConfirmationStatus,
+    resultRowCount: resultRows.length,
+  })
+    ? await resolveCanShareConfirmationWithPeer({
+        channel,
+        run,
+        resultRows,
+        bindingFingerprint: input.bindingFingerprint,
+        bindingIndexGenerationId: input.bindingIndexGenerationId,
+      })
+    : false;
 
   const downloadTestCompleted = Boolean(downloadTest?.responseReady);
   // DOWNLOAD: show confirm UI before download-test; API confirm still requires download evidence.
@@ -241,16 +319,12 @@ export async function mapRunToProviderChannelDto(input: {
     canShareConfirmationWithPeer,
     downloadTestCompleted,
     downloadSummary,
-    confirmation: confirmation
-      ? {
-          status: providerConfirmationStatus,
-          confirmedAt: confirmation.confirmedAt.toISOString(),
-          confirmedByName: input.userNames.get(confirmation.confirmedByUserId) ?? "제공자",
-          rejectionReason: confirmation.rejectionReason,
-          comment: confirmation.comment,
-          sharedWithChannels,
-        }
-      : null,
+    confirmation: buildProviderConfirmationDto({
+      confirmation,
+      providerConfirmationStatus,
+      userNames: input.userNames,
+      sharedWithChannels,
+    }),
   };
 }
 

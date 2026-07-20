@@ -44,25 +44,12 @@ function mismatch(code: PayloadErrorCode = "SEARCH_GENERATION_MISMATCH"): never 
   throw new PayloadServiceError(code, APPROVAL_MISMATCH, 409);
 }
 
-/**
- * Re-read PackReview.submitSnapshot from DB and verify all approval evidence inside `tx`.
- * Do NOT pass an external snapshot — the DB row is the authority.
- * `expectedSnapshotFingerprint` must match the fingerprint of the snapshot used for
- * external Object Storage integrity verification.
- */
-export async function assertApprovalSearchGenerationInTx(
+/** DB + pure: pack must be REVIEWING and the review must be its IN_REVIEW row. */
+async function loadApprovalPackAndReview(
   tx: Prisma.TransactionClient,
-  input: {
-    packId: string;
-    reviewId: string;
-    expectedSnapshotFingerprint: string;
-  },
-): Promise<ApprovalSearchGenerationContext> {
-  const { packId, reviewId, expectedSnapshotFingerprint } = input;
-  if (!expectedSnapshotFingerprint?.trim()) {
-    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
-  }
-
+  packId: string,
+  reviewId: string,
+) {
   const pack = await tx.knowledgePack.findUnique({
     where: { packId },
     select: { packId: true, status: true },
@@ -73,37 +60,39 @@ export async function assertApprovalSearchGenerationInTx(
 
   const review = await tx.packReview.findUnique({
     where: { id: reviewId },
-    select: {
-      id: true,
-      packId: true,
-      status: true,
-      submitSnapshot: true,
-      updatedAt: true,
-    },
+    select: { id: true, packId: true, status: true, submitSnapshot: true, updatedAt: true },
   });
   if (!review || review.packId !== packId || review.status !== PackReviewStatus.IN_REVIEW) {
     mismatch("APPROVAL_TRANSITION_CONFLICT");
   }
+  return review;
+}
 
-  // A: DB submitSnapshot is the sole approval authority.
-  const parsed = parseDoclingBundleReviewSubmitSnapshot(review.submitSnapshot);
-  if (!parsed || parsed.mode !== "DOCLING_BUNDLE") {
+/** Pure: parse + validate the DB submitSnapshot is the sole, current approval authority. */
+function parseApprovalSnapshot(
+  submitSnapshot: unknown,
+  expectedSnapshotFingerprint: string,
+): { snapshot: DoclingBundleReviewSubmitSnapshot; snapshotFingerprint: string } {
+  const parsed = parseDoclingBundleReviewSubmitSnapshot(submitSnapshot);
+  if (!parsed || parsed.mode !== "DOCLING_BUNDLE" || !isReviewSubmitSnapshotV3(parsed)) {
     mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
-  if (!isReviewSubmitSnapshotV3(parsed)) {
+  const snapshotFingerprint = computeReviewSubmitSnapshotFingerprint(parsed);
+  if (
+    snapshotFingerprint !== expectedSnapshotFingerprint ||
+    resolveReviewPackageMode(parsed) !== "DOCLING_BUNDLE"
+  ) {
     mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
-  const snapshot = parsed;
+  return { snapshot: parsed, snapshotFingerprint };
+}
 
-  const snapshotFingerprint = computeReviewSubmitSnapshotFingerprint(snapshot);
-  if (snapshotFingerprint !== expectedSnapshotFingerprint) {
-    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
-  }
-
-  if (resolveReviewPackageMode(snapshot) !== "DOCLING_BUNDLE") {
-    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
-  }
-
+/** DB + pure: latest version + its active normalized document must match the snapshot. */
+async function loadApprovalVersionAndDocument(
+  tx: Prisma.TransactionClient,
+  packId: string,
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+) {
   const latestVersion = await tx.knowledgePackVersion.findFirst({
     where: { packId },
     orderBy: { createdAt: "desc" },
@@ -124,7 +113,13 @@ export async function assertApprovalSearchGenerationInTx(
   ) {
     mismatch();
   }
+  return { latestVersion, activeNd };
+}
 
+/** Pure: required binding fields present, and chunk/index/search generation ids agree. */
+function assertApprovalSnapshotBindingFieldsPresent(
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+): void {
   if (
     !snapshot.pipelineRunId ||
     !snapshot.indexGenerationId ||
@@ -135,8 +130,6 @@ export async function assertApprovalSearchGenerationInTx(
   ) {
     mismatch("APPROVAL_SNAPSHOT_MISMATCH");
   }
-
-  // B: chunkGenerationId must agree with both snapshot IDs and the Generation row.
   if (
     snapshot.chunkGenerationId !== snapshot.indexGenerationId ||
     snapshot.chunkGenerationId !== snapshot.searchIndexGenerationId ||
@@ -144,7 +137,12 @@ export async function assertApprovalSearchGenerationInTx(
   ) {
     mismatch();
   }
+}
 
+/** Pure: every preparation channel entry must be complete (V3 approval requirement). */
+function assertApprovalPreparationChannelsComplete(
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+): void {
   const prep = snapshot.preparationValidation;
   if (!prep) {
     mismatch("APPROVAL_SNAPSHOT_MISMATCH");
@@ -159,9 +157,17 @@ export async function assertApprovalSearchGenerationInTx(
       throw error;
     }
   }
+}
 
+/** DB + pure: the PASS pipeline run whose binding matches the snapshot/version/document. */
+async function loadApprovalPassRun(
+  tx: Prisma.TransactionClient,
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+  latestVersion: { id: string },
+  activeNd: { id: string; fingerprint: string | null },
+) {
   const passRun = await tx.pipelineRun.findUnique({
-    where: { id: snapshot.pipelineRunId },
+    where: { id: snapshot.pipelineRunId! },
     include: { steps: true },
   });
   const binding = parseKnowledgeRunBinding(passRun?.summary ?? null);
@@ -182,9 +188,24 @@ export async function assertApprovalSearchGenerationInTx(
   ) {
     mismatch();
   }
+  return { passRun, binding };
+}
 
+/** DB + pure: the READY SearchIndexGeneration bound to the pass run/version/document. */
+async function loadApprovalSearchGeneration(
+  tx: Prisma.TransactionClient,
+  input: {
+    packId: string;
+    snapshot: DoclingBundleReviewSubmitSnapshot;
+    latestVersion: { id: string };
+    activeNd: { id: string; fingerprint: string | null };
+    passRun: { id: string };
+    binding: { indexGenerationId: string };
+  },
+) {
+  const { packId, snapshot, latestVersion, activeNd, passRun, binding } = input;
   const generation = await tx.searchIndexGeneration.findUnique({
-    where: { id: snapshot.searchIndexGenerationId },
+    where: { id: snapshot.searchIndexGenerationId! },
   });
   if (
     !generation ||
@@ -204,15 +225,19 @@ export async function assertApprovalSearchGenerationInTx(
     generation.scope !== "DRAFT" ||
     generation.chunkCount <= 0 ||
     generation.embeddedCount !== generation.chunkCount ||
-    generation.failedCount !== 0
+    generation.failedCount !== 0 ||
+    generation.generationFingerprint !== snapshot.searchGenerationFingerprint
   ) {
     mismatch("SEARCH_GENERATION_NOT_CURRENT");
   }
+  return generation;
+}
 
-  if (generation.generationFingerprint !== snapshot.searchGenerationFingerprint) {
-    mismatch("SEARCH_GENERATION_NOT_CURRENT");
-  }
-
+/** Pure: the generation's and snapshot's embedding descriptors must be operational + equal. */
+function assertApprovalEmbeddingDescriptorsMatch(
+  generation: SearchIndexGeneration,
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+): void {
   const generationDescriptor = {
     embeddingProvider: generation.embeddingProvider,
     embeddingModel: generation.embeddingModel,
@@ -239,6 +264,47 @@ export async function assertApprovalSearchGenerationInTx(
   if (!embeddingDescriptorsEqual(snapshotDescriptor, generationDescriptor)) {
     mismatch("SEARCH_GENERATION_DESCRIPTOR_DRIFT");
   }
+}
+
+/**
+ * Re-read PackReview.submitSnapshot from DB and verify all approval evidence inside `tx`.
+ * Do NOT pass an external snapshot — the DB row is the authority.
+ * `expectedSnapshotFingerprint` must match the fingerprint of the snapshot used for
+ * external Object Storage integrity verification.
+ */
+export async function assertApprovalSearchGenerationInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    packId: string;
+    reviewId: string;
+    expectedSnapshotFingerprint: string;
+  },
+): Promise<ApprovalSearchGenerationContext> {
+  const { packId, reviewId, expectedSnapshotFingerprint } = input;
+  if (!expectedSnapshotFingerprint?.trim()) {
+    mismatch("APPROVAL_SNAPSHOT_MISMATCH");
+  }
+
+  const review = await loadApprovalPackAndReview(tx, packId, reviewId);
+  const { snapshot, snapshotFingerprint } = parseApprovalSnapshot(
+    review.submitSnapshot,
+    expectedSnapshotFingerprint,
+  );
+
+  const { latestVersion, activeNd } = await loadApprovalVersionAndDocument(tx, packId, snapshot);
+  assertApprovalSnapshotBindingFieldsPresent(snapshot);
+  assertApprovalPreparationChannelsComplete(snapshot);
+
+  const { passRun, binding } = await loadApprovalPassRun(tx, snapshot, latestVersion, activeNd);
+  const generation = await loadApprovalSearchGeneration(tx, {
+    packId,
+    snapshot,
+    latestVersion,
+    activeNd,
+    passRun,
+    binding,
+  });
+  assertApprovalEmbeddingDescriptorsMatch(generation, snapshot);
 
   return {
     snapshot,

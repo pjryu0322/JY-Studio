@@ -159,6 +159,9 @@ describe("hybrid generation fail-closed", () => {
       searchIndexGenerationId: "gen-1",
       requireGeneration: async () => fakeGeneration(),
       resolveAdapter: () => adapter,
+      // No pgvector in this unit test; simulate "unavailable" so the JSON fallback path
+      // is exercised without touching a live database.
+      queryVectorsByGeneration: async () => null,
     });
 
     assert.equal(embedCalls, 1);

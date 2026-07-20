@@ -109,10 +109,10 @@ describe("docling-import-service contracts", () => {
     );
     assert.ok(retryRoute.includes("retryDoclingImport"));
 
-    const submit = readFileSync(
-      join(projectRoot, "src/lib/distribution/distribution-submit-service.ts"),
-      "utf8",
-    );
+    const submit =
+      readFileSync(join(projectRoot, "src/lib/distribution/distribution-submit-service.ts"), "utf8") +
+      readFileSync(join(projectRoot, "src/lib/distribution/distribution-submit-commit-steps.ts"), "utf8") +
+      readFileSync(join(projectRoot, "src/lib/distribution/distribution-submit-commit-tx.ts"), "utf8");
     assert.ok(submit.includes("DOCLING_BUNDLE"));
     assert.ok(submit.includes("buildDoclingBundleReviewSubmitSnapshot"));
     assert.ok(submit.includes("REVIEW_READY"));

@@ -24,6 +24,7 @@
     "build": "next build",
     "start": "next start -p 3004",
     "lint": "next lint",
+    "lint:complexity": "node scripts/measure-complexity.mjs src/lib/distribution src/lib/provider-pack",
     "test": "node scripts/run-unit-tests.mjs",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "test:payload-storage": "node --import tsx --test src/__tests__/p29-1-object-storage-hardening.test.ts src/__tests__/s3-payload-storage.mock.test.ts src/__tests__/p29-2-distribution-consistency.test.ts src/__tests__/my-packs-distribution-visibility.test.ts src/__tests__/distribution-e2e-safety-guard.test.ts src/__tests__/my-packs-version-history.test.ts src/__tests__/invalid-distribution-state.test.ts src/__tests__/latest-pack-artifact-state.test.ts src/__tests__/public-pack-capability.test.ts",

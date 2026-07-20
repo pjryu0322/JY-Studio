@@ -135,6 +135,66 @@ export function mimeLabel(mime: string | null | undefined): string {
   return mime?.trim() || "파일";
 }
 
+/** Pure: PASS with 0 result items on a search channel is incomplete evidence → STALE. */
+function isEmptyResultEvidenceStale(channel: string | undefined, resultItemCount: number | null | undefined): boolean {
+  return (
+    (channel === "API" || channel === "MCP") &&
+    typeof resultItemCount === "number" &&
+    resultItemCount < 1
+  );
+}
+
+/** Pure: the run's stored fingerprint no longer matches the current knowledge binding. */
+function isFingerprintMismatchStale(
+  runFingerprint: string | null | undefined,
+  bindingFingerprint: string | null | undefined,
+): boolean {
+  return Boolean(bindingFingerprint && runFingerprint && runFingerprint !== bindingFingerprint);
+}
+
+/** Pure: the run's stored index generation no longer matches the current knowledge binding. */
+function isIndexGenerationMismatchStale(
+  runIndexGenerationId: string | null | undefined,
+  bindingIndexGenerationId: string | null | undefined,
+): boolean {
+  return Boolean(
+    bindingIndexGenerationId &&
+      runIndexGenerationId &&
+      runIndexGenerationId !== bindingIndexGenerationId,
+  );
+}
+
+/** Pure: for API/MCP, the run's recorded ranking-policy version must match the expected current one. */
+function isRankingPolicyStale(
+  channel: string | undefined,
+  details: Record<string, unknown> | null,
+  expectedRankingPolicyVersion: string | null | undefined,
+): boolean {
+  if ((channel !== "API" && channel !== "MCP") || !expectedRankingPolicyVersion) return false;
+  const runPolicy =
+    typeof details?.retrievalRankingPolicyVersion === "string"
+      ? details.retrievalRankingPolicyVersion.trim()
+      : "";
+  return !runPolicy || runPolicy !== expectedRankingPolicyVersion;
+}
+
+/**
+ * Pure: DOWNLOAD channel requires current RAG Export evidence; legacy
+ * original-file DOWNLOAD PASS is not accepted as current.
+ */
+function isDownloadEvidenceStale(channel: string | undefined, details: Record<string, unknown> | null): boolean {
+  if (channel !== "DOWNLOAD") return false;
+  return (
+    details?.downloadMode !== "RAG_EXPORT" ||
+    details?.ragExportPolicyVersion !== "rag_export_v1" ||
+    details?.ragExportSchemaVersion !== "jyk-rag-export/1.0" ||
+    typeof details?.exportFingerprint !== "string" ||
+    !details.exportFingerprint ||
+    details.checksumsValid !== true ||
+    details.sourceTraceValid !== true
+  );
+}
+
 export function resolveRunCurrentValidity(input: {
   run: Pick<
     ServiceValidationRun,
@@ -154,61 +214,14 @@ export function resolveRunCurrentValidity(input: {
   if (input.run.invalidatedAt) return "STALE";
   if (input.run.status !== "PASS") return "CURRENT";
   const channel = input.run.channel;
-  if (
-    (channel === "API" || channel === "MCP") &&
-    typeof input.resultItemCount === "number" &&
-    input.resultItemCount < 1
-  ) {
+  const details = asRecord(input.run.details);
+  if (isEmptyResultEvidenceStale(channel, input.resultItemCount)) return "STALE";
+  if (isFingerprintMismatchStale(input.run.fingerprint, input.bindingFingerprint)) return "STALE";
+  if (isIndexGenerationMismatchStale(input.run.indexGenerationId, input.bindingIndexGenerationId)) {
     return "STALE";
   }
-  if (
-    input.bindingFingerprint &&
-    input.run.fingerprint &&
-    input.run.fingerprint !== input.bindingFingerprint
-  ) {
-    return "STALE";
-  }
-  if (
-    input.bindingIndexGenerationId &&
-    input.run.indexGenerationId &&
-    input.run.indexGenerationId !== input.bindingIndexGenerationId
-  ) {
-    return "STALE";
-  }
-  if (
-    (channel === "API" || channel === "MCP") &&
-    input.expectedRankingPolicyVersion
-  ) {
-    const details =
-      input.run.details && typeof input.run.details === "object" && !Array.isArray(input.run.details)
-        ? (input.run.details as Record<string, unknown>)
-        : null;
-    const runPolicy =
-      typeof details?.retrievalRankingPolicyVersion === "string"
-        ? details.retrievalRankingPolicyVersion.trim()
-        : "";
-    if (!runPolicy || runPolicy !== input.expectedRankingPolicyVersion) {
-      return "STALE";
-    }
-  }
-  if (channel === "DOWNLOAD") {
-    const details =
-      input.run.details && typeof input.run.details === "object" && !Array.isArray(input.run.details)
-        ? (input.run.details as Record<string, unknown>)
-        : null;
-    // Legacy original-file DOWNLOAD PASS is not accepted as current RAG Export evidence.
-    if (
-      details?.downloadMode !== "RAG_EXPORT" ||
-      details?.ragExportPolicyVersion !== "rag_export_v1" ||
-      details?.ragExportSchemaVersion !== "jyk-rag-export/1.0" ||
-      typeof details?.exportFingerprint !== "string" ||
-      !details.exportFingerprint ||
-      details.checksumsValid !== true ||
-      details.sourceTraceValid !== true
-    ) {
-      return "STALE";
-    }
-  }
+  if (isRankingPolicyStale(channel, details, input.expectedRankingPolicyVersion)) return "STALE";
+  if (isDownloadEvidenceStale(channel, details)) return "STALE";
   return "CURRENT";
 }
 

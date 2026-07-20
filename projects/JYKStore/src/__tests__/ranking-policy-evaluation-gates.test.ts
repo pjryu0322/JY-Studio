@@ -25,8 +25,11 @@ const SERVICE_VALIDATION_MODULE_FILES = [
   "service-validation-queries.ts",
   "service-validation-provider-status.ts",
   "service-validation-run-commands.ts",
+  "service-validation-run-execute.ts",
+  "service-validation-run-persist-tx.ts",
   "service-validation-evidence-asserts.ts",
   "service-validation-admin-listing.ts",
+  "service-validation-admin-listing-helpers.ts",
 ];
 
 function readServiceValidationModules(rootDir: string): string {
@@ -328,10 +331,9 @@ describe("ranking policy evaluation gates", () => {
     assert.ok(tab.includes("rankingPolicyStale"));
     assert.ok(tab.includes("자동 평가 다시 필요"));
 
-    const submit = readFileSync(
-      join(root, "src/lib/distribution/distribution-submit-service.ts"),
-      "utf8",
-    );
+    const submit =
+      readFileSync(join(root, "src/lib/distribution/distribution-submit-service.ts"), "utf8") +
+      readFileSync(join(root, "src/lib/distribution/distribution-submit-commit-steps.ts"), "utf8");
     assert.ok(submit.includes("RETRIEVAL_EVALUATION_POLICY_CURRENT"));
   });
 });

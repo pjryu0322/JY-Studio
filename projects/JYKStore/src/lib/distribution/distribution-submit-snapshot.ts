@@ -316,85 +316,65 @@ export function parseDistributionReviewSubmitSnapshot(
   };
 }
 
-export function parseDoclingBundleReviewSubmitSnapshot(
-  value: unknown,
-): DoclingBundleReviewSubmitSnapshot | null {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as Record<string, unknown>;
-  if (raw.mode !== "DOCLING_BUNDLE") return null;
-  if (typeof raw.submittedAt !== "string") return null;
-  if (typeof raw.submittedVersionId !== "string") return null;
-  if (typeof raw.doclingBundleId !== "string") return null;
-  if (typeof raw.sourceFileId !== "string") return null;
-  if (typeof raw.jsonPayloadFileId !== "string") return null;
-  if (
-    raw.markdownPayloadFileId != null &&
-    typeof raw.markdownPayloadFileId !== "string"
-  ) {
-    return null;
-  }
-  if (typeof raw.adapterVersion !== "string") return null;
-  if (typeof raw.normalizedDocumentId !== "string") return null;
-  if (typeof raw.licenseName !== "string") return null;
+/** Pure: required identity/file-id fields must be present and correctly typed. */
+function isValidDoclingBundleSnapshotCoreShape(raw: Record<string, unknown>): boolean {
+  return (
+    raw.mode === "DOCLING_BUNDLE" &&
+    typeof raw.submittedAt === "string" &&
+    typeof raw.submittedVersionId === "string" &&
+    typeof raw.doclingBundleId === "string" &&
+    typeof raw.sourceFileId === "string" &&
+    typeof raw.jsonPayloadFileId === "string" &&
+    (raw.markdownPayloadFileId == null || typeof raw.markdownPayloadFileId === "string") &&
+    typeof raw.adapterVersion === "string" &&
+    typeof raw.normalizedDocumentId === "string" &&
+    typeof raw.licenseName === "string"
+  );
+}
+
+/** Pure: parse + validate the nested checksums object, or null when malformed. */
+function parseSnapshotChecksums(
+  raw: Record<string, unknown>,
+): DoclingBundleReviewSubmitSnapshot["checksums"] | null {
   if (!raw.checksums || typeof raw.checksums !== "object") return null;
   const checksums = raw.checksums as Record<string, unknown>;
-  if (typeof checksums.source !== "string") return null;
-  if (typeof checksums.json !== "string") return null;
-  if (
-    checksums.markdown != null &&
-    typeof checksums.markdown !== "string"
-  ) {
-    return null;
-  }
-
-  // Legacy snapshots may omit language; invalid values coerce to null (still parse).
-  const language: PackLanguageCode | null = isPackLanguageCode(raw.language)
-    ? raw.language
-    : null;
-
+  if (typeof checksums.source !== "string" || typeof checksums.json !== "string") return null;
+  if (checksums.markdown != null && typeof checksums.markdown !== "string") return null;
   return {
-    mode: "DOCLING_BUNDLE",
-    submittedAt: raw.submittedAt,
-    submittedVersionId: raw.submittedVersionId,
-    doclingBundleId: raw.doclingBundleId,
-    sourceFileId: raw.sourceFileId,
-    jsonPayloadFileId: raw.jsonPayloadFileId,
-    markdownPayloadFileId:
-      typeof raw.markdownPayloadFileId === "string"
-        ? raw.markdownPayloadFileId
-        : null,
-    checksums: {
-      source: checksums.source,
-      json: checksums.json,
-      markdown: typeof checksums.markdown === "string" ? checksums.markdown : null,
-    },
+    source: checksums.source,
+    json: checksums.json,
+    markdown: typeof checksums.markdown === "string" ? checksums.markdown : null,
+  };
+}
+
+/** Pure: provider-facing source/rights/license metadata (all optional, legacy-tolerant). */
+function parseSnapshotProviderMetadataFields(raw: Record<string, unknown>) {
+  return {
     doclingSchemaVersion:
       typeof raw.doclingSchemaVersion === "string" ? raw.doclingSchemaVersion : null,
-    adapterVersion: raw.adapterVersion,
-    normalizedDocumentId: raw.normalizedDocumentId,
-    fingerprint: typeof raw.fingerprint === "string" ? raw.fingerprint : null,
     warningCount: typeof raw.warningCount === "number" ? raw.warningCount : 0,
     sourceTitle: typeof raw.sourceTitle === "string" ? raw.sourceTitle : null,
-    licenseName: raw.licenseName,
     visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
     allowDownload: raw.allowDownload !== false,
     allowApi: raw.allowApi !== false,
     allowMcp: raw.allowMcp !== false,
     serviceEndsAt: typeof raw.serviceEndsAt === "string" ? raw.serviceEndsAt : null,
     rightsBasis: typeof raw.rightsBasis === "string" ? raw.rightsBasis : null,
-    rightsBasisDetail:
-      typeof raw.rightsBasisDetail === "string" ? raw.rightsBasisDetail : null,
-    rightsConfirmedAt:
-      typeof raw.rightsConfirmedAt === "string" ? raw.rightsConfirmedAt : null,
+    rightsBasisDetail: typeof raw.rightsBasisDetail === "string" ? raw.rightsBasisDetail : null,
+    rightsConfirmedAt: typeof raw.rightsConfirmedAt === "string" ? raw.rightsConfirmedAt : null,
     sourceUrl: typeof raw.sourceUrl === "string" ? raw.sourceUrl : null,
     sourcePublisherName:
       typeof raw.sourcePublisherName === "string" ? raw.sourcePublisherName : null,
     sourceDocumentVersion:
       typeof raw.sourceDocumentVersion === "string" ? raw.sourceDocumentVersion : null,
-    sourcePublishedAt:
-      typeof raw.sourcePublishedAt === "string" ? raw.sourcePublishedAt : null,
-    sourceRetrievedAt:
-      typeof raw.sourceRetrievedAt === "string" ? raw.sourceRetrievedAt : null,
+    sourcePublishedAt: typeof raw.sourcePublishedAt === "string" ? raw.sourcePublishedAt : null,
+    sourceRetrievedAt: typeof raw.sourceRetrievedAt === "string" ? raw.sourceRetrievedAt : null,
+  };
+}
+
+/** Pure: the three nested validation/channel objects (opaque — shape enforced elsewhere). */
+function parseSnapshotValidationFields(raw: Record<string, unknown>) {
+  return {
     serviceValidation:
       raw.serviceValidation && typeof raw.serviceValidation === "object"
         ? (raw.serviceValidation as DoclingBundleReviewSubmitSnapshot["serviceValidation"])
@@ -407,20 +387,22 @@ export function parseDoclingBundleReviewSubmitSnapshot(
       raw.distributionChannels && typeof raw.distributionChannels === "object"
         ? (raw.distributionChannels as DoclingBundleReviewSubmitSnapshot["distributionChannels"])
         : null,
-    language,
+  };
+}
+
+/** Pure: knowledge-pipeline / search-generation binding fields (V2/V3 evidence). */
+function parseSnapshotBindingFields(raw: Record<string, unknown>, fingerprint: string | null) {
+  return {
     pipelineRunId: typeof raw.pipelineRunId === "string" ? raw.pipelineRunId : null,
-    indexGenerationId:
-      typeof raw.indexGenerationId === "string" ? raw.indexGenerationId : null,
+    indexGenerationId: typeof raw.indexGenerationId === "string" ? raw.indexGenerationId : null,
     searchIndexGenerationId:
       typeof raw.searchIndexGenerationId === "string" ? raw.searchIndexGenerationId : null,
     searchGenerationFingerprint:
       typeof raw.searchGenerationFingerprint === "string"
         ? raw.searchGenerationFingerprint
         : null,
-    chunkGenerationId:
-      typeof raw.chunkGenerationId === "string" ? raw.chunkGenerationId : null,
-    embeddingProvider:
-      typeof raw.embeddingProvider === "string" ? raw.embeddingProvider : null,
+    chunkGenerationId: typeof raw.chunkGenerationId === "string" ? raw.chunkGenerationId : null,
+    embeddingProvider: typeof raw.embeddingProvider === "string" ? raw.embeddingProvider : null,
     embeddingModel: typeof raw.embeddingModel === "string" ? raw.embeddingModel : null,
     embeddingModelRevision:
       typeof raw.embeddingModelRevision === "string" ? raw.embeddingModelRevision : null,
@@ -428,17 +410,47 @@ export function parseDoclingBundleReviewSubmitSnapshot(
       typeof raw.embeddingDimension === "number" ? raw.embeddingDimension : null,
     distanceMetric: typeof raw.distanceMetric === "string" ? raw.distanceMetric : null,
     retrievalEvaluationStatus:
-      typeof raw.retrievalEvaluationStatus === "string"
-        ? raw.retrievalEvaluationStatus
-        : null,
+      typeof raw.retrievalEvaluationStatus === "string" ? raw.retrievalEvaluationStatus : null,
     normalizedDocumentFingerprint:
       typeof raw.normalizedDocumentFingerprint === "string"
         ? raw.normalizedDocumentFingerprint
-        : typeof raw.fingerprint === "string"
-          ? raw.fingerprint
-          : null,
+        : fingerprint,
     snapshotSchemaVersion:
       typeof raw.snapshotSchemaVersion === "number" ? raw.snapshotSchemaVersion : undefined,
+  };
+}
+
+export function parseDoclingBundleReviewSubmitSnapshot(
+  value: unknown,
+): DoclingBundleReviewSubmitSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (!isValidDoclingBundleSnapshotCoreShape(raw)) return null;
+  const checksums = parseSnapshotChecksums(raw);
+  if (!checksums) return null;
+
+  // Legacy snapshots may omit language; invalid values coerce to null (still parse).
+  const language: PackLanguageCode | null = isPackLanguageCode(raw.language) ? raw.language : null;
+  const fingerprint = typeof raw.fingerprint === "string" ? raw.fingerprint : null;
+
+  return {
+    mode: "DOCLING_BUNDLE",
+    submittedAt: raw.submittedAt as string,
+    submittedVersionId: raw.submittedVersionId as string,
+    doclingBundleId: raw.doclingBundleId as string,
+    sourceFileId: raw.sourceFileId as string,
+    jsonPayloadFileId: raw.jsonPayloadFileId as string,
+    markdownPayloadFileId:
+      typeof raw.markdownPayloadFileId === "string" ? raw.markdownPayloadFileId : null,
+    checksums,
+    adapterVersion: raw.adapterVersion as string,
+    normalizedDocumentId: raw.normalizedDocumentId as string,
+    licenseName: raw.licenseName as string,
+    fingerprint,
+    language,
+    ...parseSnapshotProviderMetadataFields(raw),
+    ...parseSnapshotValidationFields(raw),
+    ...parseSnapshotBindingFields(raw, fingerprint),
   };
 }
 

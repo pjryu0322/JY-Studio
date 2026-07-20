@@ -296,6 +296,7 @@ describe("github source register service", () => {
           createCalls += 1;
           return { pack: { packId: "pack-1" } as never };
         },
+        getProviderPackForClient: async () => undefined,
       },
     );
 

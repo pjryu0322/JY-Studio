@@ -707,48 +707,21 @@ export function buildDistributionPatchUpdateData(
   return buildPatchUpdateData(patch, existing);
 }
 
-function buildPatchUpdateData(
-  patch: PatchDistributionMetadataInput,
-  existing: PackDistributionMetadata,
-): Prisma.PackDistributionMetadataUpdateInput {
-  const updateData: Prisma.PackDistributionMetadataUpdateInput = {};
+type PatchUpdateData = Prisma.PackDistributionMetadataUpdateInput;
 
+/** Simple `undefined` = preserve / trim-and-clamp string fields with no extra validation. */
+function applyTrimmedTextPatches(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
   if (patch.sourceTitle !== undefined) {
     updateData.sourceTitle = trimOrNull(patch.sourceTitle, MAX_TITLE);
-  }
-  if (patch.sourceUrl !== undefined) {
-    const sourceUrl = trimOrNull(patch.sourceUrl, MAX_URL);
-    assertOptionalUrl("출처", sourceUrl);
-    updateData.sourceUrl = sourceUrl;
   }
   if (patch.sourcePublisherName !== undefined) {
     updateData.sourcePublisherName = trimOrNull(patch.sourcePublisherName, MAX_TITLE);
   }
-  if (patch.sourcePublisherUrl !== undefined) {
-    const sourcePublisherUrl = trimOrNull(patch.sourcePublisherUrl, MAX_URL);
-    assertOptionalUrl("발행기관", sourcePublisherUrl);
-    updateData.sourcePublisherUrl = sourcePublisherUrl;
-  }
   if (patch.sourceDocumentVersion !== undefined) {
     updateData.sourceDocumentVersion = trimOrNull(patch.sourceDocumentVersion, MAX_TITLE);
-  }
-  if (patch.sourcePublishedAt !== undefined) {
-    updateData.sourcePublishedAt = parseOptionalDate("게시일", patch.sourcePublishedAt);
-  }
-  if (patch.sourceRetrievedAt !== undefined) {
-    updateData.sourceRetrievedAt = parseOptionalDate("수집일", patch.sourceRetrievedAt);
-  }
-  if (patch.licenseName !== undefined) {
-    const licenseName = patch.licenseName?.trim() ?? "";
-    if (!licenseName) {
-      throw new PayloadServiceError("LICENSE_REQUIRED", "라이선스명이 필요합니다.", 400);
-    }
-    updateData.licenseName = licenseName.slice(0, MAX_TITLE);
-  }
-  if (patch.licenseUrl !== undefined) {
-    const licenseUrl = trimOrNull(patch.licenseUrl, MAX_URL);
-    assertOptionalUrl("라이선스", licenseUrl);
-    updateData.licenseUrl = licenseUrl;
   }
   if (patch.usageTerms !== undefined) {
     updateData.usageTerms = trimOrNull(patch.usageTerms, MAX_TEXT);
@@ -756,63 +729,137 @@ function buildPatchUpdateData(
   if (patch.readmeText !== undefined) {
     updateData.readmeText = trimOrNull(patch.readmeText, MAX_TEXT);
   }
-  if (patch.visibility !== undefined) {
-    if (patch.visibility == null || !String(patch.visibility).trim()) {
-      throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
-    }
-    const visibilityRaw = String(patch.visibility).trim().toUpperCase();
-    if (!(DISTRIBUTION_VISIBILITIES as readonly string[]).includes(visibilityRaw)) {
-      throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
-    }
-    updateData.visibility = visibilityRaw as PrismaDistributionVisibility;
-  }
-  if (patch.allowDownload !== undefined) {
-    if (patch.allowDownload == null) {
-      throw new PayloadServiceError("INCOMPLETE", "다운로드 허용 값이 올바르지 않습니다.", 400);
-    }
-    updateData.allowDownload = Boolean(patch.allowDownload);
-  }
-  if (patch.allowApi !== undefined) {
-    if (patch.allowApi == null) {
-      throw new PayloadServiceError("INCOMPLETE", "API 제공 값이 올바르지 않습니다.", 400);
-    }
-    updateData.allowApi = Boolean(patch.allowApi);
-  }
-  if (patch.allowMcp !== undefined) {
-    if (patch.allowMcp == null) {
-      throw new PayloadServiceError("INCOMPLETE", "MCP 제공 값이 올바르지 않습니다.", 400);
-    }
-    updateData.allowMcp = Boolean(patch.allowMcp);
-  }
-  if (patch.rightsBasis !== undefined) {
-    if (patch.rightsBasis == null || !String(patch.rightsBasis).trim()) {
-      updateData.rightsBasis = null;
-    } else if (!isDistributionRightsBasis(String(patch.rightsBasis).trim())) {
-      throw new PayloadServiceError("INCOMPLETE", "유통 권한 근거 값이 올바르지 않습니다.", 400);
-    } else {
-      updateData.rightsBasis = String(patch.rightsBasis).trim() as DistributionRightsBasisCode;
-    }
-  }
   if (patch.rightsBasisDetail !== undefined) {
     updateData.rightsBasisDetail = trimOrNull(patch.rightsBasisDetail, MAX_TEXT);
   }
-  if (patch.rightsConfirmed !== undefined) {
-    if (patch.rightsConfirmed) {
-      updateData.rightsConfirmedAt = new Date();
-    } else if (patch.rightsConfirmed === false || patch.rightsConfirmed === null) {
-      updateData.rightsConfirmedAt = null;
-      updateData.rightsConfirmedByUserId = null;
-    }
+}
+
+/** Trim-and-clamp URL fields, each validated as an optional http(s) URL. */
+function applyUrlPatches(patch: PatchDistributionMetadataInput, updateData: PatchUpdateData): void {
+  if (patch.sourceUrl !== undefined) {
+    const sourceUrl = trimOrNull(patch.sourceUrl, MAX_URL);
+    assertOptionalUrl("출처", sourceUrl);
+    updateData.sourceUrl = sourceUrl;
+  }
+  if (patch.sourcePublisherUrl !== undefined) {
+    const sourcePublisherUrl = trimOrNull(patch.sourcePublisherUrl, MAX_URL);
+    assertOptionalUrl("발행기관", sourcePublisherUrl);
+    updateData.sourcePublisherUrl = sourcePublisherUrl;
+  }
+  if (patch.licenseUrl !== undefined) {
+    const licenseUrl = trimOrNull(patch.licenseUrl, MAX_URL);
+    assertOptionalUrl("라이선스", licenseUrl);
+    updateData.licenseUrl = licenseUrl;
+  }
+}
+
+function applyOptionalDatePatches(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  if (patch.sourcePublishedAt !== undefined) {
+    updateData.sourcePublishedAt = parseOptionalDate("게시일", patch.sourcePublishedAt);
+  }
+  if (patch.sourceRetrievedAt !== undefined) {
+    updateData.sourceRetrievedAt = parseOptionalDate("수집일", patch.sourceRetrievedAt);
   }
   if (patch.serviceEndsAt !== undefined) {
     updateData.serviceEndsAt = parseOptionalDate("서비스 종료일", patch.serviceEndsAt);
   }
+}
+
+/** License name is required (non-empty) whenever present in the patch. */
+function applyLicenseNamePatch(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  if (patch.licenseName === undefined) return;
+  const licenseName = patch.licenseName?.trim() ?? "";
+  if (!licenseName) {
+    throw new PayloadServiceError("LICENSE_REQUIRED", "라이선스명이 필요합니다.", 400);
+  }
+  updateData.licenseName = licenseName.slice(0, MAX_TITLE);
+}
+
+function applyVisibilityPatch(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  if (patch.visibility === undefined) return;
+  const visibilityRaw = patch.visibility == null ? "" : String(patch.visibility).trim().toUpperCase();
+  if (!visibilityRaw || !(DISTRIBUTION_VISIBILITIES as readonly string[]).includes(visibilityRaw)) {
+    throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
+  }
+  updateData.visibility = visibilityRaw as PrismaDistributionVisibility;
+}
+
+/** Required (non-null) boolean channel/download flags, each validated independently. */
+function applyRequiredBooleanFlagPatches(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  const flags: {
+    key: "allowDownload" | "allowApi" | "allowMcp";
+    label: string;
+  }[] = [
+    { key: "allowDownload", label: "다운로드 허용" },
+    { key: "allowApi", label: "API 제공" },
+    { key: "allowMcp", label: "MCP 제공" },
+  ];
+  for (const { key, label } of flags) {
+    const value = patch[key];
+    if (value === undefined) continue;
+    if (value == null) {
+      throw new PayloadServiceError("INCOMPLETE", `${label} 값이 올바르지 않습니다.`, 400);
+    }
+    updateData[key] = Boolean(value);
+  }
+}
+
+function applyRightsBasisPatch(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  if (patch.rightsBasis === undefined) return;
+  const rightsBasisRaw = patch.rightsBasis == null ? "" : String(patch.rightsBasis).trim();
+  if (!rightsBasisRaw) {
+    updateData.rightsBasis = null;
+    return;
+  }
+  if (!isDistributionRightsBasis(rightsBasisRaw)) {
+    throw new PayloadServiceError("INCOMPLETE", "유통 권한 근거 값이 올바르지 않습니다.", 400);
+  }
+  updateData.rightsBasis = rightsBasisRaw as DistributionRightsBasisCode;
+}
+
+function applyRightsConfirmedPatch(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
+  if (patch.rightsConfirmed === undefined) return;
+  if (patch.rightsConfirmed) {
+    updateData.rightsConfirmedAt = new Date();
+    return;
+  }
+  updateData.rightsConfirmedAt = null;
+  updateData.rightsConfirmedByUserId = null;
+}
+
+function applyContentTypePatch(
+  patch: PatchDistributionMetadataInput,
+  updateData: PatchUpdateData,
+): void {
   // primaryArtifactType ignored (ZIP removed)
   if (patch.contentType !== undefined) {
     updateData.contentType = parseContentType(patch.contentType);
   }
+}
 
-  // After applying source fields, ensure source title/url remain valid as a set.
+/** After applying source fields, the pack must still have a title or a URL. */
+function assertSourceFieldsPresentAfterPatch(
+  patch: PatchDistributionMetadataInput,
+  existing: PackDistributionMetadata,
+): void {
   const nextTitle =
     patch.sourceTitle !== undefined
       ? trimOrNull(patch.sourceTitle, MAX_TITLE)
@@ -826,6 +873,25 @@ function buildPatchUpdateData(
       400,
     );
   }
+}
+
+function buildPatchUpdateData(
+  patch: PatchDistributionMetadataInput,
+  existing: PackDistributionMetadata,
+): Prisma.PackDistributionMetadataUpdateInput {
+  const updateData: PatchUpdateData = {};
+
+  applyTrimmedTextPatches(patch, updateData);
+  applyUrlPatches(patch, updateData);
+  applyOptionalDatePatches(patch, updateData);
+  applyLicenseNamePatch(patch, updateData);
+  applyVisibilityPatch(patch, updateData);
+  applyRequiredBooleanFlagPatches(patch, updateData);
+  applyRightsBasisPatch(patch, updateData);
+  applyRightsConfirmedPatch(patch, updateData);
+  applyContentTypePatch(patch, updateData);
+
+  assertSourceFieldsPresentAfterPatch(patch, existing);
 
   return updateData;
 }

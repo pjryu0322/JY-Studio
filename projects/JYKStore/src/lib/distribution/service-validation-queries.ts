@@ -19,6 +19,23 @@ import {
 } from "@/lib/distribution/service-validation-binding";
 import { OPEN_PACK_REVIEW_STATUSES } from "@/lib/pack-review-status";
 
+/** DB-only: API/MCP peer result fingerprints for a shared confirmation group. */
+export async function loadSharedConfirmationPeerFingerprints(
+  client: Prisma.TransactionClient | typeof prisma,
+  sharedConfirmationGroupId: string,
+): Promise<{ apiResultFingerprint: string | null; mcpResultFingerprint: string | null }> {
+  const peers = await client.serviceValidationProviderConfirmation.findMany({
+    where: { sharedConfirmationGroupId },
+    include: { run: { select: { channel: true, resultFingerprint: true } } },
+  });
+  const apiPeer = peers.find((p) => p.run.channel === "API")?.run;
+  const mcpPeer = peers.find((p) => p.run.channel === "MCP")?.run;
+  return {
+    apiResultFingerprint: apiPeer?.resultFingerprint ?? null,
+    mcpResultFingerprint: mcpPeer?.resultFingerprint ?? null,
+  };
+}
+
 export async function assertNoOpenPackReview(
   client: Prisma.TransactionClient | typeof prisma,
   packId: string,
