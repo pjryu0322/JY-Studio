@@ -309,6 +309,71 @@ describe("python worker output contract", () => {
     }
   });
 
+  it("fails when a vector contains non-finite values", () => {
+    for (const bad of [Infinity, -Infinity, NaN]) {
+      const bundle = fixtureBundle({
+        embeddings: [
+          {
+            chunkId: "grid-section-001",
+            provider: "local",
+            model: "e5-small",
+            dimension: 3,
+            vector: [0.1, bad, 0.3],
+            contentHash: "hash-grid-001",
+          },
+        ],
+      });
+      const result = validateWorkerOutputBundle(bundle);
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.ok(result.errors.some((e) => e.code === "EMBEDDING_VECTOR_NON_FINITE"));
+      }
+    }
+  });
+
+  it("fails when a vector is empty", () => {
+    const bundle = fixtureBundle({
+      embeddings: [
+        {
+          chunkId: "grid-section-001",
+          provider: "local",
+          model: "e5-small",
+          dimension: 3,
+          vector: [],
+          contentHash: "hash-grid-001",
+        },
+      ],
+    });
+    const result = validateWorkerOutputBundle(bundle);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "EMBEDDING_VECTOR_EMPTY"));
+    }
+  });
+
+  it("fails when dimension is not a finite integer", () => {
+    const dir = writeBundleDir(fixtureBundle());
+    writeFileSync(
+      path.join(dir, "embeddings.json"),
+      JSON.stringify([
+        {
+          chunkId: "grid-section-001",
+          provider: "local",
+          model: "e5-small",
+          dimension: 3.5,
+          vector: [0.1, 0.2, 0.3],
+          contentHash: "hash-grid-001",
+        },
+      ]),
+      "utf8",
+    );
+    const result = validateWorkerOutputDirectory(dir);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.ok(result.errors.some((e) => e.code === "EMBEDDING_ENTRY"));
+    }
+  });
+
   it("fails when the same chunk has duplicate embeddings", () => {
     const dup: WorkerEmbedding = {
       chunkId: "grid-section-001",

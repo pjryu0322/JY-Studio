@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import zipfile
@@ -17,6 +18,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.chunker import build_chunks_and_traces, write_chunks, write_traces
+from src.embedding import (
+    EmbeddingError,
+    build_embeddings,
+    resolve_embedding_config,
+    write_embeddings,
+)
 from src.inventory import build_inventory, inventory_by_path, write_inventory
 from src.markdown_writer import write_markdown_review
 from src.normalizer import normalize_documents, write_normalized_documents
@@ -302,6 +309,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         write_inventory([], output_dir / "inventory.json")
         write_normalized_documents([], output_dir / "normalized_documents.json")
         write_chunks([], output_dir / "chunks.json")
+        write_embeddings([], output_dir / "embeddings.json")
         write_traces([], output_dir / "source_trace.json")
         return 1
 
@@ -339,6 +347,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         write_inventory([], output_dir / "inventory.json")
         write_normalized_documents([], output_dir / "normalized_documents.json")
         write_chunks([], output_dir / "chunks.json")
+        write_embeddings([], output_dir / "embeddings.json")
         write_traces([], output_dir / "source_trace.json")
         write_markdown_review(
             path=output_dir / "normalized_documents.md",
@@ -450,6 +459,18 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     write_chunks(chunks, output_dir / "chunks.json")
     write_traces(traces, output_dir / "source_trace.json")
 
+    # Always emit embeddings.json to satisfy the required output contract, even
+    # if generation fails. The Worker never writes DB / Object Storage.
+    embedding_failed = False
+    embeddings: list[dict[str, Any]] = []
+    try:
+        embedding_cfg = resolve_embedding_config(opts.get("embedding") or {}, os.environ)
+        embeddings = build_embeddings(chunks, embedding_cfg)
+    except EmbeddingError as exc:
+        embedding_failed = True
+        errors.append(f"embedding generation failed: {exc}")
+    write_embeddings(embeddings, output_dir / "embeddings.json")
+
     if not knowledge:
         errors.append("no knowledge_target files found in archive")
         status = "failed"
@@ -461,6 +482,10 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     )):
         status = "partial"
     elif errors:
+        status = "failed"
+
+    # Missing embeddings for produced chunks is a hard failure for Store import.
+    if embedding_failed:
         status = "failed"
 
     report = build_validation_report(

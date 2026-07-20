@@ -251,7 +251,11 @@ function normalizeEmbeddings(
     const contentHash = requireString(obj, "contentHash");
     const dimension = obj.dimension;
     const vector = obj.vector;
-    const dimensionOk = typeof dimension === "number" && Number.isInteger(dimension) && dimension > 0;
+    const dimensionOk =
+      typeof dimension === "number" &&
+      Number.isFinite(dimension) &&
+      Number.isInteger(dimension) &&
+      dimension > 0;
     const vectorOk = Array.isArray(vector) && vector.every((n) => typeof n === "number");
     if (!chunkId || !provider || !model || !contentHash || !dimensionOk || !vectorOk) {
       errors.push(
@@ -443,7 +447,23 @@ function crossValidate(
     } else {
       embeddingByChunk.set(embedding.chunkId, embedding);
     }
-    if (embedding.vector.length !== embedding.dimension) {
+    if (embedding.vector.length === 0) {
+      errors.push(
+        issue(
+          "EMBEDDING_VECTOR_EMPTY",
+          `embedding ${embedding.chunkId} vector is empty`,
+          "embeddings.json",
+        ),
+      );
+    } else if (!embedding.vector.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      errors.push(
+        issue(
+          "EMBEDDING_VECTOR_NON_FINITE",
+          `embedding ${embedding.chunkId} vector has NaN/Infinity values`,
+          "embeddings.json",
+        ),
+      );
+    } else if (embedding.vector.length !== embedding.dimension) {
       errors.push(
         issue(
           "EMBEDDING_VECTOR_DIMENSION_MISMATCH",

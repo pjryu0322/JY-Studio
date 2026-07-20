@@ -29,19 +29,26 @@ validation_report.json
 
 `normalized_documents.md` is optional (human review).
 
-### `embeddings.json` (contract-extension stage)
+### `embeddings.json`
 
-This stage adds `embeddings.json` to the **contract, validator, import payload,
-and Object Storage plan only**. Actual embedding generation in the Python Worker
-and DB/vector-index persistence (e.g. `KnowledgeChunkEmbedding`, pgvector) are
-later steps.
+The Python Worker now generates `embeddings.json` (one vector per chunk) right
+after `chunks.json`. It is always written — empty array `[]` when there are no
+chunks or on a failure branch — so the required output contract holds.
+
+Modes: `local_e5` (production / default, local CPU E5 via `sentence-transformers`)
+and `deterministic_stub` (test-only, no model download). The Worker never calls
+an external API and never writes Store DB or Object Storage.
 
 Validator enforces chunk ↔ embedding integrity:
 
 - every `embedding.chunkId` exists in `chunks.json`
 - exactly one embedding per chunk (no duplicates, none missing)
-- `dimension` is a positive integer and `vector` is `number[]` of that length
+- `dimension` is a finite positive integer; `vector` is a non-empty `number[]` of
+  that length with only finite values (no `NaN` / `Infinity`)
 - `provider` / `model` / `contentHash` are non-empty
+
+DB persistence (`KnowledgeChunkEmbedding`) and pgvector upsert are a **later**
+step and are not implemented here.
 
 ## Phase 1 audit (overlap)
 

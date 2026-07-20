@@ -15,6 +15,12 @@ if str(ROOT) not in sys.path:
 
 from parse_archive import is_safe_zip_member, safe_extract_zip
 from src.chunker import build_chunks_and_traces
+from src.embedding import (
+    EmbeddingError,
+    build_embeddings,
+    resolve_embedding_config,
+    write_embeddings,
+)
 from src.parsers import html_api, html_sample, pdf_docling
 from src.policies import classify_file
 from src.zip_paths import (
@@ -289,6 +295,10 @@ class EndToEndMiniZipTests(unittest.TestCase):
                         "parseSamples": True,
                         "maxFileBytes": 5_000_000,
                         "maxTotalBytes": 20_000_000,
+                        "embedding": {
+                            "mode": "deterministic_stub",
+                            "dimension": 8,
+                        },
                     },
                 }
             )
@@ -297,6 +307,7 @@ class EndToEndMiniZipTests(unittest.TestCase):
                 "inventory.json",
                 "normalized_documents.json",
                 "chunks.json",
+                "embeddings.json",
                 "source_trace.json",
                 "validation_report.json",
                 "normalized_documents.md",
@@ -322,6 +333,18 @@ class EndToEndMiniZipTests(unittest.TestCase):
             self.assertFalse(
                 any("LicenseKey" in (c.get("sourcePath") or "") for c in chunks)
             )
+
+            embeddings = json.loads(
+                (out / "embeddings.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(len(embeddings), len(chunks))
+            chunk_ids = {c["chunkId"] for c in chunks}
+            for emb in embeddings:
+                self.assertIn(emb["chunkId"], chunk_ids)
+                self.assertEqual(emb["dimension"], 8)
+                self.assertEqual(len(emb["vector"]), 8)
+                self.assertEqual(emb["provider"], "test-stub")
+                self.assertTrue(all(isinstance(v, float) for v in emb["vector"]))
 
 
 class KoreanZipFilenameTests(unittest.TestCase):
@@ -460,6 +483,10 @@ class KoreanZipFilenameTests(unittest.TestCase):
                         "parseSamples": True,
                         "maxFileBytes": 5_000_000,
                         "maxTotalBytes": 20_000_000,
+                        "embedding": {
+                            "mode": "deterministic_stub",
+                            "dimension": 8,
+                        },
                     },
                 }
             )
@@ -484,6 +511,75 @@ class KoreanZipFilenameTests(unittest.TestCase):
                 self.assertRegex(art.name, r"^pdf_\d{3}_")
                 payload = json.loads(art.read_text(encoding="utf-8"))
                 self.assertEqual(payload["sourcePath"], pdf_path)
+
+
+class EmbeddingTests(unittest.TestCase):
+    def _chunks(self, n: int) -> list[dict]:
+        return [
+            {
+                "chunkId": f"chunk-{i:03d}",
+                "title": f"Title {i}",
+                "content": f"Body content {i}",
+                "section": "Overview",
+                "keywords": ["grid", "column"],
+                "symbols": ["DataGrid"],
+                "traceId": f"trace-{i:03d}",
+            }
+            for i in range(n)
+        ]
+
+    def test_stub_mode_one_embedding_per_chunk(self):
+        cfg = resolve_embedding_config(
+            {"mode": "deterministic_stub", "dimension": 8}, {}
+        )
+        chunks = self._chunks(3)
+        embeddings = build_embeddings(chunks, cfg)
+        self.assertEqual(len(embeddings), len(chunks))
+        chunk_ids = {c["chunkId"] for c in chunks}
+        for emb in embeddings:
+            self.assertIn(emb["chunkId"], chunk_ids)
+            self.assertEqual(emb["dimension"], 8)
+            self.assertEqual(len(emb["vector"]), 8)
+            self.assertEqual(emb["provider"], "test-stub")
+
+    def test_stub_mode_is_deterministic(self):
+        cfg = resolve_embedding_config(
+            {"mode": "deterministic_stub", "dimension": 8}, {}
+        )
+        chunks = self._chunks(2)
+        first = build_embeddings(chunks, cfg)
+        second = build_embeddings(chunks, cfg)
+        self.assertEqual(
+            [e["vector"] for e in first], [e["vector"] for e in second]
+        )
+
+    def test_empty_chunks_yield_empty_embeddings(self):
+        cfg = resolve_embedding_config({"mode": "deterministic_stub"}, {})
+        self.assertEqual(build_embeddings([], cfg), [])
+
+    def test_write_embeddings_creates_file_for_empty_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "embeddings.json"
+            write_embeddings([], path)
+            self.assertTrue(path.is_file())
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), [])
+
+    def test_write_embeddings_rejects_non_finite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "embeddings.json"
+            bad = [{"chunkId": "x", "vector": [float("inf")]}]
+            with self.assertRaises(ValueError):
+                write_embeddings(bad, path)
+
+    def test_unknown_mode_raises(self):
+        with self.assertRaises(EmbeddingError):
+            resolve_embedding_config({"mode": "bogus"}, {})
+
+    def test_env_default_mode(self):
+        cfg = resolve_embedding_config(
+            {}, {"JYKSTORE_PYTHON_WORKER_EMBEDDING_MODE": "deterministic_stub"}
+        )
+        self.assertEqual(cfg["mode"], "deterministic_stub")
 
 
 if __name__ == "__main__":
