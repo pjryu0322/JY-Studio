@@ -188,100 +188,10 @@ export function buildDistributionReviewSubmitSnapshot(input: {
   };
 }
 
-export function buildDoclingBundleReviewSubmitSnapshot(input: {
-  submittedVersionId: string;
-  doclingBundleId: string;
-  sourceFileId: string;
-  jsonPayloadFileId: string;
-  markdownPayloadFileId: string | null;
-  checksums: { source: string; json: string; markdown: string | null };
-  doclingSchemaVersion: string | null;
-  adapterVersion: string;
-  normalizedDocumentId: string;
-  fingerprint: string | null;
-  warningCount: number;
-  sourceTitle: string | null;
-  licenseName: string;
-  visibility: string;
-  allowDownload: boolean;
-  allowApi?: boolean;
-  allowMcp?: boolean;
-  serviceEndsAt?: string | null;
-  rightsBasis?: string | null;
-  rightsBasisDetail?: string | null;
-  rightsConfirmedAt?: string | null;
-  sourceUrl?: string | null;
-  sourcePublisherName?: string | null;
-  sourceDocumentVersion?: string | null;
-  sourcePublishedAt?: string | null;
-  sourceRetrievedAt?: string | null;
-  serviceValidation?: DoclingBundleReviewSubmitSnapshot["serviceValidation"];
-  preparationValidation?: DoclingBundleReviewSubmitSnapshot["preparationValidation"];
-  distributionChannels?: DoclingBundleReviewSubmitSnapshot["distributionChannels"];
-  language: PackLanguageCode;
-  pipelineRunId?: string | null;
-  indexGenerationId?: string | null;
-  searchIndexGenerationId?: string | null;
-  searchGenerationFingerprint?: string | null;
-  chunkGenerationId?: string | null;
-  embeddingProvider?: string | null;
-  embeddingModel?: string | null;
-  embeddingModelRevision?: string | null;
-  embeddingDimension?: number | null;
-  distanceMetric?: string | null;
-  retrievalEvaluationStatus?: string | null;
-  normalizedDocumentFingerprint?: string | null;
-  snapshotSchemaVersion?: number;
-}): DoclingBundleReviewSubmitSnapshot {
-  return {
-    mode: "DOCLING_BUNDLE",
-    snapshotSchemaVersion: input.snapshotSchemaVersion ?? REVIEW_SUBMIT_SNAPSHOT_VERSION,
-    submittedAt: new Date().toISOString(),
-    submittedVersionId: input.submittedVersionId,
-    doclingBundleId: input.doclingBundleId,
-    sourceFileId: input.sourceFileId,
-    jsonPayloadFileId: input.jsonPayloadFileId,
-    markdownPayloadFileId: input.markdownPayloadFileId,
-    checksums: input.checksums,
-    doclingSchemaVersion: input.doclingSchemaVersion,
-    adapterVersion: input.adapterVersion,
-    normalizedDocumentId: input.normalizedDocumentId,
-    fingerprint: input.fingerprint,
-    warningCount: input.warningCount,
-    sourceTitle: input.sourceTitle,
-    licenseName: input.licenseName,
-    visibility: input.visibility,
-    allowDownload: input.allowDownload,
-    allowApi: input.allowApi ?? true,
-    allowMcp: input.allowMcp ?? true,
-    serviceEndsAt: input.serviceEndsAt ?? null,
-    rightsBasis: input.rightsBasis ?? null,
-    rightsBasisDetail: input.rightsBasisDetail ?? null,
-    rightsConfirmedAt: input.rightsConfirmedAt ?? null,
-    sourceUrl: input.sourceUrl ?? null,
-    sourcePublisherName: input.sourcePublisherName ?? null,
-    sourceDocumentVersion: input.sourceDocumentVersion ?? null,
-    sourcePublishedAt: input.sourcePublishedAt ?? null,
-    sourceRetrievedAt: input.sourceRetrievedAt ?? null,
-    serviceValidation: input.serviceValidation ?? null,
-    preparationValidation: input.preparationValidation ?? null,
-    distributionChannels: input.distributionChannels ?? null,
-    language: input.language,
-    pipelineRunId: input.pipelineRunId ?? null,
-    indexGenerationId: input.indexGenerationId ?? null,
-    searchIndexGenerationId: input.searchIndexGenerationId ?? null,
-    searchGenerationFingerprint: input.searchGenerationFingerprint ?? null,
-    chunkGenerationId: input.chunkGenerationId ?? null,
-    embeddingProvider: input.embeddingProvider ?? null,
-    embeddingModel: input.embeddingModel ?? null,
-    embeddingModelRevision: input.embeddingModelRevision ?? null,
-    embeddingDimension: input.embeddingDimension ?? null,
-    distanceMetric: input.distanceMetric ?? null,
-    retrievalEvaluationStatus: input.retrievalEvaluationStatus ?? null,
-    normalizedDocumentFingerprint:
-      input.normalizedDocumentFingerprint ?? input.fingerprint ?? null,
-  };
-}
+export {
+  assembleDoclingBundleReviewSubmitSnapshot as buildDoclingBundleReviewSubmitSnapshot,
+  type BuildDoclingBundleReviewSubmitSnapshotInput,
+} from "@/lib/distribution/distribution-submit-snapshot-docling-builders";
 
 export function parseDistributionReviewSubmitSnapshot(
   value: unknown,

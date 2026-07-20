@@ -24,8 +24,12 @@ const SERVICE_VALIDATION_MODULE_FILES = [
   "service-validation-run-persist-tx.ts",
   "service-validation-evidence-asserts.ts",
   "service-validation-evidence-asserts-helpers.ts",
+  "service-validation-evidence-asserts-preparation.ts",
+  "service-validation-evidence-asserts-selected.ts",
+  "service-validation-evidence-asserts-current.ts",
   "service-validation-admin-listing.ts",
   "service-validation-admin-listing-helpers.ts",
+  "service-validation-admin-listing-dto.ts",
 ];
 
 function readServiceValidationModules(rootDir: string): string {
@@ -284,11 +288,16 @@ describe("service validation share + incomplete evidence", () => {
   });
 
   it("records download evidence only after prepare succeeds (source contract)", () => {
-    const confirmation = readFileSync(
+    const facade = readFileSync(
       join(root, "src/lib/distribution/service-validation-confirmation-service.ts"),
       "utf8",
     );
-    assert.ok(confirmation.includes("prepareProviderDownloadTest"));
+    const downloadTest = readFileSync(
+      join(root, "src/lib/distribution/service-validation-download-test-service.ts"),
+      "utf8",
+    );
+    const confirmation = `${facade}\n${downloadTest}`;
+    assert.ok(facade.includes("prepareProviderDownloadTest"));
     assert.ok(confirmation.includes("createMany"));
     assert.ok(confirmation.includes("skipDuplicates"));
     assert.ok(!confirmation.includes("error.code === \"P2002\""));

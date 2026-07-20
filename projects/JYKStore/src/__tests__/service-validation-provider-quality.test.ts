@@ -26,8 +26,12 @@ const SERVICE_VALIDATION_MODULE_FILES = [
   "service-validation-run-persist-tx.ts",
   "service-validation-evidence-asserts.ts",
   "service-validation-evidence-asserts-helpers.ts",
+  "service-validation-evidence-asserts-preparation.ts",
+  "service-validation-evidence-asserts-selected.ts",
+  "service-validation-evidence-asserts-current.ts",
   "service-validation-admin-listing.ts",
   "service-validation-admin-listing-helpers.ts",
+  "service-validation-admin-listing-dto.ts",
 ];
 
 function readServiceValidationModules(rootDir: string): string {
@@ -307,10 +311,20 @@ describe("provider service quality + admin ops log", () => {
     assert.ok(downloadTest.includes("commitSuccessfulDownloadTestEvidence"));
     assert.ok(downloadTest.includes("bodyBytes"));
     assert.equal(downloadTest.includes("Buffer.from"), false);
-    const confirmationService = readFileSync(
-      join(root, "src/lib/distribution/service-validation-confirmation-service.ts"),
-      "utf8",
-    );
+    const confirmationService = [
+      readFileSync(
+        join(root, "src/lib/distribution/service-validation-confirmation-service.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/distribution/service-validation-download-test-service.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/distribution/service-validation-download-test-policy.ts"),
+        "utf8",
+      ),
+    ].join("\n");
     assert.ok(confirmationService.includes('downloadMode === "RAG_EXPORT"'));
     assert.ok(confirmationService.includes("bodyBytes: pkg.zipBytes"));
     assert.ok(confirmationService.includes("isRagExport"));

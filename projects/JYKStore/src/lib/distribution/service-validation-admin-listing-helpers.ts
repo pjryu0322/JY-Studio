@@ -4,7 +4,15 @@ import type {
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import type { ServiceChannel } from "@/lib/distribution/service-channel-policy";
-import { resolveSharedConfirmationStaleOverride } from "@/lib/distribution/service-validation-share";
+import {
+  isLegacySharedConfirmationMissingFingerprint,
+  resolveSharedConfirmationStaleOverride,
+} from "@/lib/distribution/service-validation-share";
+import {
+  resolveConfirmationStatusDto,
+  resolveRunCurrentValidity,
+} from "@/lib/distribution/service-validation-policy";
+import { RETRIEVAL_RANKING_POLICY_VERSION } from "@/lib/retrieval/relevance-diversity-rerank";
 
 export type AdminHistoryVersionScope = "ALL" | "LATEST" | "VERSION";
 
@@ -154,4 +162,72 @@ export function resolveAdminRunInvalidationReason(input: {
   }
   if (input.validity === "STALE") return "BINDING_DRIFT";
   return null;
+}
+
+export type AdminHistoryCandidateRun = {
+  status: string;
+  channel: string;
+  versionId: string;
+  fingerprint: string | null;
+  indexGenerationId: string | null;
+  invalidatedAt: Date | null;
+  details?: unknown;
+  confirmation?: {
+    status: string;
+    sharedConfirmationGroupId: string | null;
+  } | null;
+  _count: { resultItems: number };
+};
+
+/**
+ * Pure: whether a computed-filter candidate matches systemStatus / confirmation filters.
+ * Peer fingerprints for shared confirmation are resolved by the caller.
+ */
+export function adminHistoryCandidateMatchesFilters(input: {
+  run: AdminHistoryCandidateRun;
+  versionBinding: { fingerprint: string; indexGenerationId: string } | null;
+  systemFilter: string | null;
+  confFilter: string | null;
+  peers: Array<{
+    run: { channel: string; resultFingerprint: string | null };
+  }>;
+}): boolean {
+  const { run, systemFilter, confFilter } = input;
+  let validity = resolveRunCurrentValidity({
+    run: run as Parameters<typeof resolveRunCurrentValidity>[0]["run"],
+    bindingFingerprint: input.versionBinding?.fingerprint,
+    bindingIndexGenerationId: input.versionBinding?.indexGenerationId,
+    resultItemCount: run.channel === "DOWNLOAD" ? null : run._count.resultItems,
+    expectedRankingPolicyVersion:
+      run.channel === "API" || run.channel === "MCP" ? RETRIEVAL_RANKING_POLICY_VERSION : null,
+  });
+  if (
+    run.confirmation?.sharedConfirmationGroupId &&
+    (run.channel === "API" || run.channel === "MCP")
+  ) {
+    const apiPeer = input.peers.find((p) => p.run.channel === "API")?.run;
+    const mcpPeer = input.peers.find((p) => p.run.channel === "MCP")?.run;
+    if (
+      isLegacySharedConfirmationMissingFingerprint({
+        sharedConfirmationGroupId: run.confirmation.sharedConfirmationGroupId,
+        apiResultFingerprint: apiPeer?.resultFingerprint,
+        mcpResultFingerprint: mcpPeer?.resultFingerprint,
+      })
+    ) {
+      validity = "STALE";
+    }
+  }
+  const systemStatus = run.status === "PASS" && validity === "STALE" ? "STALE" : run.status;
+  const providerConfirmationStatus = resolveConfirmationStatusDto({
+    confirmationStatus: run.confirmation?.status,
+    runValidity: validity,
+  });
+
+  if (systemFilter === "STALE" && systemStatus !== "STALE") return false;
+  if (systemFilter === "PASS" && !(run.status === "PASS" && validity === "CURRENT")) {
+    return false;
+  }
+  if (systemFilter === "FAIL" && run.status !== "FAIL") return false;
+  if (confFilter && providerConfirmationStatus !== confFilter) return false;
+  return true;
 }
