@@ -55,7 +55,7 @@ describe("buildProviderOnboardingSteps", () => {
       steps.map((s) => s.key),
       ["pack", "payload", "distribution", "review", "publish"],
     );
-    assert.equal(steps.find((s) => s.key === "publish")?.title, "승인·공개");
+    assert.equal(steps.find((s) => s.key === "publish")?.title, "유통정보·검수요청");
   });
 });
 

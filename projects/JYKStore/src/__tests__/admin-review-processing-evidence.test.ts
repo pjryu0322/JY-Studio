@@ -22,6 +22,7 @@ describe("admin review generic processing evidence", () => {
       "warnings",
       "documents",
       "processing",
+      "serviceValidation",
     ]);
     assert.equal(ADMIN_REVIEW_TAB_PROCESSING, "처리·검증");
   });

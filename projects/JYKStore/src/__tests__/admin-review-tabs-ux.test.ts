@@ -29,6 +29,7 @@ import {
   ADMIN_REVIEW_STATE_WARNING_TITLE,
   ADMIN_REVIEW_TAB_ADVANCED,
   ADMIN_REVIEW_TAB_PACKAGE,
+  ADMIN_REVIEW_TAB_SERVICE_VALIDATION,
   ADMIN_REVIEW_TAB_SOURCES,
   ADMIN_REVIEW_TAB_WARNINGS,
 } from "../lib/role-based-ux-copy.ts";
@@ -133,6 +134,7 @@ describe("admin review evidence tabs UX", () => {
       "warnings",
       "documents",
       "processing",
+      "serviceValidation",
     ]);
     assert.equal(defaultAdminReviewEvidenceTab(detail), "package");
     assert.equal(isReviewPending(detail), true);
@@ -160,6 +162,7 @@ describe("admin review evidence tabs UX", () => {
     assert.equal(ADMIN_REVIEW_TAB_PACKAGE, "패키지");
     assert.equal(ADMIN_REVIEW_TAB_WARNINGS, "주의");
     assert.equal(ADMIN_REVIEW_TAB_SOURCES, "문서");
+    assert.equal(ADMIN_REVIEW_TAB_SERVICE_VALIDATION, "운영 로그");
     assert.equal(ADMIN_REVIEW_TAB_ADVANCED, "고급");
     assert.equal(ADMIN_REVIEW_CTA_ACCEPT, "검수 접수");
   });

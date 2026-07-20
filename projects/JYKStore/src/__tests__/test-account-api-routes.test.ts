@@ -106,10 +106,18 @@ describe("dev test-accounts API contracts", () => {
     assert.equal(login.status, 404);
   });
 
-  it("returns 404 for non-localhost hosts", async () => {
+  it("allows private LAN hosts when switcher is enabled", async () => {
     enableLocalDev();
     const list = await listTestAccountsGET(
       new NextRequest("http://192.168.0.5:3004/api/v1/dev/test-accounts"),
+    );
+    assert.equal(list.status, 200);
+  });
+
+  it("returns 404 for public internet hostnames", async () => {
+    enableLocalDev();
+    const list = await listTestAccountsGET(
+      new NextRequest("http://example.com/api/v1/dev/test-accounts"),
     );
     assert.equal(list.status, 404);
 

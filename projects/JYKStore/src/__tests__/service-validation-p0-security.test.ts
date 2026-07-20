@@ -199,10 +199,15 @@ describe("P0 source contracts", () => {
       join(root, "src/lib/distribution/service-validation-service.ts"),
       "utf8",
     );
+    const downloadValidation = readFileSync(
+      join(root, "src/lib/distribution/download-object-validation.ts"),
+      "utf8",
+    );
     const admin = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
     assert.ok(service.includes("executeRetrievalApiRequest"));
     assert.ok(service.includes("executeMcpValidation"));
-    assert.ok(service.includes("validateDownloadObjectIntegrity"));
+    assert.ok(downloadValidation.includes("validateDownloadObjectIntegrity"));
+    assert.ok(service.includes('downloadMode !== "RAG_EXPORT"'));
     assert.ok(service.includes("SERVICE_VALIDATION_NOT_EDITABLE"));
     assert.ok(service.includes("serviceValidationRun.create"));
     assert.ok(!service.includes("versionId_channel"));

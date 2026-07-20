@@ -11,7 +11,7 @@ function read(relative: string): string {
 
 describe("payload-cleanup docling sync", () => {
   it("enqueuePayloadCleanupJob accepts doclingBundleId and knowledgePackFileId", () => {
-    const cleanup = read("src/lib/distribution/payload-cleanup-service.ts");
+    const cleanup = read("src/lib/object-storage/object-cleanup-service.ts");
     assert.ok(cleanup.includes("doclingBundleId"));
     assert.ok(cleanup.includes("knowledgePackFileId"));
     assert.ok(cleanup.includes("syncDoclingBundleStorageAfterCleanup"));

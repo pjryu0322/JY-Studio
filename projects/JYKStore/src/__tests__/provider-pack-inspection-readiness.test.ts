@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
+import { PROVIDER_PACK_GO_TO_REVIEW_TAB } from "@/lib/role-based-ux-copy";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
@@ -314,7 +315,7 @@ describe("provider pack inspection readiness", () => {
 
     assert.equal(readiness.nextAction, "GO_TO_SUBMIT_REVIEW");
     assert.equal(readiness.userState, "review_ready");
-    assert.equal(readiness.primaryActionLabel, "검수요청으로 이동");
+    assert.equal(readiness.primaryActionLabel, PROVIDER_PACK_GO_TO_REVIEW_TAB);
     assert.equal(readiness.canSubmitReview, true);
     assert.equal(readiness.currentStepId, "completed");
   });
@@ -333,7 +334,7 @@ describe("provider pack inspection readiness", () => {
     assert.equal(readiness.canSubmitReview, true);
     assert.equal(readiness.nextAction, "GO_TO_SUBMIT_REVIEW");
     assert.equal(readiness.primaryActionKind, "GO_TO_REVIEW");
-    assert.equal(readiness.primaryActionLabel, "검수요청으로 이동");
+    assert.equal(readiness.primaryActionLabel, PROVIDER_PACK_GO_TO_REVIEW_TAB);
     assert.ok(readiness.plan.requiresFinalGateOnSubmit);
   });
 });
