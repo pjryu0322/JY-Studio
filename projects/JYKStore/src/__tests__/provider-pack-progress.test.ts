@@ -163,7 +163,7 @@ describe("provider center pack progress UX sources", () => {
 
   it("enriches list API with summary without N+1 client calls", () => {
     const route = readSource("src/app/api/v1/provider/packs/route.ts");
-    const service = readSource("src/lib/provider-pack-service.ts");
+    const service = readSource("src/lib/provider-pack/provider-pack-query-service.ts");
     assert.ok(route.includes("summary"));
     assert.ok(service.includes("buildProviderPackProgress"));
     assert.ok(service.includes("buildProviderPacksStatusSummary"));

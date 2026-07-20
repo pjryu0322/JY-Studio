@@ -15,6 +15,21 @@ import { resolveRunCurrentValidity } from "../lib/distribution/service-validatio
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+const SERVICE_VALIDATION_MODULE_FILES = [
+  "service-validation-policy.ts",
+  "service-validation-queries.ts",
+  "service-validation-provider-status.ts",
+  "service-validation-run-commands.ts",
+  "service-validation-evidence-asserts.ts",
+  "service-validation-admin-listing.ts",
+];
+
+function readServiceValidationModules(rootDir: string): string {
+  return SERVICE_VALIDATION_MODULE_FILES.map((f) =>
+    readFileSync(join(rootDir, "src/lib/distribution", f), "utf8"),
+  ).join("\n");
+}
+
 const baseRun = {
   status: "PASS",
   query: "소프트웨어 사업 대가 산정",
@@ -290,10 +305,7 @@ describe("service validation share + incomplete evidence", () => {
   });
 
   it("paginates admin STALE filters before count (source contract)", () => {
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     assert.ok(service.includes("needsComputedFilter"));
     assert.ok(service.includes("parseAdminHistoryDateBound"));
     assert.ok(service.includes("RESULT_FINGERPRINT_MISSING"));

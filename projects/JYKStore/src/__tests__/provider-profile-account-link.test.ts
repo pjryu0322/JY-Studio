@@ -20,7 +20,7 @@ function readSource(relativePath: string): string {
 describe("provider profile account link", () => {
   it("ensures profile service and wires pack services", () => {
     const service = readSource("src/lib/provider-profile-service.ts");
-    const packs = readSource("src/lib/provider-pack-service.ts");
+    const packs = readSource("src/lib/provider-pack/provider-pack-query-service.ts");
     const session = readSource("src/app/api/v1/auth/session/route.ts");
     const profileRoute = readSource("src/app/api/v1/provider/profile/route.ts");
 

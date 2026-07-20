@@ -17,6 +17,21 @@ import { evaluateRetrievalValidationHits } from "../lib/retrieval/retrieval-api-
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+const SERVICE_VALIDATION_MODULE_FILES = [
+  "service-validation-policy.ts",
+  "service-validation-queries.ts",
+  "service-validation-provider-status.ts",
+  "service-validation-run-commands.ts",
+  "service-validation-evidence-asserts.ts",
+  "service-validation-admin-listing.ts",
+];
+
+function readServiceValidationModules(rootDir: string): string {
+  return SERVICE_VALIDATION_MODULE_FILES.map((f) =>
+    readFileSync(join(rootDir, "src/lib/distribution", f), "utf8"),
+  ).join("\n");
+}
+
 describe("provider service quality + admin ops log", () => {
   it("hides operational ids from provider main surface; tech panel is opt-in", () => {
     const tab = readFileSync(
@@ -30,10 +45,7 @@ describe("provider service quality + admin ops log", () => {
     assert.ok(tab.includes("제공자 품질 확인"));
     assert.ok(tab.includes("원문 위치 확인"));
 
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     assert.ok(service.includes("providerConfirmationStatus"));
     assert.ok(service.includes("ServiceValidationChannelDto"));
     assert.ok(service.includes("getAdminServiceValidationForPack"));
@@ -324,10 +336,7 @@ describe("provider service quality + admin ops log", () => {
     );
     assert.ok(snap.includes("providerConfirmationId"));
     assert.ok(snap.includes("providerConfirmationStatus"));
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     assert.ok(service.includes("providerConfirmationId: confirmation!.id"));
   });
 });

@@ -200,5 +200,6 @@
   "src/__tests__/provider-search-validation-ux.test.ts",
   "src/__tests__/rag-export-package.test.ts",
   "src/__tests__/review-submit-rag-export-evidence.test.ts",
+  "src/__tests__/phase2-public-export-surface.test.ts",
   "src/__tests__/context-api-connect-ux-compact.test.ts"
 ]

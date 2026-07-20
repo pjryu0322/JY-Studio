@@ -16,7 +16,7 @@ function readSource(relativePath: string): string {
 describe("provider final review submit pipeline", () => {
   it("validates existing Builder data only before REVIEWING", () => {
     const service = readSource("src/lib/auto-pipeline/provider-final-review-submit-service.ts");
-    const submit = readSource("src/lib/provider-pack-service.ts");
+    const submit = readSource("src/lib/provider-pack/provider-pack-review-submit-service.ts");
 
     assert.ok(service.includes("loadStructureQualitySummaryForPack"));
     assert.ok(service.includes("loadChunkQualitySummaryForPack"));

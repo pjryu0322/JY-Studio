@@ -20,6 +20,21 @@ import type { ScoredCandidate } from "../lib/retrieval/retrieval-types.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+const SERVICE_VALIDATION_MODULE_FILES = [
+  "service-validation-policy.ts",
+  "service-validation-queries.ts",
+  "service-validation-provider-status.ts",
+  "service-validation-run-commands.ts",
+  "service-validation-evidence-asserts.ts",
+  "service-validation-admin-listing.ts",
+];
+
+function readServiceValidationModules(rootDir: string): string {
+  return SERVICE_VALIDATION_MODULE_FILES.map((f) =>
+    readFileSync(join(rootDir, "src/lib/distribution", f), "utf8"),
+  ).join("\n");
+}
+
 const e5Gen = {
   id: "g1",
   status: "READY",
@@ -276,10 +291,7 @@ describe("ranking policy evaluation gates", () => {
     assert.ok(bindingSrc.includes("staleErrorForBindingState"));
     assert.match(bindingSrc, /resolveCurrentValidationBindingTx[\s\S]*resolveValidationBindingState/);
 
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     assert.ok(service.includes("assertNoOpenPackReview"));
     assert.ok(service.includes("OPEN_PACK_REVIEW_STATUSES"));
     assert.match(
@@ -302,10 +314,7 @@ describe("ranking policy evaluation gates", () => {
     );
     assert.ok(validateSrc.includes("retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION"));
 
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     assert.ok(service.includes("SEARCH_EVALUATION_POLICY_STALE"));
     assert.ok(service.includes("SEARCH_EVALUATION_REQUIRED"));
     assert.ok(service.includes("assertSearchEvaluationCurrentForChannel"));

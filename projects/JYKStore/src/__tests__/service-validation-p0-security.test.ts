@@ -192,13 +192,25 @@ describe("P0 validation validity and hits", () => {
   });
 });
 
+const SERVICE_VALIDATION_MODULE_FILES = [
+  "service-validation-policy.ts",
+  "service-validation-queries.ts",
+  "service-validation-provider-status.ts",
+  "service-validation-run-commands.ts",
+  "service-validation-evidence-asserts.ts",
+  "service-validation-admin-listing.ts",
+];
+
+function readServiceValidationModules(root: string): string {
+  return SERVICE_VALIDATION_MODULE_FILES.map((f) =>
+    readFileSync(join(root, "src/lib/distribution", f), "utf8"),
+  ).join("\n");
+}
+
 describe("P0 source contracts", () => {
   it("uses real adapters and append-only create", () => {
     const root = join(import.meta.dirname, "../..");
-    const service = readFileSync(
-      join(root, "src/lib/distribution/service-validation-service.ts"),
-      "utf8",
-    );
+    const service = readServiceValidationModules(root);
     const downloadValidation = readFileSync(
       join(root, "src/lib/distribution/download-object-validation.ts"),
       "utf8",

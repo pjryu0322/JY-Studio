@@ -46,7 +46,7 @@ describe("P29 distribution foundation", () => {
   });
 
   it("submit uses Docling commit path without KnowledgePayload", () => {
-    const service = readSource("src/lib/provider-pack-service.ts");
+    const service = readSource("src/lib/provider-pack/provider-pack-review-submit-service.ts");
     assert.ok(service.includes("commitDistributionPackForReview"));
     assert.ok(!service.includes("knowledgePayload"));
     const submit = readSource("src/lib/distribution/distribution-submit-service.ts");

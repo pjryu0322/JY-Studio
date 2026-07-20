@@ -14,7 +14,7 @@ function readSource(relativePath: string): string {
 
 describe("provider review withdraw", () => {
   it("exposes withdraw service, route, and review-tab CTA", () => {
-    const service = readSource("src/lib/provider-pack-service.ts");
+    const service = readSource("src/lib/provider-pack/provider-pack-review-submit-service.ts");
     const route = readSource(
       "src/app/api/v1/provider/packs/[packId]/withdraw-review/route.ts",
     );

@@ -140,7 +140,7 @@ describe("provider pack basic info summary resolution", () => {
 
 describe("provider pack create uses initial version changelog", () => {
   it("does not copy shortDescription into version overview on create", () => {
-    const service = readSource("src/lib/provider-pack-service.ts");
+    const service = readSource("src/lib/provider-pack/provider-pack-write-service.ts");
     assert.ok(service.includes("PROVIDER_PACK_INITIAL_VERSION_CHANGELOG"));
     assert.ok(service.includes("overview: PROVIDER_PACK_INITIAL_VERSION_CHANGELOG"));
     assert.ok(!service.includes("overview: shortDescription"));
