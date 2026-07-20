@@ -182,7 +182,7 @@ describe("docling knowledge pipeline hardening", () => {
   it("builder no longer clamps unit text before split with MAX_UNIT_CHARS discard", () => {
     const root = join(import.meta.dirname, "../..");
     const builder = readFileSync(
-      join(root, "src/lib/docling-knowledge/docling-nd-knowledge-builder.ts"),
+      join(root, "src/lib/docling-knowledge/docling-nd-knowledge-unit-draft-builder.ts"),
       "utf8",
     );
     assert.ok(builder.includes("splitSectionIntoUnitTexts"));

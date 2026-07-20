@@ -245,7 +245,7 @@ describe("structure pass requires Token Gate PASS", () => {
 describe("pipeline ownership boundary (static)", () => {
   it("forbids shrunk[0]-only save and structure-side embedding", () => {
     const builder = readFileSync(
-      join(projectRoot, "src/lib/docling-knowledge/docling-nd-knowledge-builder.ts"),
+      join(projectRoot, "src/lib/docling-knowledge/docling-nd-retrieval-chunk-builder.ts"),
       "utf8",
     );
     const pipeline = readFileSync(

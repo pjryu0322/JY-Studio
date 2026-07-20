@@ -112,7 +112,7 @@ describe("resplit provenance helpers", () => {
 
   it("fallback resplit uses primaryContent and absolute sourceTextStart", () => {
     const builder = readFileSync(
-      join(root, "src/lib/docling-knowledge/docling-nd-knowledge-builder.ts"),
+      join(root, "src/lib/docling-knowledge/docling-nd-retrieval-chunk-builder.ts"),
       "utf8",
     );
     assert.match(builder, /primaryContent/);

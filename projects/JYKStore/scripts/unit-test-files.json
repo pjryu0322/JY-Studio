@@ -200,6 +200,7 @@
   "src/__tests__/source-change-stale.db.test.ts",
   "src/__tests__/latest-pipeline-open-review.db.test.ts",
   "src/__tests__/token-aware-chunk-split.test.ts",
+  "src/__tests__/docling-nd-builder-split.test.ts",
   "src/__tests__/e5-tokenize-client.test.ts",
   "src/__tests__/relevance-diversity-rerank.test.ts",
   "src/__tests__/ranking-policy-evaluation-gates.test.ts",
