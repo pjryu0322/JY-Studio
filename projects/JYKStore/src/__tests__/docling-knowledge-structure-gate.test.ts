@@ -222,6 +222,22 @@ describe("docling knowledge pipeline structure stage wiring", () => {
         join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-status-policy.ts"),
         "utf8",
       ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-runner-structure.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-execute.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-runner-chunk.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-runner-knowledge.ts"),
+        "utf8",
+      ),
     ].join("\n");
     assert.ok(service.includes("evaluateNormalizedDocumentStructureQuality"));
     assert.ok(!service.includes("files: []"));

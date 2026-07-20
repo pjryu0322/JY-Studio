@@ -116,15 +116,26 @@ describe("docling knowledge pipeline follow-up hardening", () => {
       join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-service.ts"),
       "utf8",
     );
+    const executeModules = [
+      service,
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-execute.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(root, "src/lib/docling-knowledge/docling-knowledge-pipeline-runner-chunk.ts"),
+        "utf8",
+      ),
+    ].join("\n");
     const searchData = readFileSync(
       join(root, "src/lib/search-data/search-data-generation-service.ts"),
       "utf8",
     );
-    assert.ok(!service.includes("rebuildPackEmbeddings"));
-    assert.ok(!service.includes("activateDraftIndexGeneration"));
-    assert.ok(!service.includes("runDoclingRetrievalEvaluation"));
-    assert.ok(service.includes("검색데이터 생성 대기"));
-    assert.ok(service.includes("awaiting search data"));
+    assert.ok(!executeModules.includes("rebuildPackEmbeddings"));
+    assert.ok(!executeModules.includes("activateDraftIndexGeneration"));
+    assert.ok(!executeModules.includes("runDoclingRetrievalEvaluation"));
+    assert.ok(executeModules.includes("검색데이터 생성 대기"));
+    assert.ok(executeModules.includes("awaiting search data"));
     assert.ok(searchData.includes("await activateDraftIndexGeneration"));
     assert.ok(searchData.includes("rebuildPackEmbeddings"));
     assert.ok(searchData.includes("attempt > 0"));
