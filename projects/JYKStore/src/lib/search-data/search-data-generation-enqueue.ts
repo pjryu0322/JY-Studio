@@ -1,7 +1,5 @@
-import { AuditAction } from "@prisma/client";
 import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
-import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
 import { type SearchDataStatusResponse } from "@/lib/search-data/search-data-state";
 import { provisionalEnqueueLocalE5Descriptor } from "@/lib/search-data/search-data-generation-policy";
@@ -16,18 +14,20 @@ import {
   runSearchDataEnqueueTransaction,
   type EnqueueTxResult,
 } from "@/lib/search-data/search-data-generation-enqueue-tx";
+import { recordSearchDataGenerationEnqueued } from "@/lib/search-data/search-data-generation-events";
+import { SEARCH_DATA_FAILURE } from "@/lib/search-data/search-data-generation-failures";
 
 function mapEnqueueCatchError(error: unknown) {
   const code = isEmbeddingProviderError(error)
     ? error.code
     : error instanceof PayloadServiceError
       ? error.code
-      : "SEARCH_DATA_CLEANUP_FAILED";
+      : SEARCH_DATA_FAILURE.CLEANUP_FAILED;
   const mapped =
-    code === "SEARCH_DATA_CLEANUP_FAILED" ||
+    code === SEARCH_DATA_FAILURE.CLEANUP_FAILED ||
     (error instanceof Error &&
       /delete|foreign key|constraint|deadlock|timeout/i.test(error.message))
-      ? "SEARCH_DATA_CLEANUP_FAILED"
+      ? SEARCH_DATA_FAILURE.CLEANUP_FAILED
       : code;
   return failureResponse(mapped);
 }
@@ -40,27 +40,19 @@ async function resolveEnqueueAccepted(input: {
   enqueueResult: Extract<EnqueueTxResult, { kind: "enqueued" }>;
 }): Promise<SearchDataGenerateAccepted> {
   const { preflight, enqueueResult } = input;
-  await recordProviderAudit({
-    action: AuditAction.PROVIDER_PACK_UPDATE,
-    entityType: "KnowledgePack",
-    entityId: input.packId,
-    actorUserId: input.userId,
-    metadata: {
-      event: preflight.forceRegenerate
-        ? "SEARCH_DATA_GENERATION_FORCE_ENQUEUED"
-        : "SEARCH_DATA_GENERATION_ENQUEUED",
-      packId: input.packId,
-      versionId: preflight.versionId,
-      pipelineRunId: preflight.latestPipelineRunId,
-      normalizedDocumentId: preflight.binding.normalizedDocumentId,
-      chunkGenerationId: preflight.indexGenerationId,
-      searchIndexGenerationId: preflight.indexGenerationId,
-      chunkCount: preflight.chunkCount,
-      previousAttempt: enqueueResult.previousAttempt,
-      attempt: enqueueResult.generation.attempt,
-      forceRegenerate: enqueueResult.forceRegenerate,
-      scaffoldReused: enqueueResult.scaffoldReused,
-    },
+  await recordSearchDataGenerationEnqueued({
+    packId: input.packId,
+    userId: input.userId,
+    forceRegenerate: preflight.forceRegenerate,
+    versionId: preflight.versionId,
+    pipelineRunId: preflight.latestPipelineRunId,
+    normalizedDocumentId: preflight.binding.normalizedDocumentId,
+    chunkGenerationId: preflight.indexGenerationId,
+    searchIndexGenerationId: preflight.indexGenerationId,
+    chunkCount: preflight.chunkCount,
+    previousAttempt: enqueueResult.previousAttempt,
+    attempt: enqueueResult.generation.attempt,
+    scaffoldReused: enqueueResult.scaffoldReused,
   });
   return {
     accepted: true,

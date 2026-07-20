@@ -133,6 +133,7 @@ describe("docling knowledge pipeline follow-up hardening", () => {
       readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
       readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
       readFileSync(join(root, "src/lib/search-data/search-data-generation-process-embed.ts"), "utf8"),
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-transitions.ts"), "utf8"),
     ].join("\n");
     assert.ok(!executeModules.includes("rebuildPackEmbeddings"));
     assert.ok(!executeModules.includes("activateDraftIndexGeneration"));

@@ -33,6 +33,8 @@ describe("forceRegenerate wiring", () => {
       join(root, "src/lib/search-data/search-data-generation-enqueue-preflight.ts"),
       "utf8",
     ),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-artifacts.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-events.ts"), "utf8"),
   ].join("\n");
   const worker = [
     readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
@@ -43,6 +45,9 @@ describe("forceRegenerate wiring", () => {
       join(root, "src/lib/search-data/search-data-generation-process-preconditions.ts"),
       "utf8",
     ),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-artifacts.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-transitions.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-failures.ts"), "utf8"),
   ].join("\n");
   const service = [enqueue, worker].join("\n");
 

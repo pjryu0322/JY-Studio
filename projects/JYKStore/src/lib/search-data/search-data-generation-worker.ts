@@ -1,8 +1,5 @@
-import { AuditAction } from "@prisma/client";
 import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
-import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
-import { markSearchGenerationFailed } from "@/lib/search-generation/search-generation-service";
 import { searchDataStaleSeconds } from "@/lib/search-data/search-data-generation-policy";
 import type { ClaimedSearchDataGeneration } from "@/lib/search-data/search-data-generation-types";
 import {
@@ -15,6 +12,11 @@ import {
   recoverStaleGenerationToPendingTx,
   selectOneStaleEmbeddingGenerationTx,
 } from "@/lib/search-data/search-data-generation-worker-recover";
+import { recordSearchDataGenerationRecovered } from "@/lib/search-data/search-data-generation-events";
+import {
+  markSearchDataGenerationFailed,
+  SEARCH_DATA_FAILURE,
+} from "@/lib/search-data/search-data-generation-failures";
 
 /**
  * Recover one stale EMBEDDING DRAFT generation → PENDING (attempt++).
@@ -43,20 +45,13 @@ export async function recoverOneStaleSearchDataGeneration(
 
     if (!result) return null;
 
-    await recordProviderAudit({
-      action: AuditAction.PROVIDER_PACK_UPDATE,
-      entityType: "KnowledgePack",
-      entityId: result.packId,
-      actorUserId: null,
-      metadata: {
-        event: "SEARCH_DATA_GENERATION_RECOVERED",
-        packId: result.packId,
-        searchIndexGenerationId: result.id,
-        previousAttempt: result.previousAttempt,
-        attempt: result.attempt,
-        staleSeconds,
-      },
-    }).catch(() => undefined);
+    await recordSearchDataGenerationRecovered({
+      packId: result.packId,
+      searchIndexGenerationId: result.id,
+      previousAttempt: result.previousAttempt,
+      attempt: result.attempt,
+      staleSeconds,
+    });
 
     return result;
   } catch (error) {
@@ -65,11 +60,12 @@ export async function recoverOneStaleSearchDataGeneration(
       return null;
     }
     if (lockedId != null && lockedAttempt != null) {
-      await markSearchGenerationFailed(lockedId, {
-        failureCode: "SEARCH_DATA_RECOVERY_FAILED",
+      await markSearchDataGenerationFailed({
+        generationId: lockedId,
+        failureCode: SEARCH_DATA_FAILURE.RECOVERY_FAILED,
         failureMessage: "stale recovery transaction failed",
         expectedAttempt: lockedAttempt,
-      }).catch(() => undefined);
+      });
     }
     return null;
   }

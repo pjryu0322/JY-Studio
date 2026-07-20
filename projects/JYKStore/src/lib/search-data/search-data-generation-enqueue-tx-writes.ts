@@ -66,19 +66,6 @@ export async function reuseScaffoldGenerationTx(input: {
   return generation;
 }
 
-export async function deleteDraftGenerationArtifactsTx(
-  tx: Tx,
-  indexGenerationId: string,
-): Promise<void> {
-  await tx.$executeRaw`
-    DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${indexGenerationId}
-  `;
-  await tx.knowledgeChunkEmbedding.deleteMany({
-    where: { searchIndexGenerationId: indexGenerationId },
-  });
-  await tx.searchIndexGeneration.delete({ where: { id: indexGenerationId } });
-}
-
 export async function createEnqueuedGenerationTx(input: {
   tx: Tx;
   packId: string;

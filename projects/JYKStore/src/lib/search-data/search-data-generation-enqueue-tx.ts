@@ -14,9 +14,9 @@ import {
 import {
   countVectorsForGenerationTx,
   createEnqueuedGenerationTx,
-  deleteDraftGenerationArtifactsTx,
   reuseScaffoldGenerationTx,
 } from "@/lib/search-data/search-data-generation-enqueue-tx-writes";
+import { deleteDraftGenerationWithArtifactsTx } from "@/lib/search-data/search-data-generation-artifacts";
 import type { Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -106,7 +106,7 @@ export async function runSearchDataEnqueueTransaction(input: {
   const nextAttempt = previousAttempt + 1;
 
   if (locked) {
-    await deleteDraftGenerationArtifactsTx(tx, indexGenerationId);
+    await deleteDraftGenerationWithArtifactsTx(tx, indexGenerationId);
   }
 
   const created = await createEnqueuedGenerationTx({

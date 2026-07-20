@@ -37,6 +37,10 @@ describe("search-data async enqueue + failure UX", () => {
     readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-writes.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-runner.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-artifacts.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-events.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-transitions.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-failures.ts"), "utf8"),
   ].join("\n");
   const pkg = readFileSync(join(root, "package.json"), "utf8");
 

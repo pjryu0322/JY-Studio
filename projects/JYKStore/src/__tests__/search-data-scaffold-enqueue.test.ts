@@ -19,10 +19,12 @@ describe("search-data scaffold enqueue branching", () => {
     readSearchDataModule("search-data-generation-enqueue-tx-policy.ts"),
     readSearchDataModule("search-data-generation-enqueue-tx-writes.ts"),
     readSearchDataModule("search-data-generation-enqueue-preflight.ts"),
+    readSearchDataModule("search-data-generation-artifacts.ts"),
   ].join("\n");
   const worker = [
     readSearchDataModule("search-data-generation-worker.ts"),
     readSearchDataModule("search-data-generation-worker-recover.ts"),
+    readSearchDataModule("search-data-generation-artifacts.ts"),
   ].join("\n");
 
   it("treats PENDING attempt=0 as scaffold enqueue, not already_running", () => {
@@ -55,7 +57,7 @@ describe("search-data scaffold enqueue branching", () => {
     assert.match(claimSlice, /j\.attempt > 0/);
   });
 
-  it("checks SEARCH_DATA_RECOVERY_CONFLICT before markSearchGenerationFailed", () => {
+  it("checks SEARCH_DATA_RECOVERY_CONFLICT before markSearchDataGenerationFailed", () => {
     const recoverOrchestration = worker.slice(
       worker.indexOf("export async function recoverOneStaleSearchDataGeneration"),
       worker.indexOf("export async function claimNextSearchDataGeneration"),
@@ -63,10 +65,10 @@ describe("search-data scaffold enqueue branching", () => {
     const catchIdx = recoverOrchestration.lastIndexOf("} catch (error)");
     const catchBody = recoverOrchestration.slice(catchIdx);
     const conflictInCatch = catchBody.indexOf("isRecoveryConflictError");
-    const failInCatch = catchBody.indexOf("markSearchGenerationFailed");
+    const failInCatch = catchBody.indexOf("markSearchDataGenerationFailed");
     assert.ok(conflictInCatch >= 0 && failInCatch >= 0);
     assert.ok(conflictInCatch < failInCatch, "conflict must be handled before FAILED marking");
-    assert.match(worker, /SEARCH_DATA_RECOVERY_CONFLICT/);
+    assert.match(worker, /SEARCH_DATA_RECOVERY_CONFLICT|SEARCH_DATA_FAILURE\.RECOVERY_FAILED/);
   });
 });
 

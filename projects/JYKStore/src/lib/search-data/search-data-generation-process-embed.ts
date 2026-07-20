@@ -1,17 +1,10 @@
 /**
  * Embedding rebuild + indexing completion / mismatch failure writes.
  */
-import { AuditAction } from "@prisma/client";
 import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
 import { DOCLING_RETRIEVAL_CHUNK_TYPE } from "@/lib/docling-knowledge/docling-knowledge-stages";
-import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
-import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
-import { completePipelineStep } from "@/lib/pipeline-service";
-import {
-  markSearchGenerationFailed,
-  markSearchGenerationIndexing,
-} from "@/lib/search-generation/search-generation-service";
+import { markSearchGenerationIndexing } from "@/lib/search-generation/search-generation-service";
 import {
   assertGenerationDescriptorMatchesRuntime,
   resolveSearchGenerationEmbeddingDescriptor,
@@ -21,6 +14,16 @@ import {
   countVectorsForGeneration,
 } from "@/lib/search-data/search-data-generation-shared";
 import type { ClaimedSearchDataGeneration } from "@/lib/search-data/search-data-generation-types";
+import { recordSearchDataGenerationCompleted } from "@/lib/search-data/search-data-generation-events";
+import {
+  markSearchDataGenerationFailed,
+  SEARCH_DATA_FAILURE,
+} from "@/lib/search-data/search-data-generation-failures";
+import {
+  markSearchDataIndexingPassed,
+  markSearchDataIndexingRunning,
+  markSearchDataIndexingVectorMismatch,
+} from "@/lib/search-data/search-data-generation-transitions";
 
 export async function assertClaimReadyForEmbedding(
   claimed: ClaimedSearchDataGeneration,
@@ -40,18 +43,11 @@ export async function assertClaimReadyForEmbedding(
 export async function markIndexingStepRunning(
   claimed: ClaimedSearchDataGeneration,
 ): Promise<void> {
-  await completePipelineStep({
+  await markSearchDataIndexingRunning({
     runId: claimed.pipelineRunId,
-    step: "INDEXING",
-    status: "RUNNING",
-    message: "검색데이터를 생성하는 중…",
-    details: {
-      draft: true,
-      indexGenerationId: claimed.id,
-      searchIndexGenerationId: claimed.id,
-      attempt: claimed.attempt,
-    },
-  }).catch(() => undefined);
+    searchIndexGenerationId: claimed.id,
+    attempt: claimed.attempt,
+  });
 }
 
 export async function rebuildClaimedPackEmbeddings(
@@ -105,51 +101,34 @@ export async function completeEmbeddingIndexing(input: {
   const vectorCount = await countVectorsForGeneration(claimed.id);
   const expectedChunks = claimed.chunkCount > 0 ? claimed.chunkCount : processedCount;
   if (vectorCount !== expectedChunks || embedded < expectedChunks) {
-    await markSearchGenerationFailed(claimed.id, {
-      failureCode: "VECTOR_COUNT_MISMATCH",
+    await markSearchDataGenerationFailed({
+      generationId: claimed.id,
+      failureCode: SEARCH_DATA_FAILURE.VECTOR_COUNT_MISMATCH,
       failureMessage: `vectors=${vectorCount} chunks=${expectedChunks} embedded=${embedded}`,
       expectedAttempt: claimed.attempt,
     });
-    await completePipelineStep({
+    await markSearchDataIndexingVectorMismatch({
       runId: claimed.pipelineRunId,
-      step: "INDEXING",
-      status: "FAIL",
-      message: "검색데이터 저장이 완료되지 않았습니다.",
-      details: { failureCode: "VECTOR_COUNT_MISMATCH", vectorCount, expectedChunks },
-    }).catch(() => undefined);
+      vectorCount,
+      expectedChunks,
+    });
     return;
   }
 
-  await completePipelineStep({
+  await markSearchDataIndexingPassed({
     runId: claimed.pipelineRunId,
-    step: "INDEXING",
-    status: "PASS",
-    message: `검색데이터 ${vectorCount}건을 생성했습니다.`,
-    details: {
-      draft: true,
-      indexGenerationId: claimed.id,
-      searchIndexGenerationId: claimed.id,
-      indexScope: "DRAFT",
-      embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
-      processedCount,
-      vectorCount,
-      attempt: claimed.attempt,
-    },
+    searchIndexGenerationId: claimed.id,
+    attempt: claimed.attempt,
+    processedCount,
+    vectorCount,
   });
 
-  await recordProviderAudit({
-    action: AuditAction.PROVIDER_PACK_UPDATE,
-    entityType: "KnowledgePack",
-    entityId: claimed.packId,
-    actorUserId: null,
-    metadata: {
-      event: "SEARCH_DATA_GENERATION_COMPLETED",
-      packId: claimed.packId,
-      versionId: claimed.versionId,
-      searchIndexGenerationId: claimed.id,
-      chunkCount: expectedChunks,
-      vectorCount,
-      attempt: claimed.attempt,
-    },
-  }).catch(() => undefined);
+  await recordSearchDataGenerationCompleted({
+    packId: claimed.packId,
+    versionId: claimed.versionId,
+    searchIndexGenerationId: claimed.id,
+    chunkCount: expectedChunks,
+    vectorCount,
+    attempt: claimed.attempt,
+  });
 }

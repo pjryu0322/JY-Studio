@@ -1,15 +1,18 @@
 /**
  * Process-job precondition guards for claimed search-data generations.
  */
-import { AuditAction, PackStatus } from "@prisma/client";
+import { PackStatus } from "@prisma/client";
 import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { isDoclingStructurePassed } from "@/lib/docling-knowledge/docling-knowledge-pipeline-service";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
-import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
-import { markSearchGenerationFailed } from "@/lib/search-generation/search-generation-service";
 import { countRetrievalChunksForGeneration } from "@/lib/search-data/search-data-generation-shared";
 import type { ClaimedSearchDataGeneration } from "@/lib/search-data/search-data-generation-types";
+import { recordSearchDataBindingStale } from "@/lib/search-data/search-data-generation-events";
+import {
+  markSearchDataGenerationFailed,
+  SEARCH_DATA_FAILURE,
+} from "@/lib/search-data/search-data-generation-failures";
 
 async function releaseClaimToPending(claimed: ClaimedSearchDataGeneration): Promise<void> {
   await prisma.searchIndexGeneration.updateMany({
@@ -26,11 +29,12 @@ export async function ensureDraftPackForClaim(
     select: { status: true },
   });
   if (!pack || pack.status !== PackStatus.DRAFT) {
-    await markSearchGenerationFailed(claimed.id, {
-      failureCode: "PACK_NOT_DRAFT",
+    await markSearchDataGenerationFailed({
+      generationId: claimed.id,
+      failureCode: SEARCH_DATA_FAILURE.PACK_NOT_DRAFT,
       failureMessage: "pack is not DRAFT",
       expectedAttempt: claimed.attempt,
-    }).catch(() => undefined);
+    });
     return false;
   }
   return true;
@@ -95,24 +99,17 @@ export async function ensureLatestBindingMatchesClaim(
   });
   const binding = latest ? parseKnowledgeRunBinding(latest.summary) : null;
   if (isClaimBindingStale({ latestId: latest?.id, binding, claimed })) {
-    await markSearchGenerationFailed(claimed.id, {
-      failureCode: "SEARCH_DATA_BINDING_STALE",
+    await markSearchDataGenerationFailed({
+      generationId: claimed.id,
+      failureCode: SEARCH_DATA_FAILURE.BINDING_STALE,
       failureMessage: "binding mismatch at worker start",
       expectedAttempt: claimed.attempt,
-    }).catch(() => undefined);
-    await recordProviderAudit({
-      action: AuditAction.PROVIDER_PACK_UPDATE,
-      entityType: "KnowledgePack",
-      entityId: claimed.packId,
-      actorUserId: null,
-      metadata: {
-        event: "SEARCH_DATA_GENERATION_STALE_BINDING",
-        packId: claimed.packId,
-        searchIndexGenerationId: claimed.id,
-        attempt: claimed.attempt,
-        failureCode: "SEARCH_DATA_BINDING_STALE",
-      },
-    }).catch(() => undefined);
+    });
+    await recordSearchDataBindingStale({
+      packId: claimed.packId,
+      searchIndexGenerationId: claimed.id,
+      attempt: claimed.attempt,
+    });
     return false;
   }
   return true;
@@ -129,11 +126,12 @@ export async function ensureLiveChunkCountMatchesClaim(
     liveChunkCount < 1 ||
     (claimed.chunkCount > 0 && liveChunkCount !== claimed.chunkCount)
   ) {
-    await markSearchGenerationFailed(claimed.id, {
-      failureCode: "SEARCH_DATA_BINDING_STALE",
+    await markSearchDataGenerationFailed({
+      generationId: claimed.id,
+      failureCode: SEARCH_DATA_FAILURE.BINDING_STALE,
       failureMessage: `chunkCount mismatch live=${liveChunkCount} claimed=${claimed.chunkCount}`,
       expectedAttempt: claimed.attempt,
-    }).catch(() => undefined);
+    });
     return false;
   }
   return true;

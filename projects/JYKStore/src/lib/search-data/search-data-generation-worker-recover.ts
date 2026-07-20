@@ -2,6 +2,7 @@
  * Stale EMBEDDING → PENDING recovery transaction helpers.
  */
 import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
+import { deleteSearchDataGenerationArtifactsTx } from "@/lib/search-data/search-data-generation-artifacts";
 import type { Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -42,13 +43,7 @@ export async function recoverStaleGenerationToPendingTx(
   previousAttempt: number;
   attempt: number;
 }> {
-  await tx.$executeRaw`
-    DELETE FROM "SearchIndexVector"
-    WHERE "searchIndexGenerationId" = ${stale.id}
-  `;
-  await tx.knowledgeChunkEmbedding.deleteMany({
-    where: { searchIndexGenerationId: stale.id },
-  });
+  await deleteSearchDataGenerationArtifactsTx(tx, stale.id);
 
   const updated = await tx.searchIndexGeneration.updateMany({
     where: {
