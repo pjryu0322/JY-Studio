@@ -20,13 +20,23 @@ describe("search-data async enqueue + failure UX", () => {
     readFileSync(join(root, "src/lib/search-data/search-data-generation-policy.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx-policy.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx-writes.ts"), "utf8"),
     readFileSync(
       join(root, "src/lib/search-data/search-data-generation-enqueue-preflight.ts"),
       "utf8",
     ),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-worker-recover.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-process-embed.ts"), "utf8"),
+    readFileSync(
+      join(root, "src/lib/search-data/search-data-generation-process-preconditions.ts"),
+      "utf8",
+    ),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-writes.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-runner.ts"), "utf8"),
   ].join("\n");
   const pkg = readFileSync(join(root, "package.json"), "utf8");
 

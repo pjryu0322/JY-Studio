@@ -316,10 +316,11 @@ describe("ranking policy evaluation gates", () => {
     assert.ok(evalSrc.includes("retrievalRankingPolicyVersion"));
     assert.ok(evalSrc.includes("RETRIEVAL_RANKING_POLICY_VERSION"));
 
-    const validateSrc = readFileSync(
-      join(root, "src/lib/search-data/search-data-generation-evaluation.ts"),
-      "utf8",
-    );
+    const validateSrc = [
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation.ts"), "utf8"),
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-runner.ts"), "utf8"),
+      readFileSync(join(root, "src/lib/search-data/search-data-generation-evaluation-writes.ts"), "utf8"),
+    ].join("\n");
     assert.ok(validateSrc.includes("retrievalRankingPolicyVersion: RETRIEVAL_RANKING_POLICY_VERSION"));
 
     const service = readServiceValidationModules(root);

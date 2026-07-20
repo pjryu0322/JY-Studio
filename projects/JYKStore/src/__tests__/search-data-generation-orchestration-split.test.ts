@@ -63,12 +63,14 @@ describe("search-data generation orchestration Phase B split", () => {
   it("start/process stay thin orchestration wrappers", () => {
     const enqueue = readModule("search-data-generation-enqueue.ts");
     const processHelper = readModule("search-data-generation-process.ts");
+    const processEmbed = readModule("search-data-generation-process-embed.ts");
     assert.match(enqueue, /assertSearchDataEnqueuePreflight/);
     assert.match(enqueue, /runSearchDataEnqueueTransaction/);
     assert.match(worker, /assertProcessJobPreconditions/);
     assert.match(worker, /runSearchDataEmbeddingAndIndex/);
     assert.match(worker, /failSearchDataProcessJob/);
-    assert.match(processHelper, /rebuildPackEmbeddings/);
+    assert.match(processHelper, /assertClaimReadyForEmbedding/);
+    assert.match(processEmbed, /rebuildPackEmbeddings/);
   });
 
   it("docling-knowledge-pipeline-execute does not import search-data embed/eval/activate", () => {

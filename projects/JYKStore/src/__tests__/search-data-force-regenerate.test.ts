@@ -27,6 +27,8 @@ describe("forceRegenerate wiring", () => {
   const enqueue = [
     readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx-policy.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-enqueue-tx-writes.ts"), "utf8"),
     readFileSync(
       join(root, "src/lib/search-data/search-data-generation-enqueue-preflight.ts"),
       "utf8",
@@ -34,7 +36,13 @@ describe("forceRegenerate wiring", () => {
   ].join("\n");
   const worker = [
     readFileSync(join(root, "src/lib/search-data/search-data-generation-worker.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-worker-recover.ts"), "utf8"),
     readFileSync(join(root, "src/lib/search-data/search-data-generation-process.ts"), "utf8"),
+    readFileSync(join(root, "src/lib/search-data/search-data-generation-process-embed.ts"), "utf8"),
+    readFileSync(
+      join(root, "src/lib/search-data/search-data-generation-process-preconditions.ts"),
+      "utf8",
+    ),
   ].join("\n");
   const service = [enqueue, worker].join("\n");
 
@@ -57,14 +65,11 @@ describe("forceRegenerate wiring", () => {
   });
 
   it("recovers stale EMBEDDING inside a single transaction", () => {
-    const recoverSlice = worker.slice(
-      worker.indexOf("export async function recoverOneStaleSearchDataGeneration"),
-      worker.indexOf("export async function claimNextSearchDataGeneration"),
-    );
-    assert.match(recoverSlice, /prisma\.\$transaction/);
-    assert.match(recoverSlice, /FOR UPDATE SKIP LOCKED/);
-    assert.match(recoverSlice, /DELETE FROM "SearchIndexVector"/);
-    assert.match(recoverSlice, /status:\s*"PENDING"/);
+    assert.match(worker, /export async function recoverOneStaleSearchDataGeneration/);
+    assert.match(worker, /prisma\.\$transaction/);
+    assert.match(worker, /FOR UPDATE SKIP LOCKED/);
+    assert.match(worker, /DELETE FROM "SearchIndexVector"/);
+    assert.match(worker, /status:\s*"PENDING"/);
   });
 });
 

@@ -16,12 +16,17 @@ describe("search-data scaffold enqueue branching", () => {
   const enqueueSlice = [
     readSearchDataModule("search-data-generation-enqueue.ts"),
     readSearchDataModule("search-data-generation-enqueue-tx.ts"),
+    readSearchDataModule("search-data-generation-enqueue-tx-policy.ts"),
+    readSearchDataModule("search-data-generation-enqueue-tx-writes.ts"),
     readSearchDataModule("search-data-generation-enqueue-preflight.ts"),
   ].join("\n");
-  const worker = readSearchDataModule("search-data-generation-worker.ts");
+  const worker = [
+    readSearchDataModule("search-data-generation-worker.ts"),
+    readSearchDataModule("search-data-generation-worker-recover.ts"),
+  ].join("\n");
 
   it("treats PENDING attempt=0 as scaffold enqueue, not already_running", () => {
-    assert.match(enqueueSlice, /isActivelyRunning/);
+    assert.match(enqueueSlice, /isActivelyRunningLockedGeneration/);
     assert.match(enqueueSlice, /locked\.status === "PENDING" && locked\.attempt > 0/);
     assert.match(enqueueSlice, /attempt:\s*0/);
     assert.match(enqueueSlice, /attempt:\s*1/);
@@ -51,20 +56,17 @@ describe("search-data scaffold enqueue branching", () => {
   });
 
   it("checks SEARCH_DATA_RECOVERY_CONFLICT before markSearchGenerationFailed", () => {
-    const recoverSlice = worker.slice(
+    const recoverOrchestration = worker.slice(
       worker.indexOf("export async function recoverOneStaleSearchDataGeneration"),
       worker.indexOf("export async function claimNextSearchDataGeneration"),
     );
-    const conflictIdx = recoverSlice.indexOf('SEARCH_DATA_RECOVERY_CONFLICT');
-    const failIdx = recoverSlice.lastIndexOf("markSearchGenerationFailed");
-    // catch block: conflict check must appear before fail marking
-    const catchIdx = recoverSlice.lastIndexOf("} catch (error)");
-    const catchBody = recoverSlice.slice(catchIdx);
-    const conflictInCatch = catchBody.indexOf("SEARCH_DATA_RECOVERY_CONFLICT");
+    const catchIdx = recoverOrchestration.lastIndexOf("} catch (error)");
+    const catchBody = recoverOrchestration.slice(catchIdx);
+    const conflictInCatch = catchBody.indexOf("isRecoveryConflictError");
     const failInCatch = catchBody.indexOf("markSearchGenerationFailed");
     assert.ok(conflictInCatch >= 0 && failInCatch >= 0);
     assert.ok(conflictInCatch < failInCatch, "conflict must be handled before FAILED marking");
-    assert.ok(conflictIdx >= 0 && failIdx >= 0);
+    assert.match(worker, /SEARCH_DATA_RECOVERY_CONFLICT/);
   });
 });
 

@@ -10,6 +10,11 @@ import {
   failSearchDataProcessJob,
   runSearchDataEmbeddingAndIndex,
 } from "@/lib/search-data/search-data-generation-process";
+import {
+  isRecoveryConflictError,
+  recoverStaleGenerationToPendingTx,
+  selectOneStaleEmbeddingGenerationTx,
+} from "@/lib/search-data/search-data-generation-worker-recover";
 
 /**
  * Recover one stale EMBEDDING DRAFT generation → PENDING (attempt++).
@@ -29,62 +34,11 @@ export async function recoverOneStaleSearchDataGeneration(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const staleRows = await tx.$queryRaw<
-        Array<{ id: string; packId: string; attempt: number }>
-      >`
-        SELECT
-          g.id,
-          g."packId",
-          g.attempt
-        FROM "SearchIndexGeneration" AS g
-        WHERE g."status" = 'EMBEDDING'::"SearchIndexGenerationStatus"
-          AND g."scope" = 'DRAFT'::"SearchIndexGenerationScope"
-          AND g."embeddingProvider" = ${LOCAL_E5_EMBEDDING_PROVIDER}
-          AND g."updatedAt" < ${threshold}
-        ORDER BY g."updatedAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      `;
-      const stale = staleRows[0];
+      const stale = await selectOneStaleEmbeddingGenerationTx(tx, threshold);
       if (!stale) return null;
       lockedId = stale.id;
       lockedAttempt = stale.attempt;
-
-      await tx.$executeRaw`
-        DELETE FROM "SearchIndexVector"
-        WHERE "searchIndexGenerationId" = ${stale.id}
-      `;
-      await tx.knowledgeChunkEmbedding.deleteMany({
-        where: { searchIndexGenerationId: stale.id },
-      });
-
-      const updated = await tx.searchIndexGeneration.updateMany({
-        where: {
-          id: stale.id,
-          status: "EMBEDDING",
-          scope: "DRAFT",
-          attempt: stale.attempt,
-        },
-        data: {
-          status: "PENDING",
-          attempt: { increment: 1 },
-          embeddedCount: 0,
-          failedCount: 0,
-          failureCode: null,
-          failureMessage: null,
-          startedAt: null,
-        },
-      });
-      if (updated.count !== 1) {
-        throw new Error("SEARCH_DATA_RECOVERY_CONFLICT");
-      }
-
-      return {
-        id: stale.id,
-        packId: stale.packId,
-        previousAttempt: stale.attempt,
-        attempt: stale.attempt + 1,
-      };
+      return recoverStaleGenerationToPendingTx(tx, stale);
     });
 
     if (!result) return null;
@@ -107,10 +61,7 @@ export async function recoverOneStaleSearchDataGeneration(
     return result;
   } catch (error) {
     // Competing recover/claim is not a generation failure — do not mark FAILED.
-    if (
-      error instanceof Error &&
-      error.message === "SEARCH_DATA_RECOVERY_CONFLICT"
-    ) {
+    if (isRecoveryConflictError(error)) {
       return null;
     }
     if (lockedId != null && lockedAttempt != null) {

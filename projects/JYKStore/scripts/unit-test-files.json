@@ -192,6 +192,7 @@
   "src/__tests__/search-data-scaffold-enqueue.test.ts",
   "src/__tests__/search-data-scaffold-enqueue.db.test.ts",
   "src/__tests__/search-data-generation-orchestration-split.test.ts",
+  "src/__tests__/search-data-generation-phase3-inner.test.ts",
   "src/__tests__/token-aware-resplit-preservation.test.ts",
   "src/__tests__/source-change-stale.db.test.ts",
   "src/__tests__/latest-pipeline-open-review.db.test.ts",
