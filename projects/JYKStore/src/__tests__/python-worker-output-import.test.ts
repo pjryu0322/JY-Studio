@@ -8,6 +8,7 @@ import {
   IMPORT_CHANNELS,
   isLegacyDoclingImportChannel,
   isWorkerZipImportChannel,
+  assertGenerationDescriptorMatches,
   assertWorkerOutputImportable,
   buildWorkerOutputImportPlan,
   buildWorkerRunOutputObjectKey,
@@ -15,14 +16,17 @@ import {
   importWorkerOutputToStoreDb,
   mapWorkerZipStageToPipelineStatus,
   prepareWorkerOutputImport,
+  resolveWorkerImportChunkGenerationId,
   validateWorkerOutputBundle,
   validateWorkerOutputDirectory,
   WORKER_RETRIEVAL_CHUNK_TYPE,
   WorkerOutputDbImportError,
+  type ImportSearchGenerationDescriptor,
   type WorkerEmbedding,
   type WorkerOutputBundle,
   type WorkerOutputImportPayload,
 } from "../lib/python-worker/index.ts";
+import { assertSearchGenerationCounts } from "../lib/search-generation/search-generation-service.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -481,6 +485,23 @@ function fixturePayload(
   };
 }
 
+function generationDescriptor(
+  overrides?: Partial<ImportSearchGenerationDescriptor>,
+): ImportSearchGenerationDescriptor {
+  return {
+    id: "sig1",
+    versionId: "ver1",
+    chunkGenerationId: "cg1",
+    embeddingProvider: "local",
+    embeddingModel: "e5-small",
+    embeddingModelRevision: "rev1",
+    embeddingDimension: 3,
+    status: "EMBEDDING",
+    scope: "DRAFT",
+    ...overrides,
+  };
+}
+
 type FakePrismaCapture = {
   deletedChunkWheres: unknown[];
   deletedEmbeddingWheres: unknown[];
@@ -489,7 +510,14 @@ type FakePrismaCapture = {
   generationUpdates: unknown[];
 };
 
-function makeFakePrisma(opts?: { generationExists?: boolean }) {
+type VectorResult =
+  | { ok: true; skipped: false }
+  | { ok: true; skipped: true; reason: string };
+
+function makeFakePrisma(opts?: {
+  generation?: ImportSearchGenerationDescriptor | null;
+}) {
+  const generation = opts && "generation" in opts ? opts.generation : generationDescriptor();
   const capture: FakePrismaCapture = {
     deletedChunkWheres: [],
     deletedEmbeddingWheres: [],
@@ -499,6 +527,13 @@ function makeFakePrisma(opts?: { generationExists?: boolean }) {
   };
   let seq = 0;
   const tx = {
+    searchIndexGeneration: {
+      findUnique: async () => generation,
+      update: async (args: unknown) => {
+        capture.generationUpdates.push(args);
+        return {};
+      },
+    },
     knowledgeChunk: {
       deleteMany: async ({ where }: { where: unknown }) => {
         capture.deletedChunkWheres.push(where);
@@ -520,13 +555,6 @@ function makeFakePrisma(opts?: { generationExists?: boolean }) {
         return { id: `emb-db-${capture.embeddings.length}` };
       },
     },
-    searchIndexGeneration: {
-      findUnique: async () => (opts?.generationExists ? { id: "gen1" } : null),
-      update: async (args: unknown) => {
-        capture.generationUpdates.push(args);
-        return {};
-      },
-    },
   };
   const client = {
     $transaction: async <T>(fn: (t: typeof tx) => Promise<T>): Promise<T> => fn(tx),
@@ -534,7 +562,24 @@ function makeFakePrisma(opts?: { generationExists?: boolean }) {
   return { client, capture };
 }
 
-describe("python worker output DB import (P3)", () => {
+function makeUpsertStub(
+  behavior?: (input: { chunkId: string }) => VectorResult,
+) {
+  const calls: Array<{ input: Record<string, unknown>; env: NodeJS.ProcessEnv }> = [];
+  const fn = (async (
+    input: Record<string, unknown>,
+    _client: unknown,
+    env: NodeJS.ProcessEnv,
+  ) => {
+    calls.push({ input, env });
+    return behavior
+      ? behavior(input as { chunkId: string })
+      : ({ ok: true, skipped: false } as VectorResult);
+  }) as never;
+  return { fn, calls };
+}
+
+describe("python worker output DB import (P3/P4)", () => {
   it("builds chunk/embedding create plans from a valid payload", () => {
     const plan = buildWorkerOutputImportPlan({
       payload: fixturePayload(),
@@ -549,6 +594,9 @@ describe("python worker output DB import (P3)", () => {
     const meta = plan.chunkPlans[0]?.data.metadata as Record<string, unknown>;
     assert.equal(meta.importChannel, IMPORT_CHANNELS.WORKER_ZIP_IMPORT);
     assert.equal(meta.workerChunkId, "grid-section-001");
+    // legacy dual-write: metadata.indexGenerationId mirrors chunkGenerationId
+    assert.equal(meta.indexGenerationId, "cg1");
+    assert.equal(meta.searchIndexGenerationId, "sig1");
     assert.equal(plan.embeddingPlanByWorkerChunkId.size, 1);
     assert.equal(
       plan.embeddingPlanByWorkerChunkId.get("grid-section-001")?.contentHash,
@@ -556,48 +604,173 @@ describe("python worker output DB import (P3)", () => {
     );
   });
 
-  it("persists chunks then embeddings mapped to created chunk ids", async () => {
+  it("persists chunks/embeddings and mirrors vectors to pgvector", async () => {
     const { client, capture } = makeFakePrisma();
+    const upsert = makeUpsertStub();
     const result = await importWorkerOutputToStoreDb({
       payload: fixturePayload(),
       chunkGenerationId: "cg1",
       searchIndexGenerationId: "sig1",
       prismaClient: client as never,
+      upsertVector: upsert.fn,
     });
     assert.equal(result.importedChunkCount, 1);
     assert.equal(result.importedEmbeddingCount, 1);
-    assert.equal(capture.chunks.length, 1);
-    assert.equal(capture.embeddings.length, 1);
+    assert.equal(result.chunkGenerationId, "cg1");
+    assert.equal(result.vectorUpsertedCount, 1);
+    assert.equal(result.vectorSkippedCount, 0);
+    assert.equal(result.pgvectorReflected, true);
     const createdChunkId = capture.chunks[0]?.id;
     assert.equal(result.chunkIdByWorkerChunkId["grid-section-001"], createdChunkId);
-    // embedding.chunkId must be the created KnowledgeChunk.id, not the worker chunkId
+    // embedding + vector must reference the created KnowledgeChunk.id, not worker chunkId
     assert.equal(capture.embeddings[0]?.chunkId, createdChunkId);
     assert.notEqual(capture.embeddings[0]?.chunkId, "grid-section-001");
-    assert.equal(capture.embeddings[0]?.searchIndexGenerationId, "sig1");
+    assert.equal(upsert.calls[0]?.input.chunkId, createdChunkId);
+    assert.equal(upsert.calls[0]?.input.searchIndexGenerationId, "sig1");
+    assert.equal(capture.generationUpdates.length, 1);
   });
 
-  it("clears the same chunkGeneration before reinserting (re-run policy)", async () => {
+  it("resolves chunkGenerationId from the generation when only sig is given", async () => {
     const { client, capture } = makeFakePrisma();
-    await importWorkerOutputToStoreDb({
+    const result = await importWorkerOutputToStoreDb({
       payload: fixturePayload(),
-      chunkGenerationId: "cg1",
+      searchIndexGenerationId: "sig1",
       prismaClient: client as never,
+      upsertVector: makeUpsertStub().fn,
     });
+    assert.equal(result.chunkGenerationId, "cg1");
     assert.equal(capture.deletedChunkWheres.length, 1);
     assert.deepEqual(capture.deletedChunkWheres[0], {
       versionId: "ver1",
       chunkGenerationId: "cg1",
     });
+    // re-run must NOT use the embedding-only delete branch anymore
+    assert.equal(capture.deletedEmbeddingWheres.length, 0);
   });
 
-  it("updates generation counts when the generation exists", async () => {
-    const { client, capture } = makeFakePrisma({ generationExists: true });
-    await importWorkerOutputToStoreDb({
+  it("rejects when requested chunkGenerationId != generation.chunkGenerationId", async () => {
+    const { client } = makeFakePrisma();
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          chunkGenerationId: "other",
+          searchIndexGenerationId: "sig1",
+          prismaClient: client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) => e instanceof WorkerOutputDbImportError && e.code === "SEARCH_GENERATION_MISMATCH",
+    );
+  });
+
+  it("rejects when generation.versionId != payload.packVersionId", async () => {
+    const { client } = makeFakePrisma({
+      generation: generationDescriptor({ versionId: "verX" }),
+    });
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          searchIndexGenerationId: "sig1",
+          prismaClient: client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) => e instanceof WorkerOutputDbImportError && e.code === "SEARCH_GENERATION_MISMATCH",
+    );
+  });
+
+  it("rejects when embedding descriptor differs from the generation", async () => {
+    const { client } = makeFakePrisma({
+      generation: generationDescriptor({ embeddingDimension: 4 }),
+    });
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          searchIndexGenerationId: "sig1",
+          prismaClient: client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) =>
+        e instanceof WorkerOutputDbImportError &&
+        e.code === "SEARCH_GENERATION_DESCRIPTOR_MISMATCH",
+    );
+  });
+
+  it("rejects when the generation row does not exist", async () => {
+    const { client } = makeFakePrisma({ generation: null });
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          searchIndexGenerationId: "missing",
+          prismaClient: client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) => e instanceof WorkerOutputDbImportError && e.code === "SEARCH_GENERATION_NOT_FOUND",
+    );
+  });
+
+  it("rejects when neither chunkGenerationId nor searchIndexGenerationId is given", async () => {
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          prismaClient: makeFakePrisma().client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) => e instanceof WorkerOutputDbImportError && e.code === "CHUNK_GENERATION_REQUIRED",
+    );
+  });
+
+  it("rejects when searchIndexGenerationId is missing (P4 requires a generation)", async () => {
+    await assert.rejects(
+      () =>
+        importWorkerOutputToStoreDb({
+          payload: fixturePayload(),
+          chunkGenerationId: "cg1",
+          prismaClient: makeFakePrisma().client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
+      (e) => e instanceof WorkerOutputDbImportError && e.code === "SEARCH_GENERATION_REQUIRED",
+    );
+  });
+
+  it("hard-fails the transaction when requirePgvector=true and pgvector fails", async () => {
+    const { client } = makeFakePrisma();
+    const upsert = makeUpsertStub(() => {
+      throw new Error("SEARCH_RUNTIME_UNAVAILABLE: pgvector runtime is unavailable");
+    });
+    await assert.rejects(() =>
+      importWorkerOutputToStoreDb({
+        payload: fixturePayload(),
+        searchIndexGenerationId: "sig1",
+        requirePgvector: true,
+        prismaClient: client as never,
+        upsertVector: upsert.fn,
+      }),
+    );
+    assert.equal(upsert.calls.length, 1);
+    assert.equal(upsert.calls[0]?.env.JYKSTORE_REQUIRE_PGVECTOR, "true");
+  });
+
+  it("records vectorSkipped + warning on pgvector unavailable fallback", async () => {
+    const { client } = makeFakePrisma();
+    const upsert = makeUpsertStub(() => ({
+      ok: true,
+      skipped: true,
+      reason: "pgvector unavailable in this environment — JSON-only fallback (dev/test).",
+    }));
+    const result = await importWorkerOutputToStoreDb({
       payload: fixturePayload(),
       searchIndexGenerationId: "sig1",
       prismaClient: client as never,
+      upsertVector: upsert.fn,
     });
-    assert.equal(capture.generationUpdates.length, 1);
+    assert.equal(result.vectorUpsertedCount, 0);
+    assert.equal(result.vectorSkippedCount, 1);
+    assert.equal(result.pgvectorReflected, false);
+    assert.ok(result.vectorSyncWarning?.includes("fallback"));
   });
 
   it("rejects when validation_report has errors", async () => {
@@ -605,7 +778,13 @@ describe("python worker output DB import (P3)", () => {
       validationReport: { status: "ok", errors: ["boom"], warnings: [] },
     });
     await assert.rejects(
-      () => importWorkerOutputToStoreDb({ payload, prismaClient: makeFakePrisma().client as never }),
+      () =>
+        importWorkerOutputToStoreDb({
+          payload,
+          searchIndexGenerationId: "sig1",
+          prismaClient: makeFakePrisma().client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
       (e) => e instanceof WorkerOutputDbImportError && e.code === "VALIDATION_REPORT_HAS_ERRORS",
     );
   });
@@ -615,7 +794,13 @@ describe("python worker output DB import (P3)", () => {
       validationReport: { status: "partial", errors: [], warnings: [] },
     });
     await assert.rejects(
-      () => importWorkerOutputToStoreDb({ payload, prismaClient: makeFakePrisma().client as never }),
+      () =>
+        importWorkerOutputToStoreDb({
+          payload,
+          searchIndexGenerationId: "sig1",
+          prismaClient: makeFakePrisma().client as never,
+          upsertVector: makeUpsertStub().fn,
+        }),
       (e) => e instanceof WorkerOutputDbImportError && e.code === "VALIDATION_STATUS_NOT_OK",
     );
   });
@@ -647,17 +832,20 @@ describe("python worker output DB import (P3)", () => {
     );
   });
 
-  it("rejects when requirePgvector is set (deferred to P4)", async () => {
-    await assert.rejects(
-      () =>
-        importWorkerOutputToStoreDb({
-          payload: fixturePayload(),
-          requirePgvector: true,
-          prismaClient: makeFakePrisma().client as never,
-        }),
-      (e) =>
-        e instanceof WorkerOutputDbImportError &&
-        e.code === "PGVECTOR_REFLECTION_NOT_IMPLEMENTED",
+  it("resolveWorkerImportChunkGenerationId prefers the requested id when consistent", () => {
+    assert.equal(
+      resolveWorkerImportChunkGenerationId("cg1", generationDescriptor()),
+      "cg1",
+    );
+    assert.equal(
+      resolveWorkerImportChunkGenerationId(undefined, generationDescriptor()),
+      "cg1",
+    );
+  });
+
+  it("assertGenerationDescriptorMatches accepts embeddings without modelRevision", () => {
+    assert.doesNotThrow(() =>
+      assertGenerationDescriptorMatches(fixturePayload(), generationDescriptor()),
     );
   });
 
@@ -668,5 +856,35 @@ describe("python worker output DB import (P3)", () => {
     );
     assert.ok(!/from\s+["']@\/lib\/docling-knowledge\/docling-nd-knowledge-builder/.test(src));
     assert.ok(!src.includes("buildKnowledgeFromNormalizedDocument"));
+  });
+});
+
+describe("assertSearchGenerationCounts counts worker chunk type (P4)", () => {
+  it("includes WORKER_RETRIEVAL_CHUNK_TYPE in the chunk count filter", async () => {
+    let capturedWhere: { chunkType?: { in?: string[] } } | undefined;
+    const generation = {
+      id: "gen1",
+      versionId: "ver1",
+      chunkGenerationId: "cg1",
+      embeddingProvider: "local",
+      embeddingModel: "e5-small",
+      embeddingDimension: 3,
+      failedCount: 0,
+    };
+    const fakeClient = {
+      searchIndexGeneration: { findUnique: async () => generation },
+      knowledgeChunk: {
+        count: async ({ where }: { where: { chunkType?: { in?: string[] } } }) => {
+          capturedWhere = where;
+          return 1;
+        },
+      },
+      knowledgeChunkEmbedding: {
+        findMany: async () => [{ provider: "local", model: "e5-small", dimension: 3 }],
+      },
+    };
+    const result = await assertSearchGenerationCounts("gen1", fakeClient as never);
+    assert.equal(result.chunkCount, 1);
+    assert.ok(capturedWhere?.chunkType?.in?.includes(WORKER_RETRIEVAL_CHUNK_TYPE));
   });
 });

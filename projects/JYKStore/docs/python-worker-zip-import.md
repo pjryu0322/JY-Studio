@@ -75,25 +75,28 @@ Validator enforces chunk ↔ embedding integrity:
   that length with only finite values (no `NaN` / `Infinity`)
 - `provider` / `model` / `contentHash` are non-empty
 
-DB persistence (`KnowledgeChunkEmbedding`) happens in the DB import step below;
-pgvector upsert is deferred to P4.
+DB persistence (`KnowledgeChunkEmbedding`) and pgvector mirroring happen in the
+DB import step below.
 
-## DB import (P3)
+## DB import (P3 + P4)
 
 `prepareWorkerOutputImport()` keeps its role: **validate worker output + build a
-payload** (`WorkerOutputImportPayload`). DB reflection is a separate service,
-`worker-output-db-import-service.ts`:
+payload** (`WorkerOutputImportPayload`). DB/vector reflection is a separate
+service, `worker-output-db-import-service.ts`:
 
 ```ts
 importWorkerOutputToStoreDb({
   payload,
-  chunkGenerationId?,
-  searchIndexGenerationId?,
+  searchIndexGenerationId, // P4: required (vector index is per generation)
+  chunkGenerationId?,      // optional; resolved from the generation if omitted
   sourceDocumentIdByPath?,
   prismaClient?,
-  requirePgvector?, // P4; throws today
+  requirePgvector?,        // true → pgvector must be available (hard fail)
+  upsertVector?,           // injectable for tests
 });
 ```
+
+From P4, **worker output DB import is always bound to a `SearchIndexGeneration`.**
 
 Behavior:
 
@@ -101,35 +104,56 @@ Behavior:
   `errors.length === 0`, `chunks.length === embeddings.length`, and every
   `embedding.chunkId` present in `chunks`. `failed` / `partial` reports are
   rejected (partial is conservative — deferred to a later policy decision).
+- Inside the transaction it loads the `SearchIndexGeneration` first and validates:
+  - the generation exists (`SEARCH_GENERATION_NOT_FOUND`),
+  - `generation.versionId === payload.packVersionId` (`SEARCH_GENERATION_MISMATCH`),
+  - a provided `chunkGenerationId` equals `generation.chunkGenerationId`, otherwise
+    the generation's value is used as the **resolved** `chunkGenerationId`
+    (`CHUNK_GENERATION_REQUIRED` if neither is available),
+  - every embedding's `provider` / `model` / `dimension` (and `modelRevision`
+    when present) match the generation descriptor
+    (`SEARCH_GENERATION_DESCRIPTOR_MISMATCH`).
 - Persists each `chunks.json` entry as a `KnowledgeChunk`
   (`chunkType = WORKER_RETRIEVAL_CHUNK`, `versionId = payload.packVersionId`,
-  `tags = chunk.tags ?? chunk.keywords ?? []`, `sourceDocumentId` from
-  `sourceDocumentIdByPath[sourcePath]` or `null`, Worker provenance in
-  `metadata`).
+  `chunkGenerationId = resolved`, `tags = chunk.tags ?? chunk.keywords ?? []`,
+  `sourceDocumentId` from `sourceDocumentIdByPath[sourcePath]` or `null`, Worker
+  provenance in `metadata`; `metadata.indexGenerationId` mirrors the resolved
+  `chunkGenerationId` for legacy dual-read).
 - Persists each `embeddings.json` entry as a `KnowledgeChunkEmbedding` using the
   **newly created `KnowledgeChunk.id`** (not the Worker `chunkId`), carrying
   `provider / model / dimension / vector / contentHash` and
-  `searchIndexGenerationId` when provided.
-- Runs chunk + embedding writes in **one transaction** (an embedding failure
-  rolls back the chunks).
-- Re-run policy: an import for the same `chunkGenerationId` deletes that
-  generation's chunks first (cascade removes their embeddings); other
-  generations are untouched. Count fields on an existing
-  `SearchIndexGeneration` are refreshed (`chunkCount` / `embeddedCount` /
-  `failedCount`); status transitions stay with the search-data pipeline.
+  `searchIndexGenerationId`.
+- Mirrors each Worker vector into `SearchIndexVector` (pgvector) via
+  `upsertSearchIndexVector()` — **Store owns all pgvector writes; the Python
+  Worker never touches pgvector.** `requirePgvector=true` forces
+  `JYKSTORE_REQUIRE_PGVECTOR=true`, so an unavailable pgvector hard-fails per
+  `search-vector-runtime.ts`; otherwise dev/test falls back to JSON-only and
+  records `vectorSkippedCount` + `vectorSyncWarning`.
+- Runs chunk + embedding + vector writes in **one transaction** — any failure
+  rolls back the whole import.
+- Re-run policy: always deletes existing chunks for the **resolved
+  `chunkGenerationId`** first (cascade removes their embeddings); other
+  generations are untouched. Count fields on the `SearchIndexGeneration` are
+  refreshed (`chunkCount` / `embeddedCount` / `failedCount = 0`); status
+  transitions stay with the search-data state machine.
+
+`assertSearchGenerationCounts()` now counts both `DOCLING_RETRIEVAL_CHUNK` and
+`WORKER_RETRIEVAL_CHUNK` types, so a Worker-imported generation can pass READY
+verification.
 
 Implemented in this step:
 
 ```text
 validated worker output → KnowledgeChunk
 embeddings.json → KnowledgeChunkEmbedding
+KnowledgeChunkEmbedding.vector → SearchIndexVector (pgvector, Store-only)
 ```
 
 Remaining:
 
 ```text
-SearchIndexVector / pgvector reflection (P4)
-SearchIndexGeneration creation + status transitions
+SearchIndexGeneration creation + full status transition automation
+Stale SearchIndexVector cleanup across re-runs (no by-generation delete helper yet)
 ZIP upload API / job loop end-to-end
 provider / admin UX
 ```
@@ -159,8 +183,8 @@ Logical ZIP stages map onto existing `PipelineStatus` values. See
 
 ## Remaining work (out of this slice)
 
-- `SearchIndexVector` / pgvector reflection (P4)
-- `SearchIndexGeneration` creation + status transitions on import
+- `SearchIndexGeneration` creation + full status transition automation on import
+- Stale `SearchIndexVector` cleanup across re-runs (needs a by-generation delete helper)
 - Wire provider ZIP upload API / job table end-to-end
 - Index / provider confirm / admin approve UX
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

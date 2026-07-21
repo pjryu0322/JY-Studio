@@ -1,23 +1,31 @@
 /**
- * P3: reflect validated Python Worker output into the Store DB.
+ * P3/P4: reflect validated Python Worker output into the Store DB + vector index.
  *
  * Responsibilities:
  * - Persist `chunks.json` as `KnowledgeChunk`
  * - Persist `embeddings.json` as `KnowledgeChunkEmbedding` (mapped to the newly
  *   created chunk ids)
+ * - Mirror each Worker vector into `SearchIndexVector` (pgvector) via the existing
+ *   `upsertSearchIndexVector` helper — Store owns all pgvector writes.
  *
  * Non-responsibilities (kept out of this slice):
  * - `prepareWorkerOutputImport` still owns validation + payload creation
- * - It must NOT regenerate chunks / call `docling-nd-knowledge-builder`
- * - `SearchIndexVector` / pgvector upsert is deferred to P4
+ * - It must NOT regenerate chunks / call the Docling ND knowledge builder
+ * - The Python Worker never touches DB / Object Storage / pgvector
+ *
+ * P4 binding rule: Worker output DB import is always scoped to a
+ * `SearchIndexGeneration`. The final `chunkGenerationId` is either provided
+ * explicitly or resolved from the generation, and re-runs delete the existing
+ * chunks for that resolved generation before reinserting.
  */
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { IMPORT_CHANNELS } from "@/lib/python-worker/import-channel";
+import { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-constants";
 import type { WorkerOutputImportPayload } from "@/lib/python-worker/worker-output-import-service";
+import { upsertSearchIndexVector } from "@/lib/search-vector/search-vector-store";
 
-/** chunkType for chunks imported from the ZIP Worker path. */
-export const WORKER_RETRIEVAL_CHUNK_TYPE = "WORKER_RETRIEVAL_CHUNK";
+export { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-constants";
 
 export class WorkerOutputDbImportError extends Error {
   code: string;
@@ -29,26 +37,46 @@ export class WorkerOutputDbImportError extends Error {
 }
 
 type PrismaClientLike = typeof prisma;
+type UpsertSearchIndexVectorFn = typeof upsertSearchIndexVector;
+
+/** Generation descriptor the import is bound to (subset of SearchIndexGeneration). */
+export type ImportSearchGenerationDescriptor = {
+  id: string;
+  versionId: string;
+  chunkGenerationId: string;
+  embeddingProvider: string;
+  embeddingModel: string;
+  embeddingModelRevision: string;
+  embeddingDimension: number;
+  status?: string;
+  scope?: string;
+};
 
 export type WorkerOutputDbImportInput = {
   payload: WorkerOutputImportPayload;
+  /** Required (P4): worker output DB import is always bound to a search generation. */
   searchIndexGenerationId?: string;
   chunkGenerationId?: string;
   sourceDocumentIdByPath?: Record<string, string>;
   prismaClient?: PrismaClientLike;
-  /** pgvector reflection is P4; passing true throws until implemented. */
+  /** true → pgvector must be available (hard fail on unavailable). */
   requirePgvector?: boolean;
+  /** Injectable for tests; defaults to the real pgvector upsert helper. */
+  upsertVector?: UpsertSearchIndexVectorFn;
 };
 
 export type WorkerOutputDbImportResult = {
   packVersionId: string;
-  chunkGenerationId: string | null;
-  searchIndexGenerationId: string | null;
+  chunkGenerationId: string;
+  searchIndexGenerationId: string;
   importedChunkCount: number;
   importedEmbeddingCount: number;
   /** worker chunkId -> Store KnowledgeChunk.id */
   chunkIdByWorkerChunkId: Record<string, string>;
   pgvectorReflected: boolean;
+  vectorUpsertedCount: number;
+  vectorSkippedCount: number;
+  vectorSyncWarning?: string;
 };
 
 export type WorkerChunkCreatePlan = {
@@ -64,7 +92,7 @@ export type WorkerChunkCreatePlan = {
     section: string | null;
     tags: string[];
     metadata: Prisma.InputJsonValue;
-    chunkGenerationId: string | null;
+    chunkGenerationId: string;
     sortOrder: number;
     isActive: boolean;
   };
@@ -78,13 +106,13 @@ export type WorkerEmbeddingCreatePlan = {
   dimension: number;
   vector: number[];
   contentHash: string;
-  searchIndexGenerationId: string | null;
+  searchIndexGenerationId: string;
 };
 
 export type WorkerOutputImportPlan = {
   packVersionId: string;
-  chunkGenerationId: string | null;
-  searchIndexGenerationId: string | null;
+  chunkGenerationId: string;
+  searchIndexGenerationId: string;
   chunkPlans: WorkerChunkCreatePlan[];
   embeddingPlanByWorkerChunkId: Map<string, WorkerEmbeddingCreatePlan>;
 };
@@ -150,20 +178,90 @@ export function assertWorkerOutputImportable(
 }
 
 /**
- * Build a pure (no-DB) import plan from a validated payload.
- * Exposed for unit tests and callers that want to inspect the plan.
+ * Resolve the chunkGenerationId the import binds to, cross-checking any
+ * explicitly requested id against the generation descriptor.
  */
-export function buildWorkerOutputImportPlan(
-  input: Pick<
-    WorkerOutputDbImportInput,
-    "payload" | "searchIndexGenerationId" | "chunkGenerationId" | "sourceDocumentIdByPath"
-  >,
-): WorkerOutputImportPlan {
+export function resolveWorkerImportChunkGenerationId(
+  requestedChunkGenerationId: string | undefined,
+  generation: ImportSearchGenerationDescriptor,
+): string {
+  if (requestedChunkGenerationId) {
+    if (requestedChunkGenerationId !== generation.chunkGenerationId) {
+      throw new WorkerOutputDbImportError(
+        "SEARCH_GENERATION_MISMATCH",
+        `chunkGenerationId (${requestedChunkGenerationId}) does not match generation.chunkGenerationId (${generation.chunkGenerationId})`,
+      );
+    }
+    return requestedChunkGenerationId;
+  }
+  if (!generation.chunkGenerationId) {
+    throw new WorkerOutputDbImportError(
+      "CHUNK_GENERATION_REQUIRED",
+      "no chunkGenerationId provided and generation has none",
+    );
+  }
+  return generation.chunkGenerationId;
+}
+
+/**
+ * Ensure the payload/embeddings are consistent with the bound generation:
+ * version, and each embedding's provider/model/dimension (and modelRevision when
+ * present) match the generation descriptor.
+ */
+export function assertGenerationDescriptorMatches(
+  payload: WorkerOutputImportPayload,
+  generation: ImportSearchGenerationDescriptor,
+): void {
+  if (generation.versionId !== payload.packVersionId) {
+    throw new WorkerOutputDbImportError(
+      "SEARCH_GENERATION_MISMATCH",
+      `generation.versionId (${generation.versionId}) does not match payload.packVersionId (${payload.packVersionId})`,
+    );
+  }
+  for (const emb of payload.embeddings) {
+    if (
+      emb.provider !== generation.embeddingProvider ||
+      emb.model !== generation.embeddingModel ||
+      emb.dimension !== generation.embeddingDimension
+    ) {
+      throw new WorkerOutputDbImportError(
+        "SEARCH_GENERATION_DESCRIPTOR_MISMATCH",
+        `embedding descriptor for chunk ${emb.chunkId} does not match generation ` +
+          `(provider/model/dimension)`,
+      );
+    }
+    const modelRevision =
+      typeof emb.modelRevision === "string" ? emb.modelRevision : undefined;
+    if (modelRevision && modelRevision !== generation.embeddingModelRevision) {
+      throw new WorkerOutputDbImportError(
+        "SEARCH_GENERATION_DESCRIPTOR_MISMATCH",
+        `embedding modelRevision for chunk ${emb.chunkId} does not match generation`,
+      );
+    }
+  }
+}
+
+/**
+ * Build a pure (no-DB) import plan from a validated payload and a resolved
+ * generation binding. Exposed for unit tests and inspection.
+ */
+export function buildWorkerOutputImportPlan(input: {
+  payload: WorkerOutputImportPayload;
+  chunkGenerationId: string;
+  searchIndexGenerationId: string;
+  sourceDocumentIdByPath?: Record<string, string>;
+}): WorkerOutputImportPlan {
   const { payload } = input;
   assertWorkerOutputImportable(payload);
 
-  const chunkGenerationId = input.chunkGenerationId ?? null;
-  const searchIndexGenerationId = input.searchIndexGenerationId ?? null;
+  if (!input.chunkGenerationId) {
+    throw new WorkerOutputDbImportError(
+      "CHUNK_GENERATION_REQUIRED",
+      "buildWorkerOutputImportPlan requires a resolved chunkGenerationId",
+    );
+  }
+  const chunkGenerationId = input.chunkGenerationId;
+  const searchIndexGenerationId = input.searchIndexGenerationId;
   const sourceDocumentIdByPath = input.sourceDocumentIdByPath ?? {};
   const traceById = new Map(payload.sourceTraces.map((t) => [t.traceId, t]));
 
@@ -180,8 +278,11 @@ export function buildWorkerOutputImportPlan(
       keywords: Array.isArray(chunk.keywords) ? chunk.keywords : [],
       codeBlocks: Array.isArray(chunk.codeBlocks) ? chunk.codeBlocks : [],
       pipelineRunId: payload.pipelineRunId,
-      indexGenerationId: searchIndexGenerationId,
+      // Dual-write for legacy readers: metadata.indexGenerationId mirrors the
+      // chunkGenerationId column (see search-generation-binding.resolveChunkGenerationId).
+      indexGenerationId: chunkGenerationId,
       chunkGenerationId,
+      searchIndexGenerationId,
       sourceTrace: trace ? { ...trace } : null,
     };
     return {
@@ -236,98 +337,165 @@ export function buildWorkerOutputImportPlan(
 }
 
 /**
- * Persist a validated Worker output payload into Store DB in one transaction.
- * Chunk + embedding writes are atomic: an embedding failure rolls back chunks.
+ * Persist a validated Worker output payload into Store DB + vector index in one
+ * transaction. Chunk + embedding + vector writes are atomic: any failure rolls
+ * back the whole import.
  */
 export async function importWorkerOutputToStoreDb(
   input: WorkerOutputDbImportInput,
 ): Promise<WorkerOutputDbImportResult> {
-  if (input.requirePgvector) {
+  assertWorkerOutputImportable(input.payload);
+
+  const searchIndexGenerationId = input.searchIndexGenerationId;
+  if (!searchIndexGenerationId) {
+    // P4: worker output DB import must be bound to a search generation.
+    if (!input.chunkGenerationId) {
+      throw new WorkerOutputDbImportError(
+        "CHUNK_GENERATION_REQUIRED",
+        "DB import requires searchIndexGenerationId (or at least chunkGenerationId)",
+      );
+    }
     throw new WorkerOutputDbImportError(
-      "PGVECTOR_REFLECTION_NOT_IMPLEMENTED",
-      "pgvector/SearchIndexVector reflection is deferred to P4",
+      "SEARCH_GENERATION_REQUIRED",
+      "DB import requires a searchIndexGenerationId (vector index is per generation)",
     );
   }
 
-  const plan = buildWorkerOutputImportPlan(input);
   const client = input.prismaClient ?? prisma;
+  const upsertVector = input.upsertVector ?? upsertSearchIndexVector;
+  const vectorEnv: NodeJS.ProcessEnv = input.requirePgvector
+    ? { ...process.env, JYKSTORE_REQUIRE_PGVECTOR: "true" }
+    : process.env;
 
-  const chunkIdByWorkerChunkId = await client.$transaction(async (tx) => {
-    // Re-run policy: clear only this generation's chunks (cascade removes their
-    // embeddings); other generations are untouched.
-    if (plan.chunkGenerationId) {
-      await tx.knowledgeChunk.deleteMany({
-        where: {
-          versionId: plan.packVersionId,
-          chunkGenerationId: plan.chunkGenerationId,
-        },
-      });
-    } else if (plan.searchIndexGenerationId) {
-      await tx.knowledgeChunkEmbedding.deleteMany({
-        where: { searchIndexGenerationId: plan.searchIndexGenerationId },
-      });
+  const outcome = await client.$transaction(async (tx) => {
+    const generationRow = await tx.searchIndexGeneration.findUnique({
+      where: { id: searchIndexGenerationId },
+      select: {
+        id: true,
+        versionId: true,
+        chunkGenerationId: true,
+        embeddingProvider: true,
+        embeddingModel: true,
+        embeddingModelRevision: true,
+        embeddingDimension: true,
+        status: true,
+        scope: true,
+      },
+    });
+    if (!generationRow) {
+      throw new WorkerOutputDbImportError(
+        "SEARCH_GENERATION_NOT_FOUND",
+        `search index generation not found: ${searchIndexGenerationId}`,
+      );
     }
+    const generation = generationRow as unknown as ImportSearchGenerationDescriptor;
+
+    const resolvedChunkGenerationId = resolveWorkerImportChunkGenerationId(
+      input.chunkGenerationId,
+      generation,
+    );
+    assertGenerationDescriptorMatches(input.payload, generation);
+
+    const plan = buildWorkerOutputImportPlan({
+      payload: input.payload,
+      chunkGenerationId: resolvedChunkGenerationId,
+      searchIndexGenerationId,
+      sourceDocumentIdByPath: input.sourceDocumentIdByPath,
+    });
+
+    // Re-run policy: always clear the resolved generation's chunks first; the
+    // cascade removes their embeddings. Other generations are untouched.
+    await tx.knowledgeChunk.deleteMany({
+      where: {
+        versionId: plan.packVersionId,
+        chunkGenerationId: resolvedChunkGenerationId,
+      },
+    });
 
     const mapping: Record<string, string> = {};
+    let vectorUpsertedCount = 0;
+    let vectorSkippedCount = 0;
+    let vectorSyncWarning: string | undefined;
+
     for (const chunkPlan of plan.chunkPlans) {
-      const created = await tx.knowledgeChunk.create({
+      const createdChunk = await tx.knowledgeChunk.create({
         data: chunkPlan.data,
         select: { id: true },
       });
-      mapping[chunkPlan.workerChunkId] = created.id;
-    }
+      mapping[chunkPlan.workerChunkId] = createdChunk.id;
 
-    for (const [workerChunkId, embeddingPlan] of plan.embeddingPlanByWorkerChunkId) {
-      const chunkId = mapping[workerChunkId];
-      if (!chunkId) {
+      const embeddingPlan = plan.embeddingPlanByWorkerChunkId.get(chunkPlan.workerChunkId);
+      if (!embeddingPlan) {
         throw new WorkerOutputDbImportError(
-          "CHUNK_ID_MAPPING_MISSING",
-          `no created chunk id for worker chunk ${workerChunkId}`,
+          "CHUNK_EMBEDDING_MISSING",
+          `chunk ${chunkPlan.workerChunkId} has no embedding plan`,
         );
       }
+
       await tx.knowledgeChunkEmbedding.create({
         data: {
-          chunkId,
+          chunkId: createdChunk.id,
           versionId: embeddingPlan.versionId,
           provider: embeddingPlan.provider,
           model: embeddingPlan.model,
           dimension: embeddingPlan.dimension,
           vector: embeddingPlan.vector as unknown as Prisma.InputJsonValue,
           contentHash: embeddingPlan.contentHash,
-          searchIndexGenerationId: embeddingPlan.searchIndexGenerationId ?? undefined,
+          searchIndexGenerationId,
         },
       });
-    }
 
-    // Count-only update for an existing generation; status transitions stay with
-    // the search-data pipeline (avoid conflicting with its state machine).
-    if (plan.searchIndexGenerationId) {
-      const generation = await tx.searchIndexGeneration.findUnique({
-        where: { id: plan.searchIndexGenerationId },
-        select: { id: true },
-      });
-      if (generation) {
-        await tx.searchIndexGeneration.update({
-          where: { id: plan.searchIndexGenerationId },
-          data: {
-            chunkCount: plan.chunkPlans.length,
-            embeddedCount: plan.embeddingPlanByWorkerChunkId.size,
-            failedCount: 0,
-          },
-        });
+      const vectorResult = await upsertVector(
+        {
+          searchIndexGenerationId,
+          chunkId: createdChunk.id,
+          provider: embeddingPlan.provider,
+          model: embeddingPlan.model,
+          dimension: embeddingPlan.dimension,
+          contentHash: embeddingPlan.contentHash,
+          vector: embeddingPlan.vector,
+        },
+        tx,
+        vectorEnv,
+      );
+      if (vectorResult.skipped) {
+        vectorSkippedCount += 1;
+        vectorSyncWarning = vectorResult.reason;
+      } else {
+        vectorUpsertedCount += 1;
       }
     }
 
-    return mapping;
+    await tx.searchIndexGeneration.update({
+      where: { id: searchIndexGenerationId },
+      data: {
+        chunkCount: plan.chunkPlans.length,
+        embeddedCount: plan.embeddingPlanByWorkerChunkId.size,
+        failedCount: 0,
+      },
+    });
+
+    return {
+      resolvedChunkGenerationId,
+      mapping,
+      importedChunkCount: plan.chunkPlans.length,
+      importedEmbeddingCount: plan.embeddingPlanByWorkerChunkId.size,
+      vectorUpsertedCount,
+      vectorSkippedCount,
+      vectorSyncWarning,
+    };
   });
 
   return {
-    packVersionId: plan.packVersionId,
-    chunkGenerationId: plan.chunkGenerationId,
-    searchIndexGenerationId: plan.searchIndexGenerationId,
-    importedChunkCount: plan.chunkPlans.length,
-    importedEmbeddingCount: plan.embeddingPlanByWorkerChunkId.size,
-    chunkIdByWorkerChunkId,
-    pgvectorReflected: false,
+    packVersionId: input.payload.packVersionId,
+    chunkGenerationId: outcome.resolvedChunkGenerationId,
+    searchIndexGenerationId,
+    importedChunkCount: outcome.importedChunkCount,
+    importedEmbeddingCount: outcome.importedEmbeddingCount,
+    chunkIdByWorkerChunkId: outcome.mapping,
+    pgvectorReflected: outcome.vectorUpsertedCount > 0 && outcome.vectorSkippedCount === 0,
+    vectorUpsertedCount: outcome.vectorUpsertedCount,
+    vectorSkippedCount: outcome.vectorSkippedCount,
+    vectorSyncWarning: outcome.vectorSyncWarning,
   };
 }

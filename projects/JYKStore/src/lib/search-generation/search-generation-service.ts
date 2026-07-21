@@ -236,10 +236,13 @@ export async function assertSearchGenerationCounts(
   const { DOCLING_RETRIEVAL_CHUNK_TYPE } = await import(
     "@/lib/docling-knowledge/docling-knowledge-stages"
   );
+  const { WORKER_RETRIEVAL_CHUNK_TYPE } = await import(
+    "@/lib/python-worker/worker-chunk-constants"
+  );
   const actualChunkCount = await client.knowledgeChunk.count({
     where: {
       versionId: generation.versionId,
-      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      chunkType: { in: [DOCLING_RETRIEVAL_CHUNK_TYPE, WORKER_RETRIEVAL_CHUNK_TYPE] },
       OR: [
         { chunkGenerationId: generation.chunkGenerationId },
         {

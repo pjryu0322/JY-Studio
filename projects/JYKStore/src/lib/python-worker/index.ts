@@ -49,11 +49,14 @@ export {
 } from "@/lib/python-worker/worker-output-import-service";
 
 export {
+  assertGenerationDescriptorMatches,
   assertWorkerOutputImportable,
   buildWorkerOutputImportPlan,
   importWorkerOutputToStoreDb,
+  resolveWorkerImportChunkGenerationId,
   WORKER_RETRIEVAL_CHUNK_TYPE,
   WorkerOutputDbImportError,
+  type ImportSearchGenerationDescriptor,
   type WorkerChunkCreatePlan,
   type WorkerEmbeddingCreatePlan,
   type WorkerOutputDbImportInput,
