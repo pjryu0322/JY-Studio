@@ -38,6 +38,12 @@ export type AdminWorkerZipRequestState = {
   reviewMemo: string | null;
 };
 
+/** P7.4: read-only roll-up of files the Worker auto-excluded from structuring. */
+export type AdminWorkerZipExclusionSummary = {
+  total: number;
+  byReason: Record<string, number>;
+};
+
 export type AdminWorkerZipGenerationResult = {
   clientId: string;
   ok: boolean;
@@ -47,6 +53,7 @@ export type AdminWorkerZipGenerationResult = {
   pgvectorReflected: boolean;
   generationReady: boolean;
   nextStep: "SEARCH_DATA_VALIDATION" | "RETRY";
+  exclusionSummary?: AdminWorkerZipExclusionSummary;
   warnings: { code: string; message: string }[];
   error?: { code: string; message: string; retryable: boolean; supportRequired: boolean };
 };

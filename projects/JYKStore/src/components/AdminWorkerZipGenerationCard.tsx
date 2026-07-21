@@ -161,6 +161,25 @@ export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: stri
         </div>
       ) : null}
 
+      {result?.exclusionSummary && result.exclusionSummary.total > 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <p className="font-semibold text-slate-900">
+            자동 제외된 파일 {result.exclusionSummary.total}개
+          </p>
+          <p className="mt-0.5 text-slate-500">
+            보안 차단 및 기본 제외 정책으로 구조화 대상에서 제외되었습니다. 원본 자료는 그대로 보존됩니다.
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {topExclusionReasons(result.exclusionSummary.byReason).map(([reason, count]) => (
+              <li key={reason} className="flex justify-between gap-2">
+                <span className="text-slate-600">{exclusionReasonLabel(reason)}</span>
+                <span className="font-medium text-slate-900">{count}개</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {result ? (
         <div className="text-xs">
           <button
@@ -206,6 +225,39 @@ function statusLabel(status: AdminWorkerZipRequestState["requestStatus"]): strin
       return "처리 실패";
     default:
       return "대기";
+  }
+}
+
+/** Top exclusion reasons by count (descending), capped for a compact read-only view. */
+function topExclusionReasons(
+  byReason: Record<string, number>,
+  limit = 5,
+): [string, number][] {
+  return Object.entries(byReason)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+}
+
+function exclusionReasonLabel(reason: string): string {
+  switch (reason) {
+    case "blocked_path_traversal":
+      return "보안 차단: 잘못된 경로";
+    case "blocked_absolute_path":
+      return "보안 차단: 절대경로";
+    case "blocked_symlink":
+      return "보안 차단: 심볼릭 링크";
+    case "excluded_directory":
+      return "제외 폴더 (빌드/캐시 등)";
+    case "excluded_file_name":
+      return "제외 파일명 (시스템 파일 등)";
+    case "excluded_extension":
+      return "제외 확장자 (실행/압축 파일 등)";
+    case "file_size_exceeded":
+      return "용량 초과 파일";
+    case "unsupported_entry_type":
+      return "처리할 수 없는 항목";
+    default:
+      return reason;
   }
 }
 

@@ -26,6 +26,7 @@ import {
   runWorkerZipImportPipeline,
   type WorkerZipPipelineResult,
 } from "@/lib/python-worker/worker-zip-pipeline-service";
+import type { WorkerExclusionSummary } from "@/lib/python-worker/worker-output-contract";
 import { Readable } from "node:stream";
 import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { synthesizeWorkerZipSearchGeneration } from "@/lib/python-worker/worker-zip-generation-bridge";
@@ -72,6 +73,8 @@ export type ProviderWorkerZipImportResult = {
   importedChunkCount: number;
   importedEmbeddingCount: number;
   pgvectorReflected: boolean;
+  /** P7.4: read-only roll-up of files the Worker auto-excluded (advisory). */
+  exclusionSummary?: WorkerExclusionSummary;
   warnings: { code: string; message: string }[];
   nextStep: "SEARCH_DATA_VALIDATION" | "RETRY";
   generationReady: boolean;
@@ -596,6 +599,7 @@ export async function runProviderWorkerZipImport(
       importedChunkCount: 0,
       importedEmbeddingCount: 0,
       pgvectorReflected: false,
+      exclusionSummary: result.exclusionSummary,
       warnings,
       nextStep: "RETRY",
       generationReady: false,
@@ -620,6 +624,7 @@ export async function runProviderWorkerZipImport(
     importedChunkCount: result.importedChunkCount,
     importedEmbeddingCount: result.importedEmbeddingCount,
     pgvectorReflected: result.pgvectorReflected,
+    exclusionSummary: result.exclusionSummary,
   };
 
   const counts = {

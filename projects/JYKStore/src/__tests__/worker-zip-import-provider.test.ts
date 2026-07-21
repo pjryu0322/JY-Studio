@@ -34,6 +34,7 @@ import {
   MAX_WORKER_ZIP_UPLOAD_BYTES,
   validateWorkerZipFile,
 } from "../lib/python-worker/worker-zip-route-helpers.ts";
+import { readWorkerExclusionSummary } from "../lib/python-worker/worker-output-contract.ts";
 import { isStagingVisibleDoclingBundle } from "../lib/docling-import/docling-import-lifecycle-service.ts";
 
 function makePayload(overrides?: Partial<WorkerOutputImportPayload>): WorkerOutputImportPayload {
@@ -570,6 +571,74 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");
     assert.match(queue, /fetchAdminWorkerZipRequests/);
     assert.match(queue, /접수하고 생성 실행/);
+  });
+});
+
+describe("P7.4 default exclusion policy (Worker + Store tolerance + UI)", () => {
+  it("readWorkerExclusionSummary uses the report summary when present", () => {
+    const summary = readWorkerExclusionSummary({
+      status: "ok",
+      errors: [],
+      exclusionSummary: { total: 3, byReason: { excluded_extension: 2, excluded_directory: 1 } },
+    });
+    assert.equal(summary.total, 3);
+    assert.equal(summary.byReason.excluded_extension, 2);
+    assert.equal(summary.byReason.excluded_directory, 1);
+  });
+
+  it("readWorkerExclusionSummary falls back to counting excludedFiles", () => {
+    const summary = readWorkerExclusionSummary({
+      status: "ok",
+      errors: [],
+      excludedFiles: [
+        { path: "a.exe", reason: "excluded_extension" },
+        { path: "node_modules/x.js", reason: "excluded_directory" },
+        { path: "b.dll", reason: "excluded_extension" },
+      ],
+    });
+    assert.equal(summary.total, 3);
+    assert.equal(summary.byReason.excluded_extension, 2);
+    assert.equal(summary.byReason.excluded_directory, 1);
+  });
+
+  it("readWorkerExclusionSummary tolerates a report without exclusion fields", () => {
+    const summary = readWorkerExclusionSummary({ status: "ok", errors: [] });
+    assert.equal(summary.total, 0);
+    assert.deepEqual(summary.byReason, {});
+  });
+
+  it("Store validator preserves additive excludedFiles report fields (spread, no strip)", () => {
+    // Store tolerance: normalizeValidationReport must not reject/strip unknown
+    // additive fields. Guard the source so an accidental allowlist can't regress it.
+    const src = readSrc("lib/python-worker/worker-output-validator.ts");
+    assert.match(src, /\.\.\.obj/);
+  });
+
+  it("provider ZIP card shows the pre-upload exclusion notice", () => {
+    const src = readSrc("components/provider-distribution/ProviderWorkerZipImportCard.tsx");
+    assert.match(src, /업로드 전 확인해 주세요/);
+    assert.match(src, /node_modules/);
+    assert.match(src, /실행 파일: exe, dll, msi/);
+  });
+
+  it("admin generation card renders a read-only exclusion summary", () => {
+    const src = readSrc("components/AdminWorkerZipGenerationCard.tsx");
+    assert.match(src, /exclusionSummary/);
+    assert.match(src, /자동 제외된 파일/);
+    assert.match(src, /exclusionReasonLabel/);
+  });
+
+  it("python worker ships a default exclusion policy config", () => {
+    const raw = readFileSync(
+      path.join(process.cwd(), "python-worker", "config", "zip_exclusion_policy.json"),
+      "utf8",
+    );
+    const policy = JSON.parse(raw) as {
+      excludeExtensions: string[];
+      excludeDirectories: string[];
+    };
+    assert.ok(policy.excludeExtensions.includes(".exe"));
+    assert.ok(policy.excludeDirectories.includes("node_modules"));
   });
 });
 

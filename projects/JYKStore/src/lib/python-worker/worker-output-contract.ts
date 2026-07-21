@@ -93,6 +93,19 @@ export type WorkerEmbedding = {
   [key: string]: unknown;
 };
 
+/** P7.4: a single archive entry removed by a security guard or exclusion policy. */
+export type WorkerExcludedFile = {
+  path: string;
+  reason: string;
+  detail?: string | null;
+};
+
+/** P7.4: compact roll-up of excluded entries, safe to surface to Admin UI. */
+export type WorkerExclusionSummary = {
+  total: number;
+  byReason: Record<string, number>;
+};
+
 export type WorkerValidationReport = {
   status?: string;
   errors: string[];
@@ -101,6 +114,9 @@ export type WorkerValidationReport = {
   parsers?: Record<string, unknown>;
   license?: Record<string, unknown>;
   generatedAt?: string;
+  /** P7.4 additive: entries the Worker excluded from structuring (optional). */
+  excludedFiles?: WorkerExcludedFile[];
+  exclusionSummary?: WorkerExclusionSummary;
   [key: string]: unknown;
 };
 
@@ -122,3 +138,40 @@ export type WorkerOutputValidationIssue = {
 export type WorkerOutputValidationResult =
   | { ok: true; bundle: WorkerOutputBundle; warnings: WorkerOutputValidationIssue[] }
   | { ok: false; errors: WorkerOutputValidationIssue[]; warnings: WorkerOutputValidationIssue[] };
+
+/**
+ * P7.4: read a normalized exclusion summary from a (possibly loosely-typed)
+ * validation report. Never throws; falls back to counting `excludedFiles`, then
+ * to an empty summary. Store never fails just because these fields are present
+ * or absent — they are advisory only.
+ */
+export function readWorkerExclusionSummary(
+  report: WorkerValidationReport | null | undefined,
+): WorkerExclusionSummary {
+  const empty: WorkerExclusionSummary = { total: 0, byReason: {} };
+  if (!report) return empty;
+
+  const summary = report.exclusionSummary;
+  if (summary && typeof summary === "object") {
+    const record = summary as Record<string, unknown>;
+    const total = typeof record.total === "number" ? record.total : 0;
+    const byReason: Record<string, number> = {};
+    if (record.byReason && typeof record.byReason === "object") {
+      for (const [key, value] of Object.entries(record.byReason as Record<string, unknown>)) {
+        if (typeof value === "number") byReason[key] = value;
+      }
+    }
+    return { total, byReason };
+  }
+
+  const files = Array.isArray(report.excludedFiles) ? report.excludedFiles : [];
+  const byReason: Record<string, number> = {};
+  for (const file of files) {
+    const reason =
+      file && typeof file === "object" && typeof file.reason === "string"
+        ? file.reason
+        : "unknown";
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+  return { total: files.length, byReason };
+}

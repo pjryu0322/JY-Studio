@@ -41,6 +41,10 @@ import {
   type PrepareWorkerOutputImportResult,
   type WorkerOutputImportPayload,
 } from "@/lib/python-worker/worker-output-import-service";
+import {
+  readWorkerExclusionSummary,
+  type WorkerExclusionSummary,
+} from "@/lib/python-worker/worker-output-contract";
 import { buildWorkerRunSourceZipObjectKey } from "@/lib/python-worker/worker-output-object-keys";
 import {
   mapWorkerZipStageToPipelineStatus,
@@ -174,6 +178,8 @@ export type WorkerZipPipelineResult = {
   vectorUpsertedCount: number;
   vectorSkippedCount: number;
   vectorSyncWarning?: string;
+  /** P7.4: Worker default-exclusion roll-up (advisory; never affects ok/failure). */
+  exclusionSummary?: WorkerExclusionSummary;
   warnings: WorkerZipPipelineWarning[];
   error?: WorkerZipPipelineError;
   workerStdoutTail?: string;
@@ -431,6 +437,10 @@ async function prepareAndValidateWorkerOutput(
   }
   const payload = prepared.payload;
   for (const w of payload.warnings) ctx.warnings.push(w);
+
+  // P7.4: capture the exclusion roll-up as soon as the report is parsed so it is
+  // present on both success and failure results (spread via ctx.base).
+  ctx.base.exclusionSummary = readWorkerExclusionSummary(payload.validationReport);
 
   if (
     payload.validationReport.status !== "ok" ||

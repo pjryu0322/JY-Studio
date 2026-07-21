@@ -506,6 +506,68 @@ schema/migration change; no Worker output contract change.
 - **Formal request state column**: replace the object-presence + PipelineRun
   approximation with a first-class `requestStatus` field.
 
+## P7.4: default exclusion policy + provider upload notice
+
+The Worker applies a **default exclusion policy** so Provider ZIPs that contain
+non-knowledge files (executables, installers, nested archives, build/cache
+folders, system files, oversized binaries) are safely dropped from structuring.
+The original ZIP is never modified — only what the Worker extracts / structures
+is limited.
+
+Two independent layers, evaluated per ZIP entry in this order:
+
+1. **Hardcoded security guards** (can never be relaxed by config):
+   `blocked_path_traversal`, `blocked_absolute_path`, `blocked_symlink`, the
+   per-file byte ceiling (`file_size_exceeded`), total-size + entry limits, and
+   malformed-ZIP rejection.
+2. **Config-driven business exclusions** (`excluded_directory` →
+   `excluded_file_name` → `excluded_extension` → `file_size_exceeded`).
+
+### Policy config
+
+- File: `python-worker/config/zip_exclusion_policy.json`
+  (`excludeExtensions`, `excludeDirectories`, `excludeFileNames`, `maxFileSizeMb`).
+- Loader: `python-worker/src/exclusion_policy.py` — `load_exclusion_policy(path?)`.
+  A missing / malformed / partial file falls back to `BUILT_IN_DEFAULTS`
+  field-by-field, so the Worker never fails just because the file is absent.
+  `run_pipeline` accepts `options.exclusionPolicyPath` for test injection.
+
+### Report (additive, contract-safe)
+
+`validation_report.json` gains two **optional additive** fields:
+
+- `excludedFiles`: `[{ path, reason, detail }]`
+- `exclusionSummary`: `{ total, byReason: { <reason>: <count> } }`
+
+Existing fields are never renamed/removed. The TypeScript Store parses the
+report by spreading (`...obj`), so unknown/additive fields survive and never fail
+import. `readWorkerExclusionSummary()` normalizes the summary (falling back to
+counting `excludedFiles`) and it is surfaced to the Admin generation result
+(`WorkerZipPipelineResult.exclusionSummary` →
+`ProviderWorkerZipImportResult.exclusionSummary` →
+`AdminWorkerZipGenerationResult.exclusionSummary`).
+
+### Success/failure rules
+
+- Excluded files are **advisory** — having exclusions never fails the pipeline.
+- If **every** archive entry is excluded (0 processable files), `run_pipeline`
+  fails with a clear "all archive files were excluded by the default exclusion
+  policy" error so the Admin sees a 보완 필요 cause instead of an empty result.
+
+### UI
+
+- **Provider** (`ProviderWorkerZipImportCard`): a collapsible "업로드 전 확인해
+  주세요" notice above the ZIP picker lists the default-excluded targets. No
+  internal terminology; the Provider still only attaches + requests.
+- **Admin** (`AdminWorkerZipGenerationCard`): a read-only "자동 제외된 파일 N개"
+  summary with the top reasons after execution. No manual manifest/exclude UI.
+
+### Follow-ups (P8, not in this slice)
+
+- Admin ZIP manifest view + manual include/exclude selection
+- Per-provider / per-pack exclusion policy override; policy in DB
+- Worker pre-run ZIP preview API; downloadable detailed `excludedFiles` report
+
 ## Remaining work (out of this slice)
 
 - P7.2: async job model + `202 Accepted` + status polling (see above)

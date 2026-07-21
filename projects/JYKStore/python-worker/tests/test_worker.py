@@ -13,8 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from parse_archive import is_safe_zip_member, safe_extract_zip
+from parse_archive import is_safe_zip_member, run_pipeline, safe_extract_zip
 from src.chunker import build_chunks_and_traces
+from src.exclusion_policy import (
+    REASON_BLOCKED_SYMLINK,
+    REASON_EXCLUDED_DIRECTORY,
+    REASON_EXCLUDED_EXTENSION,
+    REASON_EXCLUDED_FILE_NAME,
+    REASON_FILE_SIZE_EXCEEDED,
+    build_policy,
+    evaluate_entry,
+    load_exclusion_policy,
+)
 from src.embedding import (
     EmbeddingError,
     build_content_hash,
@@ -750,6 +760,218 @@ class EmbeddingTests(unittest.TestCase):
             self.assertEqual(report["embedding"]["status"], "failed")
             self.assertTrue(
                 any("embedding generation failed" in e for e in report["errors"])
+            )
+
+
+class ExclusionPolicyLoaderTests(unittest.TestCase):
+    def test_default_config_file_loads(self):
+        policy = load_exclusion_policy()
+        self.assertIn(".exe", policy.exclude_extensions)
+        self.assertIn(".zip", policy.exclude_extensions)
+        self.assertIn("node_modules", policy.exclude_directories)
+        self.assertIn(".ds_store", policy.exclude_file_names)
+        self.assertEqual(policy.max_file_size_bytes, 50 * 1024 * 1024)
+
+    def test_missing_file_uses_builtin_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = load_exclusion_policy(Path(tmp) / "nope.json")
+        self.assertIn(".exe", policy.exclude_extensions)
+        self.assertIn("node_modules", policy.exclude_directories)
+
+    def test_malformed_file_falls_back_to_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "policy.json"
+            bad.write_text("{ not valid json", encoding="utf-8")
+            policy = load_exclusion_policy(bad)
+        self.assertIn(".exe", policy.exclude_extensions)
+
+    def test_partial_config_merges_missing_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            partial = Path(tmp) / "policy.json"
+            partial.write_text(
+                json.dumps({"excludeExtensions": [".foo"]}), encoding="utf-8"
+            )
+            policy = load_exclusion_policy(partial)
+        # Provided field overrides; unspecified fields fall back to defaults.
+        self.assertIn(".foo", policy.exclude_extensions)
+        self.assertNotIn(".exe", policy.exclude_extensions)
+        self.assertIn("node_modules", policy.exclude_directories)
+
+    def test_evaluate_entry_reasons(self):
+        policy = build_policy(None)
+        self.assertEqual(
+            evaluate_entry(policy, "setup/install.exe")[0], REASON_EXCLUDED_EXTENSION
+        )
+        self.assertEqual(
+            evaluate_entry(policy, "node_modules/x/index.js")[0],
+            REASON_EXCLUDED_DIRECTORY,
+        )
+        self.assertEqual(
+            evaluate_entry(policy, "bundle/app.zip")[0], REASON_EXCLUDED_EXTENSION
+        )
+        self.assertEqual(
+            evaluate_entry(policy, "Docs/.DS_Store")[0], REASON_EXCLUDED_FILE_NAME
+        )
+        self.assertIsNone(evaluate_entry(policy, "Docs/api/Grid.html")[0])
+
+    def test_evaluate_entry_size(self):
+        policy = build_policy({"maxFileSizeMb": 1})
+        reason, _ = evaluate_entry(policy, "Docs/big.html", file_size=2 * 1024 * 1024)
+        self.assertEqual(reason, REASON_FILE_SIZE_EXCEEDED)
+        self.assertIsNone(
+            evaluate_entry(policy, "Docs/small.html", file_size=1024)[0]
+        )
+
+
+class ZipExclusionPolicyExtractTests(unittest.TestCase):
+    def _build_zip(self, tmp_path: Path) -> Path:
+        zip_path = tmp_path / "mixed.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("Docs/api/Grid.html", "<html><body>ok</body></html>")
+            zf.writestr("setup/install.exe", b"MZ fake")
+            zf.writestr("node_modules/dep/index.js", "module.exports={}")
+            zf.writestr("bundle/nested.zip", b"PK fake")
+            zf.writestr("Docs/.DS_Store", b"\x00\x01")
+        return zip_path
+
+    def test_policy_excludes_expected_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zip_path = self._build_zip(tmp_path)
+            extract = tmp_path / "out"
+            result = safe_extract_zip(
+                zip_path,
+                extract,
+                max_file_bytes=5_000_000,
+                max_total_bytes=20_000_000,
+            )
+            self.assertTrue(result["ok"])
+            # Allowed doc extracted.
+            self.assertTrue((extract / "Docs" / "api" / "Grid.html").is_file())
+            # Excluded entries were never extracted.
+            self.assertFalse((extract / "setup" / "install.exe").exists())
+            self.assertFalse((extract / "node_modules").exists())
+            self.assertFalse((extract / "bundle" / "nested.zip").exists())
+
+            reasons = {
+                f["path"]: f["reason"] for f in result["excludedFiles"]
+            }
+            self.assertEqual(reasons["setup/install.exe"], REASON_EXCLUDED_EXTENSION)
+            self.assertEqual(
+                reasons["node_modules/dep/index.js"], REASON_EXCLUDED_DIRECTORY
+            )
+            self.assertEqual(reasons["bundle/nested.zip"], REASON_EXCLUDED_EXTENSION)
+            self.assertEqual(reasons["Docs/.DS_Store"], REASON_EXCLUDED_FILE_NAME)
+
+    def test_symlink_entry_blocked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zip_path = tmp_path / "link.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr("Docs/ok.html", "<html><body>ok</body></html>")
+                info = zipfile.ZipInfo("evil-link")
+                info.external_attr = (0o120777 & 0xFFFF) << 16
+                zf.writestr(info, "/etc/passwd")
+            extract = tmp_path / "out"
+            result = safe_extract_zip(
+                zip_path,
+                extract,
+                max_file_bytes=5_000_000,
+                max_total_bytes=20_000_000,
+            )
+            self.assertTrue(result["ok"])
+            self.assertFalse((extract / "evil-link").exists())
+            self.assertTrue(
+                any(
+                    f["reason"] == REASON_BLOCKED_SYMLINK
+                    for f in result["excludedFiles"]
+                )
+            )
+
+
+class ExclusionReportTests(unittest.TestCase):
+    def test_report_records_excluded_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zip_path = tmp_path / "mixed.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr(
+                    "Docs/api/DataGrid.html",
+                    "<html><head><title>DataGrid</title></head>"
+                    "<body><h1>DataGrid</h1><h2>Properties</h2>"
+                    "<p>grid content</p></body></html>",
+                )
+                zf.writestr("setup/install.exe", b"MZ fake")
+                zf.writestr("node_modules/dep/index.js", "x")
+            out = tmp_path / "output"
+            code = run_pipeline(
+                {
+                    "archivePath": str(zip_path),
+                    "packName": "rMate Grid",
+                    "productVersion": "v6.0",
+                    "language": "ko",
+                    "output": str(out),
+                    "options": {
+                        "parsePdf": False,
+                        "parseApiHtml": True,
+                        "parseSamples": True,
+                        "maxFileBytes": 5_000_000,
+                        "maxTotalBytes": 20_000_000,
+                        "embedding": {"mode": "deterministic_stub", "dimension": 8},
+                    },
+                }
+            )
+            self.assertEqual(code, 0)
+            report = json.loads(
+                (out / "validation_report.json").read_text(encoding="utf-8")
+            )
+            excluded = {f["path"]: f["reason"] for f in report["excludedFiles"]}
+            self.assertIn("setup/install.exe", excluded)
+            self.assertIn("node_modules/dep/index.js", excluded)
+            self.assertEqual(
+                report["exclusionSummary"]["total"], len(report["excludedFiles"])
+            )
+            self.assertGreaterEqual(
+                report["exclusionSummary"]["byReason"].get(
+                    REASON_EXCLUDED_EXTENSION, 0
+                ),
+                1,
+            )
+            # Allowed doc still produced chunks.
+            self.assertGreater(report["totals"]["chunks"], 0)
+
+    def test_all_files_excluded_is_clear_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zip_path = tmp_path / "onlyexe.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr("setup/install.exe", b"MZ fake")
+                zf.writestr("node_modules/dep/index.js", "x")
+            out = tmp_path / "output"
+            code = run_pipeline(
+                {
+                    "archivePath": str(zip_path),
+                    "packName": "rMate Grid",
+                    "productVersion": "v6.0",
+                    "language": "ko",
+                    "output": str(out),
+                    "options": {
+                        "parsePdf": False,
+                        "parseApiHtml": True,
+                        "parseSamples": True,
+                        "maxFileBytes": 5_000_000,
+                        "maxTotalBytes": 20_000_000,
+                        "embedding": {"mode": "deterministic_stub", "dimension": 8},
+                    },
+                }
+            )
+            self.assertEqual(code, 1)
+            report = json.loads(
+                (out / "validation_report.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["status"], "failed")
+            self.assertTrue(
+                any("excluded by the default exclusion policy" in e for e in report["errors"])
             )
 
 

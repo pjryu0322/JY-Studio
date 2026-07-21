@@ -87,6 +87,29 @@ export function ProviderWorkerZipImportCard({
         </p>
       </div>
 
+      <details className="rounded-xl border border-indigo-100 bg-white/70 px-3 py-2 text-xs text-slate-700">
+        <summary className="cursor-pointer font-semibold text-indigo-900">
+          업로드 전 확인해 주세요
+        </summary>
+        <div className="mt-2 space-y-2 leading-relaxed">
+          <p className="text-slate-600">
+            지식데이터 생성에 필요하지 않거나 보안상 처리할 수 없는 파일은 자동 제외됩니다.
+            가능하면 ZIP을 첨부하기 전에 아래 파일은 원본에서 제거해 주세요.
+          </p>
+          <ul className="list-disc space-y-0.5 pl-4 text-slate-600">
+            <li>실행 파일: exe, dll, msi</li>
+            <li>스크립트 파일: bat, cmd, ps1, sh</li>
+            <li>압축 파일: zip, 7z, rar, tar, gz</li>
+            <li>빌드/캐시 폴더: node_modules, dist, build, target, .next, .cache</li>
+            <li>시스템 파일: .DS_Store, Thumbs.db</li>
+            <li>대용량 또는 구조화 대상이 아닌 바이너리 파일</li>
+          </ul>
+          <p className="text-slate-500">
+            제외된 파일은 지식데이터 생성에 사용되지 않으며, 처리 결과에서 제외 내역을 확인할 수 있습니다.
+          </p>
+        </div>
+      </details>
+
       <input
         type="file"
         accept=".zip"

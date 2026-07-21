@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import sys
 import zipfile
 from pathlib import Path
@@ -18,6 +19,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.chunker import build_chunks_and_traces, write_chunks, write_traces
+from src.exclusion_policy import (
+    REASON_BLOCKED_ABSOLUTE_PATH,
+    REASON_BLOCKED_PATH_TRAVERSAL,
+    REASON_BLOCKED_SYMLINK,
+    REASON_FILE_SIZE_EXCEEDED,
+    ExclusionPolicy,
+    evaluate_entry,
+    load_exclusion_policy,
+)
 from src.embedding import (
     EmbeddingError,
     build_embeddings,
@@ -87,26 +97,37 @@ def merge_config(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def is_safe_zip_member(member_name: str, dest_root: Path) -> tuple[bool, str | None]:
-    """Reject absolute paths, drive letters, and Zip Slip (../) traversals."""
+    """Reject absolute paths, drive letters, and Zip Slip (../) traversals.
+
+    Reasons are fixed, testable enum strings from ``exclusion_policy`` so the
+    validation report can group security blocks the same way as business
+    exclusions. These guards are hardcoded and cannot be relaxed by config.
+    """
     name = member_name.replace("\\", "/")
     if not name or name.endswith("/"):
         return True, None  # directories handled separately
     if name.startswith("/") or name.startswith("\\"):
-        return False, "absolute path in zip entry"
+        return False, REASON_BLOCKED_ABSOLUTE_PATH
     # Windows drive / UNC
     if len(name) >= 2 and name[1] == ":":
-        return False, "drive letter path in zip entry"
+        return False, REASON_BLOCKED_ABSOLUTE_PATH
     if name.startswith("//") or name.startswith("\\\\"):
-        return False, "UNC path in zip entry"
+        return False, REASON_BLOCKED_ABSOLUTE_PATH
     parts = name.split("/")
     if any(p == ".." for p in parts):
-        return False, "path traversal (..)"
+        return False, REASON_BLOCKED_PATH_TRAVERSAL
     target = (dest_root / Path(*parts)).resolve()
     try:
         target.relative_to(dest_root.resolve())
     except ValueError:
-        return False, "resolves outside extract directory"
+        return False, REASON_BLOCKED_PATH_TRAVERSAL
     return True, None
+
+
+def _is_symlink_entry(info: zipfile.ZipInfo) -> bool:
+    """Detect symlink members via the stored unix mode bits (external_attr)."""
+    mode = info.external_attr >> 16
+    return bool(mode) and stat.S_ISLNK(mode)
 
 
 def safe_extract_zip(
@@ -115,24 +136,53 @@ def safe_extract_zip(
     *,
     max_file_bytes: int,
     max_total_bytes: int,
+    policy: ExclusionPolicy | None = None,
 ) -> dict[str, Any]:
     """
     Safely extract a ZIP into dest_root with Korean filename recovery.
 
-    Returns extraction stats including excluded/failed entries and path_meta
-    keyed by recovered sourcePath for inventory encoding fields.
+    Applies, per entry, in order: hardcoded security guards → default exclusion
+    policy (directory / file name / extension / size) → extract. The original
+    archive is never modified; only what is extracted is limited.
+
+    Returns extraction stats including excluded/failed entries, structured
+    ``excludedFiles`` (path/reason/detail), and path_meta keyed by recovered
+    sourcePath for inventory encoding fields.
     """
     dest_root.mkdir(parents=True, exist_ok=True)
+    active_policy = policy if policy is not None else load_exclusion_policy()
     result: dict[str, Any] = {
         "ok": False,
         "extracted": [],
         "excluded": [],
+        "excludedFiles": [],
         "failed": [],
         "warnings": [],
         "pathMeta": {},
         "totalBytes": 0,
         "error": None,
     }
+
+    def record_exclusion(
+        source_path: str,
+        raw_source_path: str,
+        reason: str,
+        detail: str | None,
+        *,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {
+            "sourcePath": source_path,
+            "rawSourcePath": raw_source_path,
+            "reason": reason,
+            "detail": detail,
+        }
+        if extra:
+            entry.update(extra)
+        result["excluded"].append(entry)
+        result["excludedFiles"].append(
+            {"path": source_path, "reason": reason, "detail": detail}
+        )
 
     if not archive_path.is_file():
         result["error"] = f"archive not found: {archive_path}"
@@ -154,18 +204,19 @@ def safe_extract_zip(
             if decoded.warning:
                 result["warnings"].append(decoded.warning)
 
-            # Zip Slip checks apply to both recovered and raw paths
+            # 1. Security guards (hardcoded) — apply to both recovered and raw paths.
             for candidate, label in ((name, "decoded"), (raw_name, "raw")):
                 safe, reason = is_safe_zip_member(candidate, dest_root)
                 if not safe:
-                    result["excluded"].append(
-                        {
-                            "sourcePath": name,
-                            "rawSourcePath": raw_name,
+                    record_exclusion(
+                        name,
+                        raw_name,
+                        reason or REASON_BLOCKED_PATH_TRAVERSAL,
+                        label,
+                        extra={
                             "pathEncoding": decoded.path_encoding,
                             "pathDecoded": decoded.path_decoded,
-                            "reason": f"{reason or 'unsafe path'} ({label})",
-                        }
+                        },
                     )
                     break
             else:
@@ -177,16 +228,27 @@ def safe_extract_zip(
                         dir_path.mkdir(parents=True, exist_ok=True)
                     continue
 
+                # 1b. Symlink guard (hardcoded security) — never extracted.
+                if _is_symlink_entry(info):
+                    record_exclusion(name, raw_name, REASON_BLOCKED_SYMLINK, None)
+                    continue
+
+                # 2-4. Default exclusion policy: directory → file name → extension → size.
+                policy_reason, policy_detail = evaluate_entry(
+                    active_policy, name, info.file_size
+                )
+                if policy_reason is not None:
+                    record_exclusion(name, raw_name, policy_reason, policy_detail)
+                    continue
+
+                # 5. Hardcoded per-file ceiling (security). Kept independent of
+                # the (relaxable) policy size so it can never be turned off.
                 if info.file_size > max_file_bytes:
-                    result["excluded"].append(
-                        {
-                            "sourcePath": name,
-                            "rawSourcePath": raw_name,
-                            "reason": (
-                                f"file exceeds maxFileBytes "
-                                f"({info.file_size} > {max_file_bytes})"
-                            ),
-                        }
+                    record_exclusion(
+                        name,
+                        raw_name,
+                        REASON_FILE_SIZE_EXCEEDED,
+                        str(info.file_size),
                     )
                     continue
                 if total + info.file_size > max_total_bytes:
@@ -266,6 +328,9 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     opts = cfg.get("options") or {}
     max_file = int(opts.get("maxFileBytes", DEFAULT_MAX_FILE_BYTES))
     max_total = int(opts.get("maxTotalBytes", DEFAULT_MAX_TOTAL_BYTES))
+    # P7.4: default exclusion policy (config file, merged over built-in defaults).
+    exclusion_policy = load_exclusion_policy(opts.get("exclusionPolicyPath"))
+    excluded_files: list[dict[str, Any]] = []
 
     extract_root = output_dir / "_extracted"
     artifacts_root = output_dir / "parser_artifacts"
@@ -305,6 +370,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
             chunks_count=0,
             documents_count=0,
             status=status,
+            excluded_files=excluded_files,
         )
         write_validation_report(report, output_dir / "validation_report.json")
         write_inventory([], output_dir / "inventory.json")
@@ -319,7 +385,9 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         extract_root,
         max_file_bytes=max_file,
         max_total_bytes=max_total,
+        policy=exclusion_policy,
     )
+    excluded_files = extraction.get("excludedFiles") or []
     for item in extraction.get("excluded") or []:
         warnings.append(
             f"excluded zip entry: {item.get('sourcePath')} ({item.get('reason')})"
@@ -343,6 +411,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
             chunks_count=0,
             documents_count=0,
             status=status,
+            excluded_files=excluded_files,
         )
         write_validation_report(report, output_dir / "validation_report.json")
         write_inventory([], output_dir / "inventory.json")
@@ -506,7 +575,16 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     }
 
     if not knowledge:
-        errors.append("no knowledge_target files found in archive")
+        if not inventory and excluded_files:
+            # Every archive entry was removed by the default exclusion policy or
+            # a security guard — nothing left to structure. Make this explicit so
+            # the Admin sees a clear "보완 필요" cause rather than an empty result.
+            errors.append(
+                "all archive files were excluded by the default exclusion policy "
+                f"(excluded {len(excluded_files)} entries); nothing to structure"
+            )
+        else:
+            errors.append("no knowledge_target files found in archive")
         status = "failed"
     elif not documents and not chunks:
         errors.append("no structured documents produced")
@@ -533,6 +611,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         status=status,
         embeddings_count=len(embeddings),
         embedding_summary=embedding_summary,
+        excluded_files=excluded_files,
     )
     write_validation_report(report, output_dir / "validation_report.json")
     write_markdown_review(

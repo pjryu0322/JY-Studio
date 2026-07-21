@@ -9,6 +9,20 @@ from pathlib import Path
 from typing import Any
 
 
+def build_exclusion_summary(
+    excluded_files: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Compact, report-friendly summary of policy/security exclusions."""
+    files = excluded_files or []
+    by_reason: Counter[str] = Counter(
+        str(f.get("reason") or "unknown") for f in files
+    )
+    return {
+        "total": len(files),
+        "byReason": dict(by_reason),
+    }
+
+
 def build_validation_report(
     *,
     inventory: list[dict[str, Any]],
@@ -21,6 +35,7 @@ def build_validation_report(
     status: str,
     embeddings_count: int = 0,
     embedding_summary: dict[str, Any] | None = None,
+    excluded_files: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     classifications = Counter(e.get("classification") for e in inventory)
     parser_summary: dict[str, Any] = {}
@@ -60,6 +75,7 @@ def build_validation_report(
         "tokenLimitExceeded": 0,
     }
 
+    excluded_list = excluded_files or []
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "status": status,
@@ -69,6 +85,7 @@ def build_validation_report(
             "reviewTargets": classifications.get("review_target", 0),
             "supportingAssets": classifications.get("supporting_asset", 0),
             "excluded": classifications.get("excluded", 0),
+            "excludedFromArchive": len(excluded_list),
             "documents": documents_count,
             "chunks": chunks_count,
             "embeddings": embeddings_count,
@@ -83,6 +100,10 @@ def build_validation_report(
             "licenseKeyDetected": bool(license_signals.get("licenseKeyDetected")),
             "licenseFileCount": len(license_signals.get("licenseFiles") or []),
         },
+        # P7.4 additive fields — optional for downstream consumers. The TypeScript
+        # Store tolerates unknown/additive report fields, so these never break import.
+        "exclusionSummary": build_exclusion_summary(excluded_list),
+        "excludedFiles": excluded_list,
         "warnings": warnings,
         "errors": errors,
     }

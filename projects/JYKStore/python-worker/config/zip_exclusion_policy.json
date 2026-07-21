@@ -1,0 +1,36 @@
+{
+  "excludeExtensions": [
+    ".exe",
+    ".dll",
+    ".msi",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".sh",
+    ".jar",
+    ".war",
+    ".class",
+    ".bin",
+    ".dat",
+    ".zip",
+    ".7z",
+    ".rar",
+    ".tar",
+    ".gz"
+  ],
+  "excludeDirectories": [
+    ".git",
+    "__MACOSX",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    ".cache"
+  ],
+  "excludeFileNames": [
+    ".DS_Store",
+    "Thumbs.db"
+  ],
+  "maxFileSizeMb": 50
+}
