@@ -108,7 +108,7 @@ importWorkerOutputToStoreDb({
   sourceDocumentIdByPath?,
   prismaClient?,
   requirePgvector?,        // true → pgvector must be available (hard fail)
-  upsertVector?,           // injectable for tests
+  upsertVectors?,          // injectable for tests (batched pgvector upsert)
 });
 ```
 
@@ -137,17 +137,24 @@ Behavior:
   `chunkGenerationId = resolved`, `tags = chunk.tags ?? chunk.keywords ?? []`,
   `sourceDocumentId` from `sourceDocumentIdByPath[sourcePath]` or `null`, Worker
   provenance in `metadata`; `metadata.indexGenerationId` mirrors the resolved
-  `chunkGenerationId` for legacy dual-read).
+  `chunkGenerationId` for legacy dual-read). The Store `KnowledgeChunk.id` is
+  generated up front so chunks can be written with `createMany`.
 - Persists each `embeddings.json` entry as a `KnowledgeChunkEmbedding` using the
-  **newly created `KnowledgeChunk.id`** (not the Worker `chunkId`), carrying
+  **pre-generated `KnowledgeChunk.id`** (not the Worker `chunkId`), carrying
   `provider / model / dimension / vector / contentHash` and
   `searchIndexGenerationId`.
 - Mirrors each Worker vector into `SearchIndexVector` (pgvector) via
-  `upsertSearchIndexVector()` — **Store owns all pgvector writes; the Python
+  `upsertSearchIndexVectorsBatch()` — **Store owns all pgvector writes; the Python
   Worker never touches pgvector.** `requirePgvector=true` forces
   `JYKSTORE_REQUIRE_PGVECTOR=true`, so an unavailable pgvector hard-fails per
   `search-vector-runtime.ts`; otherwise dev/test falls back to JSON-only and
   records `vectorSkippedCount` + `vectorSyncWarning`.
+- **Batched writes (scalability):** chunks and embeddings are inserted with
+  `createMany` (≤1000 rows/statement) and vectors with one multi-row
+  `INSERT ... ON CONFLICT` per batch (≤500 rows/statement). The query count stays
+  a handful of statements regardless of chunk count, so a large pack no longer
+  risks the interactive-transaction timeout that thousands of per-chunk
+  round-trips used to hit.
 - Runs chunk + embedding + vector writes in **one transaction** — any failure
   rolls back the whole import.
 - Re-run policy: first deletes the generation's existing `SearchIndexVector`

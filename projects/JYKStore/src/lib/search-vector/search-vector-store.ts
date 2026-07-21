@@ -116,6 +116,93 @@ export async function upsertSearchIndexVector(
   }
 }
 
+export type SearchVectorBatchWriteResult = {
+  upsertedCount: number;
+  skippedCount: number;
+  /** Present only when the whole batch was skipped (pgvector unavailable, dev/test). */
+  skippedReason?: string;
+};
+
+/**
+ * Batched variant of {@link upsertSearchIndexVector} for bulk import.
+ *
+ * Motivation: the worker-output DB import used to call the single-row upsert once
+ * per chunk, so a large pack issued thousands of sequential round-trips inside one
+ * interactive transaction and could exceed the transaction timeout. This helper
+ * collapses those into one multi-row `INSERT ... ON CONFLICT` per `batchSize`
+ * rows, so the same time budget covers far more data.
+ *
+ * Differences from the single-row upsert (intentional):
+ *  - It does NOT re-verify per row that the chunk exists / belongs to the
+ *    generation. Callers (worker-output DB import) create the chunks in the SAME
+ *    transaction and have already asserted the generation descriptor, so those
+ *    lookups would only re-introduce the O(n) round-trips this path removes.
+ *  - It still validates every vector (finite + dimension) up front and preserves
+ *    the pgvector-unavailable fallback policy (throws in prod / require mode,
+ *    reports all rows skipped in dev/test).
+ */
+export async function upsertSearchIndexVectorsBatch(
+  inputs: SearchVectorWriteInput[],
+  client: WriteClient = prisma,
+  env: NodeJS.ProcessEnv = process.env,
+  batchSize = 500,
+): Promise<SearchVectorBatchWriteResult> {
+  if (inputs.length === 0) {
+    return { upsertedCount: 0, skippedCount: 0 };
+  }
+
+  for (const input of inputs) {
+    if (!isFiniteNumberVector(input.vector)) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_VECTOR_INVALID",
+        `upsertSearchIndexVectorsBatch: vector for chunk ${input.chunkId} is empty or contains NaN/Infinity.`,
+      );
+    }
+    if (input.vector.length !== input.dimension) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_DIMENSION_MISMATCH",
+        `upsertSearchIndexVectorsBatch: expected dimension ${input.dimension}, got ${input.vector.length} for chunk ${input.chunkId}.`,
+      );
+    }
+  }
+
+  const effectiveBatchSize = Math.max(1, Math.floor(batchSize));
+  let upsertedCount = 0;
+  try {
+    for (let start = 0; start < inputs.length; start += effectiveBatchSize) {
+      const batch = inputs.slice(start, start + effectiveBatchSize);
+      const rows = batch.map(
+        (input) =>
+          Prisma.sql`(${randomUUID()}, ${input.searchIndexGenerationId}, ${input.chunkId}, ${input.provider}, ${input.model}, ${input.dimension}, ${input.contentHash}, ${toVectorLiteral(input.vector)}::vector, now(), now())`,
+      );
+      await client.$executeRaw`
+        INSERT INTO "SearchIndexVector"
+          ("id", "searchIndexGenerationId", "chunkId", "provider", "model", "dimension", "contentHash", "vector", "createdAt", "updatedAt")
+        VALUES ${Prisma.join(rows)}
+        ON CONFLICT ("searchIndexGenerationId", "chunkId", "provider", "model")
+        DO UPDATE SET
+          "dimension" = EXCLUDED."dimension",
+          "contentHash" = EXCLUDED."contentHash",
+          "vector" = EXCLUDED."vector",
+          "updatedAt" = now()
+      `;
+      upsertedCount += batch.length;
+    }
+    return { upsertedCount, skippedCount: 0 };
+  } catch (error) {
+    if (isPgvectorUnavailableError(error)) {
+      handlePgvectorUnavailable("upsertSearchIndexVectorsBatch", env);
+      return {
+        upsertedCount: 0,
+        skippedCount: inputs.length,
+        skippedReason:
+          "pgvector unavailable in this environment — JSON-only fallback (dev/test).",
+      };
+    }
+    throw error;
+  }
+}
+
 /**
  * Deletes SearchIndexVector rows for a chunk (used when a chunk is retired/replaced).
  * Silently no-ops when pgvector is unavailable outside production.

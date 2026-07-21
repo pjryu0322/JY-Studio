@@ -18,6 +18,7 @@
  * explicitly or resolved from the generation, and re-runs delete the existing
  * chunks for that resolved generation before reinserting.
  */
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { IMPORT_CHANNELS } from "@/lib/python-worker/import-channel";
@@ -25,7 +26,7 @@ import { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-co
 import type { WorkerOutputImportPayload } from "@/lib/python-worker/worker-output-import-service";
 import {
   deleteSearchIndexVectorsForGeneration,
-  upsertSearchIndexVector,
+  upsertSearchIndexVectorsBatch,
 } from "@/lib/search-vector/search-vector-store";
 
 export { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-constants";
@@ -40,10 +41,23 @@ export class WorkerOutputDbImportError extends Error {
 }
 
 type PrismaClientLike = typeof prisma;
-type UpsertSearchIndexVectorFn = typeof upsertSearchIndexVector;
+type UpsertVectorsBatchFn = typeof upsertSearchIndexVectorsBatch;
 type DeleteVectorsForGenerationFn = typeof deleteSearchIndexVectorsForGeneration;
 
 const IMPORTABLE_GENERATION_STATUSES = new Set(["PENDING", "EMBEDDING", "INDEXING"]);
+
+// The import runs inside ONE atomic interactive transaction. Writes are BATCHED
+// (chunks + embeddings via createMany, vectors via one multi-row INSERT per
+// batch), so a large pack no longer issues thousands of sequential round-trips —
+// query count is now a handful of batched statements regardless of chunk count.
+// The timeout stays generous so genuinely large imports still finish comfortably,
+// but a real hang eventually fails instead of blocking forever.
+const WORKER_IMPORT_TX_TIMEOUT_MS = 300_000;
+const WORKER_IMPORT_TX_MAX_WAIT_MS = 20_000;
+
+// Rows per createMany statement. Keeps the bound-parameter count well under
+// Postgres' ~65535 limit (KnowledgeChunk has ~12 columns → ~12 params/row).
+const WORKER_IMPORT_CREATE_MANY_BATCH_SIZE = 1_000;
 
 /** Generation descriptor the import is bound to (subset of SearchIndexGeneration). */
 export type ImportSearchGenerationDescriptor = {
@@ -67,8 +81,8 @@ export type WorkerOutputDbImportInput = {
   prismaClient?: PrismaClientLike;
   /** true → pgvector must be available (hard fail on unavailable). */
   requirePgvector?: boolean;
-  /** Injectable for tests; defaults to the real pgvector upsert helper. */
-  upsertVector?: UpsertSearchIndexVectorFn;
+  /** Injectable for tests; defaults to the real batched pgvector upsert helper. */
+  upsertVectors?: UpsertVectorsBatchFn;
   /** Injectable for tests; defaults to the real pgvector generation-delete helper. */
   deleteVectorsForGeneration?: DeleteVectorsForGenerationFn;
 };
@@ -364,10 +378,20 @@ export function buildWorkerOutputImportPlan(input: {
   };
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  const step = Math.max(1, Math.floor(size));
+  for (let start = 0; start < items.length; start += step) {
+    batches.push(items.slice(start, start + step));
+  }
+  return batches;
+}
+
 /**
  * Persist a validated Worker output payload into Store DB + vector index in one
  * transaction. Chunk + embedding + vector writes are atomic: any failure rolls
- * back the whole import.
+ * back the whole import. Writes are batched (createMany + multi-row vector INSERT)
+ * so the query count stays flat regardless of chunk count.
  */
 export async function importWorkerOutputToStoreDb(
   input: WorkerOutputDbImportInput,
@@ -390,7 +414,7 @@ export async function importWorkerOutputToStoreDb(
   }
 
   const client = input.prismaClient ?? prisma;
-  const upsertVector = input.upsertVector ?? upsertSearchIndexVector;
+  const upsertVectors = input.upsertVectors ?? upsertSearchIndexVectorsBatch;
   const deleteVectors =
     input.deleteVectorsForGeneration ?? deleteSearchIndexVectorsForGeneration;
   const vectorEnv: NodeJS.ProcessEnv = input.requirePgvector
@@ -445,18 +469,23 @@ export async function importWorkerOutputToStoreDb(
       },
     });
 
+    // Assign the Store chunk id up front so chunks, embeddings, and vectors can
+    // all be written in bulk (createMany / multi-row INSERT) instead of one
+    // round-trip per chunk. worker chunkId -> generated Store KnowledgeChunk.id.
     const mapping: Record<string, string> = {};
-    let vectorUpsertedCount = 0;
-    let vectorSkippedCount = 0;
-    let vectorSyncWarning: string | undefined;
+    const chunkRows: Array<Prisma.KnowledgeChunkCreateManyInput> = [];
+    const embeddingRows: Array<Prisma.KnowledgeChunkEmbeddingCreateManyInput> = [];
+    const vectorInputs: Array<{
+      searchIndexGenerationId: string;
+      chunkId: string;
+      provider: string;
+      model: string;
+      dimension: number;
+      contentHash: string;
+      vector: number[];
+    }> = [];
 
     for (const chunkPlan of plan.chunkPlans) {
-      const createdChunk = await tx.knowledgeChunk.create({
-        data: chunkPlan.data,
-        select: { id: true },
-      });
-      mapping[chunkPlan.workerChunkId] = createdChunk.id;
-
       const embeddingPlan = plan.embeddingPlanByWorkerChunkId.get(chunkPlan.workerChunkId);
       if (!embeddingPlan) {
         throw new WorkerOutputDbImportError(
@@ -464,40 +493,42 @@ export async function importWorkerOutputToStoreDb(
           `chunk ${chunkPlan.workerChunkId} has no embedding plan`,
         );
       }
+      const storeChunkId = randomUUID();
+      mapping[chunkPlan.workerChunkId] = storeChunkId;
 
-      await tx.knowledgeChunkEmbedding.create({
-        data: {
-          chunkId: createdChunk.id,
-          versionId: embeddingPlan.versionId,
-          provider: embeddingPlan.provider,
-          model: embeddingPlan.model,
-          dimension: embeddingPlan.dimension,
-          vector: embeddingPlan.vector as unknown as Prisma.InputJsonValue,
-          contentHash: embeddingPlan.contentHash,
-          searchIndexGenerationId,
-        },
+      chunkRows.push({ id: storeChunkId, ...chunkPlan.data });
+      embeddingRows.push({
+        chunkId: storeChunkId,
+        versionId: embeddingPlan.versionId,
+        provider: embeddingPlan.provider,
+        model: embeddingPlan.model,
+        dimension: embeddingPlan.dimension,
+        vector: embeddingPlan.vector as unknown as Prisma.InputJsonValue,
+        contentHash: embeddingPlan.contentHash,
+        searchIndexGenerationId,
       });
-
-      const vectorResult = await upsertVector(
-        {
-          searchIndexGenerationId,
-          chunkId: createdChunk.id,
-          provider: embeddingPlan.provider,
-          model: embeddingPlan.model,
-          dimension: embeddingPlan.dimension,
-          contentHash: embeddingPlan.contentHash,
-          vector: embeddingPlan.vector,
-        },
-        tx,
-        vectorEnv,
-      );
-      if (vectorResult.skipped) {
-        vectorSkippedCount += 1;
-        vectorSyncWarning = vectorResult.reason;
-      } else {
-        vectorUpsertedCount += 1;
-      }
+      vectorInputs.push({
+        searchIndexGenerationId,
+        chunkId: storeChunkId,
+        provider: embeddingPlan.provider,
+        model: embeddingPlan.model,
+        dimension: embeddingPlan.dimension,
+        contentHash: embeddingPlan.contentHash,
+        vector: embeddingPlan.vector,
+      });
     }
+
+    for (const batch of chunkArray(chunkRows, WORKER_IMPORT_CREATE_MANY_BATCH_SIZE)) {
+      await tx.knowledgeChunk.createMany({ data: batch });
+    }
+    for (const batch of chunkArray(embeddingRows, WORKER_IMPORT_CREATE_MANY_BATCH_SIZE)) {
+      await tx.knowledgeChunkEmbedding.createMany({ data: batch });
+    }
+
+    const vectorResult = await upsertVectors(vectorInputs, tx, vectorEnv);
+    const vectorUpsertedCount = vectorResult.upsertedCount;
+    const vectorSkippedCount = vectorResult.skippedCount;
+    const vectorSyncWarning = vectorResult.skippedReason;
 
     await tx.searchIndexGeneration.update({
       where: { id: searchIndexGenerationId },
@@ -517,6 +548,9 @@ export async function importWorkerOutputToStoreDb(
       vectorSkippedCount,
       vectorSyncWarning,
     };
+  }, {
+    timeout: WORKER_IMPORT_TX_TIMEOUT_MS,
+    maxWait: WORKER_IMPORT_TX_MAX_WAIT_MS,
   });
 
   return {

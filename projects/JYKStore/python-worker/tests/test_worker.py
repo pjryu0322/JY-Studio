@@ -261,6 +261,52 @@ class ChunkTraceTests(unittest.TestCase):
         self.assertEqual(len(embeddings), len(chunks))
         self.assertEqual(traces[0]["parser"], "html_api")
 
+    def test_cross_document_slug_collision_yields_unique_chunk_ids(self):
+        # Two different documents whose (documentId + heading) slugs collide after
+        # the 60-char truncation must still produce unique chunk/embedding ids,
+        # otherwise embeddings.json fails validation with "duplicate embedding".
+        long_prefix = "리아모어-rmategridh5web_v6-0-v6-0-sample-excel_export_titlefooter"
+        docs = [
+            {
+                "documentId": f"{long_prefix}-alpha",
+                "sourcePath": "sample/excel_export_titlefooter.html",
+                "sourceType": "sample_html",
+                "title": "Title Footer A",
+                "sections": [{"heading": "Overview", "content": "body A", "codeBlocks": []}],
+                "entities": [],
+                "codeBlocks": [],
+                "metadata": {"parser": "html_sample", "parserVersion": "0.1.0"},
+            },
+            {
+                "documentId": f"{long_prefix}-beta",
+                "sourcePath": "sample/excel_export_titlefooter2.html",
+                "sourceType": "sample_html",
+                "title": "Title Footer B",
+                "sections": [{"heading": "Overview", "content": "body B", "codeBlocks": []}],
+                "entities": [],
+                "codeBlocks": [],
+                "metadata": {"parser": "html_sample", "parserVersion": "0.1.0"},
+            },
+        ]
+        inv = {
+            "sample/excel_export_titlefooter.html": {"sha256": "aa"},
+            "sample/excel_export_titlefooter2.html": {"sha256": "bb"},
+        }
+        chunks, traces = build_chunks_and_traces(docs, inv)
+
+        ids = [c["chunkId"] for c in chunks]
+        self.assertEqual(len(ids), len(set(ids)), "chunk ids must be globally unique")
+        self.assertEqual(len(traces), len(chunks))
+        self.assertEqual(
+            len({t["traceId"] for t in traces}), len(traces), "trace ids must be unique"
+        )
+        # deterministic_stub embeddings expose the same duplicate check the
+        # validator uses (one embedding per chunkId).
+        cfg = resolve_embedding_config({"mode": "deterministic_stub", "dimension": 8}, {})
+        embeddings = build_embeddings(chunks, cfg)
+        emb_ids = [e["chunkId"] for e in embeddings]
+        self.assertEqual(len(emb_ids), len(set(emb_ids)), "no duplicate embedding chunkId")
+
 
 class DoclingOptionalTests(unittest.TestCase):
     def test_html_still_works_without_docling(self):

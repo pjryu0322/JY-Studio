@@ -510,9 +510,11 @@ type FakePrismaCapture = {
   generationUpdates: unknown[];
 };
 
-type VectorResult =
-  | { ok: true; skipped: false }
-  | { ok: true; skipped: true; reason: string };
+type VectorBatchResult = {
+  upsertedCount: number;
+  skippedCount: number;
+  skippedReason?: string;
+};
 
 function makeFakePrisma(opts?: {
   generation?: ImportSearchGenerationDescriptor | null;
@@ -525,7 +527,6 @@ function makeFakePrisma(opts?: {
     embeddings: [],
     generationUpdates: [],
   };
-  let seq = 0;
   const tx = {
     searchIndexGeneration: {
       findUnique: async () => generation,
@@ -539,10 +540,11 @@ function makeFakePrisma(opts?: {
         capture.deletedChunkWheres.push(where);
         return { count: 0 };
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        const id = `chunk-db-${++seq}`;
-        capture.chunks.push({ id, data });
-        return { id };
+      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        for (const row of data) {
+          capture.chunks.push({ id: row.id as string, data: row });
+        }
+        return { count: data.length };
       },
     },
     knowledgeChunkEmbedding: {
@@ -550,9 +552,9 @@ function makeFakePrisma(opts?: {
         capture.deletedEmbeddingWheres.push(where);
         return { count: 0 };
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        capture.embeddings.push(data);
-        return { id: `emb-db-${capture.embeddings.length}` };
+      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        for (const row of data) capture.embeddings.push(row);
+        return { count: data.length };
       },
     },
   };
@@ -562,18 +564,23 @@ function makeFakePrisma(opts?: {
   return { client, capture };
 }
 
-function makeVectorStore(behavior?: (input: { chunkId: string }) => VectorResult) {
-  const upsertCalls: Array<{ input: Record<string, unknown>; env: NodeJS.ProcessEnv }> = [];
+function makeVectorStore(
+  behavior?: (inputs: Array<{ chunkId: string }>) => VectorBatchResult,
+) {
+  const upsertCalls: Array<{
+    inputs: Array<Record<string, unknown>>;
+    env: NodeJS.ProcessEnv;
+  }> = [];
   const deleteCalls: Array<{ generationId: string; env: NodeJS.ProcessEnv }> = [];
   const upsert = (async (
-    input: Record<string, unknown>,
+    inputs: Array<Record<string, unknown>>,
     _client: unknown,
     env: NodeJS.ProcessEnv,
   ) => {
-    upsertCalls.push({ input, env });
+    upsertCalls.push({ inputs, env });
     return behavior
-      ? behavior(input as { chunkId: string })
-      : ({ ok: true, skipped: false } as VectorResult);
+      ? behavior(inputs as Array<{ chunkId: string }>)
+      : ({ upsertedCount: inputs.length, skippedCount: 0 } as VectorBatchResult);
   }) as never;
   const deleteForGeneration = (async (
     generationId: string,
@@ -587,7 +594,7 @@ function makeVectorStore(behavior?: (input: { chunkId: string }) => VectorResult
 
 function vectorStubs() {
   const vs = makeVectorStore();
-  return { upsertVector: vs.upsert, deleteVectorsForGeneration: vs.deleteForGeneration };
+  return { upsertVectors: vs.upsert, deleteVectorsForGeneration: vs.deleteForGeneration };
 }
 
 describe("python worker output DB import (P3/P4)", () => {
@@ -623,7 +630,7 @@ describe("python worker output DB import (P3/P4)", () => {
       chunkGenerationId: "cg1",
       searchIndexGenerationId: "sig1",
       prismaClient: client as never,
-      upsertVector: vs.upsert,
+      upsertVectors: vs.upsert,
       deleteVectorsForGeneration: vs.deleteForGeneration,
     });
     assert.equal(result.importedChunkCount, 1);
@@ -637,8 +644,10 @@ describe("python worker output DB import (P3/P4)", () => {
     // embedding + vector must reference the created KnowledgeChunk.id, not worker chunkId
     assert.equal(capture.embeddings[0]?.chunkId, createdChunkId);
     assert.notEqual(capture.embeddings[0]?.chunkId, "grid-section-001");
-    assert.equal(vs.upsertCalls[0]?.input.chunkId, createdChunkId);
-    assert.equal(vs.upsertCalls[0]?.input.searchIndexGenerationId, "sig1");
+    assert.equal(vs.upsertCalls.length, 1);
+    assert.equal(vs.upsertCalls[0]?.inputs.length, 1);
+    assert.equal(vs.upsertCalls[0]?.inputs[0]?.chunkId, createdChunkId);
+    assert.equal(vs.upsertCalls[0]?.inputs[0]?.searchIndexGenerationId, "sig1");
     // stale vectors for the generation are cleared before reinsert
     assert.equal(vs.deleteCalls.length, 1);
     assert.equal(vs.deleteCalls[0]?.generationId, "sig1");
@@ -762,7 +771,7 @@ describe("python worker output DB import (P3/P4)", () => {
         searchIndexGenerationId: "sig1",
         requirePgvector: true,
         prismaClient: client as never,
-        upsertVector: vs.upsert,
+        upsertVectors: vs.upsert,
         deleteVectorsForGeneration: vs.deleteForGeneration,
       }),
     );
@@ -774,16 +783,17 @@ describe("python worker output DB import (P3/P4)", () => {
 
   it("records vectorSkipped + warning on pgvector unavailable fallback", async () => {
     const { client } = makeFakePrisma();
-    const vs = makeVectorStore(() => ({
-      ok: true,
-      skipped: true,
-      reason: "pgvector unavailable in this environment — JSON-only fallback (dev/test).",
+    const vs = makeVectorStore((inputs) => ({
+      upsertedCount: 0,
+      skippedCount: inputs.length,
+      skippedReason:
+        "pgvector unavailable in this environment — JSON-only fallback (dev/test).",
     }));
     const result = await importWorkerOutputToStoreDb({
       payload: fixturePayload(),
       searchIndexGenerationId: "sig1",
       prismaClient: client as never,
-      upsertVector: vs.upsert,
+      upsertVectors: vs.upsert,
       deleteVectorsForGeneration: vs.deleteForGeneration,
     });
     assert.equal(result.vectorUpsertedCount, 0);

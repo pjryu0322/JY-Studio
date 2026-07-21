@@ -30,6 +30,31 @@ def _slug(text: str) -> str:
     return text.strip("-")[:60] or "chunk"
 
 
+def _dedupe_id(candidate: str, seen: set[str]) -> str:
+    """Guarantee a globally-unique id (<=120 chars).
+
+    chunkId is built from a 60-char-truncated ``documentId-heading`` slug plus a
+    per-document ``section_no``. The truncation can drop the distinguishing tail
+    of two different documents (e.g. ``excel_export_titlefooter*``), collapsing
+    them to the same base; since ``section_no`` is only unique *within* a
+    document, that yields cross-document duplicate ids (and a "duplicate
+    embedding for chunkId" validation failure). Append an incrementing suffix on
+    collision so every chunk/embedding id stays unique.
+    """
+    if candidate not in seen:
+        seen.add(candidate)
+        return candidate
+    n = 2
+    while True:
+        suffix = f"-{n}"
+        trimmed = candidate[: 120 - len(suffix)]
+        deduped = f"{trimmed}{suffix}"
+        if deduped not in seen:
+            seen.add(deduped)
+            return deduped
+        n += 1
+
+
 def _fit_keywords(title: str, heading: str, keywords: list[str]) -> list[str]:
     """Trim keywords so the passage overhead alone can't blow the token budget.
 
@@ -136,6 +161,9 @@ def build_chunks_and_traces(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     chunks: list[dict[str, Any]] = []
     traces: list[dict[str, Any]] = []
+    # Track chunk ids across ALL documents so truncated-slug collisions between
+    # different documents can't produce duplicate chunk/embedding ids.
+    seen_chunk_ids: set[str] = set()
 
     for doc in documents:
         # Skip license_review from search chunks — review only
@@ -230,6 +258,7 @@ def build_chunks_and_traces(
                 chunk_id = f"{base}-{section_no:03d}"
                 if len(chunk_id) > 120:
                     chunk_id = f"{_slug(doc.get('documentId', 'doc'))}-{section_no:03d}"
+                chunk_id = _dedupe_id(chunk_id, seen_chunk_ids)
                 trace_id = f"trace-{chunk_id}"
 
                 chunk = {
