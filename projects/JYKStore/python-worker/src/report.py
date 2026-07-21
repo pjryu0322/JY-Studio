@@ -19,6 +19,8 @@ def build_validation_report(
     chunks_count: int,
     documents_count: int,
     status: str,
+    embeddings_count: int = 0,
+    embedding_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     classifications = Counter(e.get("classification") for e in inventory)
     parser_summary: dict[str, Any] = {}
@@ -47,6 +49,17 @@ def build_validation_report(
     total_failed = sum(v["failed"] for v in parser_summary.values())
     total_skipped = sum(v["skipped"] for v in parser_summary.values())
 
+    embedding_block = embedding_summary or {
+        "mode": None,
+        "provider": None,
+        "model": None,
+        "dimension": None,
+        "status": "skipped",
+        "embeddedChunks": 0,
+        "missingEmbeddings": chunks_count,
+        "tokenLimitExceeded": 0,
+    }
+
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "status": status,
@@ -58,10 +71,12 @@ def build_validation_report(
             "excluded": classifications.get("excluded", 0),
             "documents": documents_count,
             "chunks": chunks_count,
+            "embeddings": embeddings_count,
             "parseOk": total_ok,
             "parseFailed": total_failed,
             "parseSkipped": total_skipped,
         },
+        "embedding": embedding_block,
         "parsers": parser_summary,
         "license": {
             "licenseDetected": bool(license_signals.get("licenseDetected")),

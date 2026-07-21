@@ -348,6 +348,15 @@ class EndToEndMiniZipTests(unittest.TestCase):
                 self.assertEqual(emb["provider"], "test-stub")
                 self.assertTrue(all(isinstance(v, float) for v in emb["vector"]))
 
+            report = json.loads(
+                (out / "validation_report.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["totals"]["embeddings"], len(chunks))
+            self.assertEqual(report["embedding"]["status"], "ok")
+            self.assertEqual(report["embedding"]["embeddedChunks"], len(chunks))
+            self.assertEqual(report["embedding"]["missingEmbeddings"], 0)
+            self.assertEqual(report["embedding"]["mode"], "deterministic_stub")
+
 
 class KoreanZipFilenameTests(unittest.TestCase):
     def test_decode_cp949_filename(self):
@@ -656,6 +665,92 @@ class EmbeddingTests(unittest.TestCase):
         with self.assertRaises(EmbeddingError) as ctx:
             build_embeddings(chunks, cfg)
         self.assertIn("does not exist", str(ctx.exception))
+
+    def test_local_e5_model_path_file_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_file = Path(tmp) / "model.bin"
+            model_file.write_bytes(b"not a directory")
+            cfg = resolve_embedding_config(
+                {"mode": "local_e5", "modelPath": str(model_file)}, {}
+            )
+            with self.assertRaises(EmbeddingError) as ctx:
+                build_embeddings(self._chunks(1), cfg)
+            self.assertIn("directory", str(ctx.exception))
+
+    def test_passage_text_prefers_explicit_tags(self):
+        chunk = {
+            "title": "T",
+            "section": "S",
+            "tags": ["x", "y"],
+            "keywords": ["a", "b"],
+            "content": "C",
+        }
+        self.assertEqual(build_passage_text(chunk), "passage: T\nS\nx\ny\nC")
+
+    def test_passage_text_falls_back_to_keywords(self):
+        chunk = {"title": "T", "section": "S", "keywords": ["a", "b"], "content": "C"}
+        self.assertEqual(build_passage_text(chunk), "passage: T\nS\na\nb\nC")
+
+    def test_token_limit_exceeded_raises(self):
+        cfg = resolve_embedding_config(
+            {"mode": "deterministic_stub", "dimension": 8}, {}
+        )
+        big = {
+            "chunkId": "big-001",
+            "title": "T",
+            "content": "a" * 3000,  # ~750 estimated tokens > 512
+            "section": "S",
+            "keywords": [],
+            "traceId": "trace-big",
+        }
+        with self.assertRaises(EmbeddingError) as ctx:
+            build_embeddings([big], cfg)
+        self.assertIn("token limit", str(ctx.exception))
+
+    def test_pipeline_writes_embeddings_json_on_failure(self):
+        from parse_archive import run_pipeline
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zip_path = tmp_path / "mini.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr(
+                    "Docs/api/DataGrid.html",
+                    "<html><head><title>DataGrid</title></head>"
+                    "<body><h1>DataGrid</h1><h2>Properties</h2>"
+                    "<p>grid content</p></body></html>",
+                )
+            out = tmp_path / "output"
+            code = run_pipeline(
+                {
+                    "archivePath": str(zip_path),
+                    "packName": "rMate Grid",
+                    "productVersion": "v6.0",
+                    "language": "ko",
+                    "output": str(out),
+                    "options": {
+                        "parsePdf": False,
+                        "parseApiHtml": True,
+                        "parseSamples": True,
+                        "maxFileBytes": 5_000_000,
+                        "maxTotalBytes": 20_000_000,
+                        # local_e5 without modelPath -> embedding generation fails
+                        "embedding": {"mode": "local_e5"},
+                    },
+                }
+            )
+            self.assertEqual(code, 1)
+            self.assertTrue((out / "embeddings.json").is_file())
+            self.assertEqual(
+                json.loads((out / "embeddings.json").read_text(encoding="utf-8")), []
+            )
+            report = json.loads(
+                (out / "validation_report.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["embedding"]["status"], "failed")
+            self.assertTrue(
+                any("embedding generation failed" in e for e in report["errors"])
+            )
 
 
 if __name__ == "__main__":

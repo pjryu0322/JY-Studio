@@ -1,8 +1,26 @@
 # JYKStore Python Worker
 
-Independent CLI worker that turns a product document/sample ZIP into Store-ready structured artifacts.
+**Knowledge Build Worker** — an independent CLI that turns a product
+document/sample ZIP into Store-ready structured knowledge: it interprets the
+source, structures data, chunks it, and generates embedding vectors.
 
-This worker does **not** connect to the Store DB, call embedding APIs, or modify Next.js/Prisma code.
+This worker does **not** connect to the Store DB, call external embedding APIs,
+write Object Storage, or modify Next.js/Prisma code. Store handles validation,
+DB persistence, pgvector reflection, and review/distribution.
+
+Output generation order:
+
+```text
+ZIP extract
+→ inventory
+→ parser artifacts
+→ normalized_documents
+→ chunks
+→ source_trace
+→ embeddings
+→ validation_report
+→ normalized_documents.md
+```
 
 ## Requirements
 
@@ -126,10 +144,36 @@ Example `options.json` embedding block:
 ```
 
 The embedding input text follows the Store E5 passage policy (`passage: ` prefix
-over title / section / tags(keywords) / content). `contentHash` is byte-compatible
-with Store `computeChunkContentHash` (`title / content / section / sorted(tags)`;
-`keywords` / `symbols` are **not** hashed directly), so Store stale detection
-stays aligned. `embeddingTextHash` is over the actual embedding input text.
+over title / section / tags / content, where `tags` is used when present and
+`keywords` otherwise). `contentHash` is byte-compatible with Store
+`computeChunkContentHash` (`title / content / section / sorted(tags)`; `keywords`
+/ `symbols` are **not** hashed directly), so Store stale detection stays aligned.
+`embeddingTextHash` is over the actual embedding input text.
+
+An **E5 512-token gate** (same conservative `ceil(len/4)` estimate as Store) is
+applied in both modes; a chunk whose passage exceeds the limit fails embedding
+generation. `validation_report.json` summarizes the outcome (no vectors, no model
+path) under `totals.embeddings` and an `embedding` block:
+
+```json
+{
+  "totals": { "documents": 0, "chunks": 0, "embeddings": 0 },
+  "embedding": {
+    "mode": "local_e5",
+    "provider": "local-e5",
+    "model": "dragonkue/multilingual-e5-small-ko-v2",
+    "dimension": 384,
+    "status": "ok | failed | skipped",
+    "embeddedChunks": 0,
+    "missingEmbeddings": 0,
+    "tokenLimitExceeded": 0
+  }
+}
+```
+
+`embeddings.json` is always written (even `[]` on a failure branch); if chunks
+exist without matching embeddings the run is marked `failed` and the cause is
+recorded in `validation_report.errors`.
 
 DB persistence (`KnowledgeChunkEmbedding`) and pgvector upsert are **later**
 steps and are not implemented here.

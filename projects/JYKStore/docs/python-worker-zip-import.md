@@ -29,23 +29,43 @@ validation_report.json
 
 `normalized_documents.md` is optional (human review).
 
+### Python Worker = Knowledge Build Worker
+
+The Python Worker interprets the source, structures data, chunks it, and
+generates embedding vectors. Store validates, persists to DB, reflects into
+pgvector, and runs review/distribution. Output generation order:
+
+```text
+ZIP extract → inventory → parser artifacts → normalized_documents → chunks
+→ source_trace → embeddings → validation_report → normalized_documents.md
+```
+
 ### `embeddings.json`
 
-The Python Worker now generates `embeddings.json` (one vector per chunk) right
-after `chunks.json`. It is always written — empty array `[]` when there are no
-chunks or on a failure branch — so the required output contract holds.
+The Python Worker generates `embeddings.json` (one vector per chunk) right after
+`chunks.json`. It is always written — empty array `[]` when there are no chunks
+or on a failure branch — so the required output contract holds. The Worker
+self-checks `len(embeddings) == len(chunks)`; a mismatch marks the run `failed`
+and is recorded in `validation_report.errors`.
 
 Modes: `local_e5` (production / default, local CPU E5 via `sentence-transformers`)
 and `deterministic_stub` (test-only, no model download). `local_e5` **requires a
-local model path** (`options.embedding.modelPath` or
-`JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH`) and never auto-downloads — a missing or
-non-existent path fails with a clear `EmbeddingError`. The Worker never calls an
-external API and never writes Store DB or Object Storage.
+local model directory** (`options.embedding.modelPath` or
+`JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH`) and never auto-downloads — a missing,
+non-existent, or non-directory path fails with a clear `EmbeddingError`
+(`local_files_only=True`). The Worker never calls an external API and never
+writes Store DB or Object Storage.
+
+An **E5 512-token gate** (same conservative `ceil(len/4)` estimate as Store) is
+applied in both modes; over-limit passages fail embedding generation.
 
 `contentHash` is byte-compatible with Store `computeChunkContentHash`
 (`title / content / section / sorted(tags)`; `keywords` / `symbols` excluded),
 so Store stale detection stays aligned. `embeddingTextHash` covers the actual
-E5 passage input text.
+E5 passage input text. `validation_report.json` carries `totals.embeddings` and
+an `embedding` summary block (mode / provider / model / dimension / status /
+embeddedChunks / missingEmbeddings / tokenLimitExceeded) — never raw vectors or
+the model path.
 
 Validator enforces chunk ↔ embedding integrity:
 

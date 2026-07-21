@@ -32,6 +32,10 @@ DEFAULT_E5_MODEL_NAME = "dragonkue/multilingual-e5-small-ko-v2"
 DEFAULT_E5_DIMENSION = 384
 E5_PASSAGE_PREFIX = "passage: "
 
+# Store E5 policy (src/lib/embedding/e5-embedding-text.ts):
+# estimateEmbeddingTokenCount = ceil(trimmed.length / 4); hard limit 512 tokens.
+E5_MAX_SEQUENCE_TOKENS = 512
+
 STUB_PROVIDER = "test-stub"
 STUB_MODEL = "deterministic-stub"
 DEFAULT_STUB_DIMENSION = 8
@@ -97,13 +101,22 @@ def build_passage_text(chunk: dict[str, Any]) -> str:
     """Build the E5 passage input text for a chunk (matches Store policy)."""
     title = chunk.get("title") or ""
     section = (chunk.get("section") or "").strip()
-    tags = [t for t in (chunk.get("keywords") or []) if isinstance(t, str)]
+    raw_tags = chunk.get("tags") if chunk.get("tags") is not None else chunk.get("keywords")
+    tags = [t for t in (raw_tags or []) if isinstance(t, str)]
     content = chunk.get("content") or ""
     parts = [title, section, *tags, content]
     body = "\n".join(p for p in parts if isinstance(p, str) and p.strip()).strip()
     if body.startswith("passage:"):
         return body
     return f"{E5_PASSAGE_PREFIX}{body}"
+
+
+def estimate_embedding_token_count(text: str) -> int:
+    """Conservative token estimate matching Store estimateEmbeddingTokenCount."""
+    trimmed = text.strip()
+    if not trimmed:
+        return 0
+    return math.ceil(len(trimmed) / 4)
 
 
 def _sha256(text: str) -> str:
@@ -122,6 +135,15 @@ def _stable_stringify_content(
     """
     tags_str = "[" + ",".join(tags) + "]"
     return f"{{content:{content},section:{section},tags:{tags_str},title:{title}}}"
+
+
+def count_token_limit_exceeded(chunks: list[dict[str, Any]]) -> int:
+    """Number of chunks whose E5 passage exceeds the 512-token estimate."""
+    count = 0
+    for chunk in chunks:
+        if estimate_embedding_token_count(build_passage_text(chunk)) > E5_MAX_SEQUENCE_TOKENS:
+            count += 1
+    return count
 
 
 def build_content_hash(chunk: dict[str, Any]) -> str:
@@ -174,8 +196,13 @@ def _load_e5_model(config: dict[str, Any]):
             "local_e5 requires a local modelPath; set options.embedding.modelPath "
             "or JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH"
         )
-    if not Path(model_path).exists():
+    resolved = Path(model_path)
+    if not resolved.exists():
         raise EmbeddingError(f"local_e5 modelPath does not exist: {model_path}")
+    if not resolved.is_dir():
+        # A file path (e.g. a single weight) is rejected: a model directory is
+        # required so offline loading cannot fall back to a network download.
+        raise EmbeddingError("local_e5 modelPath must be a local model directory")
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -187,11 +214,13 @@ def _load_e5_model(config: dict[str, Any]):
 
     try:
         return SentenceTransformer(
-            str(model_path), device="cpu", local_files_only=True
+            str(resolved), device="cpu", local_files_only=True
         )
     except TypeError:
-        # Older sentence-transformers may not accept local_files_only.
-        return SentenceTransformer(str(model_path), device="cpu")
+        # Older sentence-transformers lack local_files_only. The path is already
+        # validated as a local directory above, so this stays offline; we never
+        # pass a bare model name that could trigger a Hub download.
+        return SentenceTransformer(str(resolved), device="cpu")
     except Exception as exc:  # noqa: BLE001
         raise EmbeddingError(
             f"failed to load local E5 model at '{model_path}': {exc}"
@@ -249,6 +278,16 @@ def build_embeddings(
     created_at = datetime.now(timezone.utc).isoformat()
 
     passage_texts = [build_passage_text(c) for c in chunks]
+
+    # E5 512-token gate (same policy as Store), applied in both modes.
+    for chunk, passage_text in zip(chunks, passage_texts):
+        tokens = estimate_embedding_token_count(passage_text)
+        if tokens > E5_MAX_SEQUENCE_TOKENS:
+            chunk_id = chunk.get("chunkId") or "<unknown>"
+            raise EmbeddingError(
+                f"chunk {chunk_id} passage exceeds E5 token limit: "
+                f"estimated {tokens} > {E5_MAX_SEQUENCE_TOKENS}"
+            )
 
     if mode == MODE_DETERMINISTIC_STUB:
         dimension = int(configured_dim or DEFAULT_STUB_DIMENSION)

@@ -21,6 +21,7 @@ from src.chunker import build_chunks_and_traces, write_chunks, write_traces
 from src.embedding import (
     EmbeddingError,
     build_embeddings,
+    count_token_limit_exceeded,
     resolve_embedding_config,
     write_embeddings,
 )
@@ -463,6 +464,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     # if generation fails. The Worker never writes DB / Object Storage.
     embedding_failed = False
     embeddings: list[dict[str, Any]] = []
+    embedding_cfg: dict[str, Any] | None = None
     try:
         embedding_cfg = resolve_embedding_config(opts.get("embedding") or {}, os.environ)
         embeddings = build_embeddings(chunks, embedding_cfg)
@@ -470,6 +472,38 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         embedding_failed = True
         errors.append(f"embedding generation failed: {exc}")
     write_embeddings(embeddings, output_dir / "embeddings.json")
+
+    # Self-check chunks <-> embeddings parity so the cause is visible in-report.
+    if chunks and len(embeddings) != len(chunks):
+        if not embedding_failed:
+            errors.append(
+                f"embedding count mismatch: {len(embeddings)} embeddings "
+                f"for {len(chunks)} chunks"
+            )
+        embedding_failed = True
+
+    token_limit_exceeded = count_token_limit_exceeded(chunks)
+    if not chunks:
+        embedding_status = "skipped"
+    elif embedding_failed:
+        embedding_status = "failed"
+    else:
+        embedding_status = "ok"
+    embedding_dimension = (
+        embeddings[0]["dimension"]
+        if embeddings
+        else (embedding_cfg.get("dimension") if embedding_cfg else None)
+    )
+    embedding_summary = {
+        "mode": embedding_cfg.get("mode") if embedding_cfg else None,
+        "provider": embedding_cfg.get("provider") if embedding_cfg else None,
+        "model": embedding_cfg.get("model") if embedding_cfg else None,
+        "dimension": embedding_dimension,
+        "status": embedding_status,
+        "embeddedChunks": len(embeddings),
+        "missingEmbeddings": max(len(chunks) - len(embeddings), 0),
+        "tokenLimitExceeded": token_limit_exceeded,
+    }
 
     if not knowledge:
         errors.append("no knowledge_target files found in archive")
@@ -497,6 +531,8 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         chunks_count=len(chunks),
         documents_count=len(documents),
         status=status,
+        embeddings_count=len(embeddings),
+        embedding_summary=embedding_summary,
     )
     write_validation_report(report, output_dir / "validation_report.json")
     write_markdown_review(
@@ -514,7 +550,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     print(f"Output: {output_dir.resolve()}")
     print(
         f"Files={len(inventory)} docs={len(documents)} chunks={len(chunks)} "
-        f"warnings={len(warnings)} errors={len(errors)}"
+        f"embeddings={len(embeddings)} warnings={len(warnings)} errors={len(errors)}"
     )
     return 0 if status in {"ok", "partial"} else 1
 
