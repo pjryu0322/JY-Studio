@@ -10,6 +10,10 @@
  * docs/python-worker-zip-import.md.
  *
  * Role separation: this is the ZIP Worker path, NOT the legacy Docling import.
+ *
+ * P7.1: reject oversized bodies by `Content-Length` BEFORE `formData()` parses
+ * them; validation/response mapping live in `worker-zip-route-helpers` (unit
+ * tested there).
  */
 import { NextRequest } from "next/server";
 import { Readable } from "node:stream";
@@ -20,18 +24,32 @@ import {
   runProviderWorkerZipImport,
   WorkerZipImportServiceError,
 } from "@/lib/python-worker/worker-zip-import-provider-service";
+import {
+  checkWorkerZipContentLength,
+  mapWorkerZipImportHttpResponse,
+  validateWorkerZipFile,
+} from "@/lib/python-worker/worker-zip-route-helpers";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = { params: Promise<{ packId: string }> };
-
-/** Reject oversized uploads before spilling them to disk. */
-const MAX_WORKER_ZIP_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = requireProviderApiAuth(request);
   if (!auth.ok) return auth.response;
   const { clientId, userId } = auth;
   const { packId } = await context.params;
+
+  // Pre-parse size guard: reject before formData() reads the body into memory.
+  const contentLengthRejection = checkWorkerZipContentLength(
+    request.headers.get("content-length"),
+  );
+  if (contentLengthRejection) {
+    return jsonWithClientIdCookie(
+      { error: contentLengthRejection.error, code: contentLengthRejection.code },
+      clientId,
+      { status: contentLengthRejection.status },
+    );
+  }
 
   let file: File | null = null;
   try {
@@ -46,30 +64,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
 
-  if (!file) {
+  const fileRejection = validateWorkerZipFile(file);
+  if (fileRejection) {
     return jsonWithClientIdCookie(
-      { error: "ZIP 파일이 필요합니다.", code: "FILE_REQUIRED" },
+      { error: fileRejection.error, code: fileRejection.code },
       clientId,
-      { status: 400 },
-    );
-  }
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    return jsonWithClientIdCookie(
-      { error: "ZIP(.zip) 파일만 업로드할 수 있습니다.", code: "INVALID_FILE_TYPE" },
-      clientId,
-      { status: 400 },
-    );
-  }
-  if (file.size > MAX_WORKER_ZIP_UPLOAD_BYTES) {
-    return jsonWithClientIdCookie(
-      { error: "ZIP 파일이 허용 크기를 초과했습니다.", code: "WORKER_ZIP_FILE_TOO_LARGE" },
-      clientId,
-      { status: 413 },
+      { status: fileRejection.status },
     );
   }
 
   try {
-    const nodeStream = Readable.fromWeb(file.stream() as Parameters<typeof Readable.fromWeb>[0]);
+    const nodeStream = Readable.fromWeb(file!.stream() as Parameters<typeof Readable.fromWeb>[0]);
     const result = await withTempFileFromStream(nodeStream, (inputZipPath) =>
       runProviderWorkerZipImport({
         userId,
@@ -79,8 +84,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }),
     );
 
-    return jsonWithClientIdCookie({ clientId, ...result }, clientId, {
-      status: result.ok ? 200 : 422,
+    const mapped = mapWorkerZipImportHttpResponse(result);
+    return jsonWithClientIdCookie({ clientId, ...mapped.body }, clientId, {
+      status: mapped.status,
     });
   } catch (error) {
     if (error instanceof WorkerZipImportServiceError) {

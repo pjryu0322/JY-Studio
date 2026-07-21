@@ -31,6 +31,13 @@ export async function createSearchGenerationForPipeline(input: {
   chunkGenerationId: string;
   descriptor?: Awaited<ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>>;
   attempt?: number;
+  /**
+   * Whether to stale prior active drafts at creation time. Default `true`
+   * (legacy Docling behavior). The ZIP Worker bridge passes `false` so an
+   * existing READY DRAFT is preserved until the new generation actually reaches
+   * READY (deferred stale, see worker-zip-import-provider-service).
+   */
+  stalePreviousDrafts?: boolean;
   client?: SyncClient;
 }): Promise<SearchIndexGeneration> {
   const client = input.client ?? prisma;
@@ -46,7 +53,9 @@ export async function createSearchGenerationForPipeline(input: {
     chunks: [],
   });
 
-  await markSearchGenerationStale(input.versionId, client, { exceptId: input.id });
+  if (input.stalePreviousDrafts !== false) {
+    await markSearchGenerationStale(input.versionId, client, { exceptId: input.id });
+  }
 
   return createDraftSearchGeneration(
     {

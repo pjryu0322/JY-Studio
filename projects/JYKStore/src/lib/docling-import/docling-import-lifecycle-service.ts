@@ -363,6 +363,26 @@ const STAGING_VISIBLE_STATUSES: DoclingImportBundleStatus[] = [
 ];
 
 /** Latest inactive staging row that still has ACTIVE storage (failed or in-progress). */
+/**
+ * Predicate mirroring the `findLatestStagingBundleForVersion` where-clause.
+ * Exposed so callers/tests can assert whether a bundle is a "Docling staging"
+ * bundle. WORKER_ZIP compatibility-bridge bundles are excluded because they set
+ * `deletedAt` (and `isActive = false`), so this returns false for them.
+ */
+export function isStagingVisibleDoclingBundle(bundle: {
+  isActive: boolean;
+  deletedAt: Date | null;
+  storageStatus: DoclingBundleStorageStatus;
+  status: DoclingImportBundleStatus;
+}): boolean {
+  return (
+    bundle.isActive === false &&
+    bundle.deletedAt === null &&
+    bundle.storageStatus === DoclingBundleStorageStatus.ACTIVE &&
+    STAGING_VISIBLE_STATUSES.includes(bundle.status)
+  );
+}
+
 export async function findLatestStagingBundleForVersion(
   versionId: string,
 ): Promise<DoclingImportBundle | null> {

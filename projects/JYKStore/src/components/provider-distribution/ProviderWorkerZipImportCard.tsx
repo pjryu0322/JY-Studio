@@ -13,8 +13,10 @@ import {
  * 흐름과는 별개의 파이프라인이다. 업로드한 ZIP은 Python Worker가 구조화하고,
  * 결과(chunks/embeddings/vector)를 그대로 Store DB/pgvector에 반영한다.
  *
- * 동기 처리: 버튼을 누르면 서버가 전체 파이프라인을 끝낸 뒤 결과를 반환한다.
- * (async job 전환은 P7.1 예정)
+ * P7.1 상태 분리: import 성공만으로 "완료"로 표시하지 않는다. 검색데이터 세대가
+ * READY(`generationReady=true`)일 때만 완료로 표시하고, import는 됐으나 준비가
+ * 지연된 경우/실패한 경우를 구분한다. 내부 용어(Python Worker / pgvector /
+ * SearchIndexGeneration)는 화면에 노출하지 않는다.
  */
 export function ProviderWorkerZipImportCard({
   packId,
@@ -38,9 +40,6 @@ export function ProviderWorkerZipImportCard({
     try {
       const res = await startProviderWorkerZipImportApi(packId, file);
       setResult(res);
-      if (!res.ok) {
-        setError(res.error?.message ?? "데이터 구조화에 실패했습니다.");
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "데이터 구조화에 실패했습니다.");
     } finally {
@@ -48,13 +47,20 @@ export function ProviderWorkerZipImportCard({
     }
   };
 
+  const completed = result?.ok === true && result.generationReady === true;
+  const deferred =
+    result != null && result.ok === false && result.error?.code === "GENERATION_READY_DEFERRED";
+  const failed = result != null && result.ok === false && !deferred;
+  const supportRequired = result?.error?.supportRequired === true;
+  const retryable = result?.error?.retryable === true;
+
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
       <div className="space-y-1">
         <h3 className="text-sm font-bold text-indigo-950">ZIP 업로드로 데이터 구조화 (베타)</h3>
         <p className="text-xs text-indigo-900/80">
-          자료 묶음(.zip)을 업로드하면 Worker가 구조화·검색데이터까지 한 번에 생성합니다. 위의 Docling
-          자료 등록과는 별개 경로입니다.
+          자료 묶음(.zip)을 업로드하면 구조화·검색데이터까지 한 번에 생성합니다. 위의 Docling 자료
+          등록과는 별개 경로입니다.
         </p>
       </div>
 
@@ -80,22 +86,16 @@ export function ProviderWorkerZipImportCard({
       </button>
 
       {error ? (
-        <div className="space-y-1 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
-          <p>{error}</p>
-          {result?.error?.supportRequired ? (
-            <p className="text-xs text-red-700">
-              문제가 계속되면 관리자에게 문의하세요.
-            </p>
-          ) : null}
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
         </div>
       ) : null}
 
-      {result?.ok ? (
+      {completed ? (
         <div className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           <p className="font-semibold">데이터 구조화가 완료되었습니다.</p>
           <p className="text-xs">
-            지식 청크 {result.importedChunkCount}개 · 임베딩 {result.importedEmbeddingCount}개
-            {result.pgvectorReflected ? " · 벡터 인덱스 반영됨" : ""}
+            지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
           </p>
           {onGoToKnowledge ? (
             <button
@@ -104,6 +104,45 @@ export function ProviderWorkerZipImportCard({
               className="min-h-[40px] rounded-xl border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-950"
             >
               다음: 지식데이터 확인
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {deferred ? (
+        <div className="space-y-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="font-semibold">데이터는 생성됐지만 검색데이터 준비가 지연되었습니다.</p>
+          <p className="text-xs">
+            지식 청크 {result!.importedChunkCount}개는 생성됐습니다. 잠시 후 다시 실행하거나 관리자에게
+            문의하세요.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void onStart()}
+              disabled={running}
+              className="min-h-[40px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+            >
+              다시 실행
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {failed ? (
+        <div className="space-y-1 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p>{result!.error?.message ?? "데이터 구조화에 실패했습니다."}</p>
+          {supportRequired ? (
+            <p className="text-xs text-red-700">문제가 계속되면 관리자에게 문의하세요.</p>
+          ) : null}
+          {retryable ? (
+            <button
+              type="button"
+              onClick={() => void onStart()}
+              disabled={running}
+              className="min-h-[40px] rounded-xl border border-red-300 bg-white px-3 text-xs font-semibold text-red-900 disabled:opacity-60"
+            >
+              다시 실행
             </button>
           ) : null}
         </div>

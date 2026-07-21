@@ -335,9 +335,64 @@ pipeline:
 | Bundle/ND `adapterType` | `DOCLING` | `WORKER_ZIP` (hidden, bridge-only) |
 | UI | `ProviderDoclingImportTab` | `ProviderWorkerZipImportCard` |
 
-### Deferred to P7.1 (async job model)
+## P7.1: stabilization + legacy isolation
 
-This round is a **synchronous minimal connection**: the route `await`s the
+### Protect an existing READY DRAFT generation
+
+A new ZIP run must not destroy a previously validated search generation.
+
+- `createSearchGenerationForPipeline({ stalePreviousDrafts })` — new option,
+  default `true` (unchanged legacy Docling behavior). The ZIP bridge passes
+  `false`, so creating the bridge generation no longer stales prior drafts.
+- Prior active drafts are retired **only after the new generation reaches
+  READY** (`transitions.staleOthers(versionId, exceptId)` in
+  `worker-zip-import-provider-service.ts`).
+- On any failure (pipeline failure OR READY-transition failure) the existing
+  READY DRAFT is preserved and no stale runs.
+
+### READY-transition failure is not "완료"
+
+Import can succeed while the generation fails to reach READY. That is **not** a
+completed structuring:
+
+- `runProviderWorkerZipImport` returns `ok: false`, `nextStep: "RETRY"`,
+  `generationReady: false`, `error.code: "GENERATION_READY_DEFERRED"`,
+  `supportRequired: true`, and **preserves** `importedChunkCount /
+  importedEmbeddingCount` for diagnostics.
+- `PipelineRun` is recorded as `WARNING` (not `PASS`).
+- `ProviderWorkerZipImportCard` shows "완료" **only** when
+  `result.ok && result.generationReady === true`; the deferred case renders
+  "데이터는 생성됐지만 검색데이터 준비가 지연되었습니다" + 관리자 문의 / 다시 실행.
+  Internal terms (Python Worker / pgvector / SearchIndexGeneration) are never
+  surfaced.
+
+### Content-length pre-parse size guard
+
+`worker-zip-route-helpers.ts` (pure, unit tested):
+
+- `checkWorkerZipContentLength(header)` rejects with `413` **before**
+  `request.formData()` parses an oversized body. Missing/invalid headers fall
+  through to the post-parse `validateWorkerZipFile` (`file.size`) guard.
+- `mapWorkerZipImportHttpResponse(result)` → `200` (ok) / `422` (processed-but-failed).
+- Large multipart streaming / upload sessions remain deferred to **P5.2/P7.2**.
+
+### Legacy Docling isolation (tested)
+
+- Bridge rows set `adapterType = WORKER_ZIP`, `isActive = false`, `deletedAt`
+  set, `stagingReason = worker_zip_bridge`, and ND
+  `structureSummaryJson.source = worker_zip_bridge`.
+- `isStagingVisibleDoclingBundle(bundle)` (exported from
+  `docling-import-lifecycle-service.ts`) mirrors the
+  `findLatestStagingBundleForVersion` where-clause; a bridge row returns
+  `false`, so it never appears as a Docling staging bundle.
+- Import-boundary tests: the bridge does not import
+  `docling-nd-knowledge-builder`; the provider service does not import the legacy
+  `docling-upload-session-service`; `ProviderDoclingImportTab` does not call the
+  worker-zip API.
+
+### Deferred to P7.2 (async job model)
+
+This round is still a **synchronous minimal connection**: the route `await`s the
 service directly. Deferred:
 
 - Async job handoff — enqueue a `PENDING` run and let a poll worker claim/process
@@ -350,7 +405,9 @@ service directly. Deferred:
 
 ## Remaining work (out of this slice)
 
-- P7.1: async job model + `202 Accepted` + status polling (see above)
+- P7.2: async job model + `202 Accepted` + status polling (see above)
 - P5.2: streaming/multipart upload for the source ZIP / worker output
-- Schema change to drop the bridge (nullable `normalizedDocumentId`)
+- **Schema change to drop the bridge**: make
+  `SearchIndexGeneration.normalizedDocumentId` nullable, then remove the
+  synthesized `DoclingImportBundle` + `NormalizedDocument` compatibility bridge
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

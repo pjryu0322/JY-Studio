@@ -33,6 +33,7 @@ import {
   markSearchGenerationFailed,
   markSearchGenerationIndexing,
   markSearchGenerationReady,
+  markSearchGenerationStale,
 } from "@/lib/search-generation/search-generation-service";
 
 export class WorkerZipImportServiceError extends Error {
@@ -78,6 +79,8 @@ export type WorkerZipGenerationTransitions = {
     id: string,
     failure: { failureCode: string; failureMessage?: string | null },
   ) => Promise<unknown>;
+  /** Retire prior active drafts (except the given id). Called ONLY after READY. */
+  staleOthers: (versionId: string, exceptId: string) => Promise<unknown>;
 };
 
 export type RunProviderWorkerZipImportInput = {
@@ -102,6 +105,7 @@ function defaultTransitions(client: typeof prisma): WorkerZipGenerationTransitio
     toIndexing: (id, counts) => markSearchGenerationIndexing(id, counts, client),
     toReady: (id, counts) => markSearchGenerationReady(id, counts, client),
     toFailed: (id, failure) => markSearchGenerationFailed(id, failure, client),
+    staleOthers: (versionId, exceptId) => markSearchGenerationStale(versionId, client, { exceptId }),
   };
 }
 
@@ -129,6 +133,11 @@ export function mapWorkerZipFailureCode(code: string): { message: string; suppor
     case "WORKER_ZIP_INCONSISTENT_EMBEDDINGS":
       return {
         message: "검색데이터 생성을 위한 준비 정보가 없습니다. 다시 시도하거나 관리자에게 문의하세요.",
+        supportRequired: true,
+      };
+    case "GENERATION_READY_DEFERRED":
+      return {
+        message: "데이터는 생성됐지만 검색데이터 준비가 지연되었습니다. 다시 시도하거나 관리자에게 문의하세요.",
         supportRequired: true,
       };
     case "SEARCH_RUNTIME_UNAVAILABLE":
@@ -270,28 +279,58 @@ export async function runProviderWorkerZipImport(
     };
   }
 
-  // Success: reflect the completed draft generation (worker already embedded +
-  // vectors were mirrored during import). Best-effort READY; keep INDEXING on a
-  // count edge rather than failing an import that already succeeded.
-  let generationReady = false;
+  // Import succeeded (worker already embedded + vectors mirrored). Drive the
+  // generation to READY. Import counts are always preserved for diagnostics.
+  const searchIndexGenerationId = result.searchIndexGenerationId ?? generationId;
+  const baseSuccessResult = {
+    pipelineRunId: pipelineRun.id,
+    searchIndexGenerationId,
+    logicalStage: result.logicalStage,
+    pipelineStatus: result.pipelineStatus,
+    importedChunkCount: result.importedChunkCount,
+    importedEmbeddingCount: result.importedEmbeddingCount,
+    pgvectorReflected: result.pgvectorReflected,
+  };
+
+  const counts = {
+    embeddedCount: result.importedEmbeddingCount,
+    chunkCount: result.importedChunkCount,
+  };
+  let readyTransitionError: unknown = null;
   try {
-    const counts = {
-      embeddedCount: result.importedEmbeddingCount,
-      chunkCount: result.importedChunkCount,
-    };
     await transitions.toEmbedding(generationId);
     await transitions.toIndexing(generationId, counts);
     await transitions.toReady(generationId, counts);
-    generationReady = true;
   } catch (error) {
-    warnings.push({
-      code: "GENERATION_READY_DEFERRED",
-      message:
-        error instanceof Error
-          ? `검색데이터 세대 상태 전환이 지연되었습니다: ${error.message}`
-          : "검색데이터 세대 상태 전환이 지연되었습니다.",
-    });
+    readyTransitionError = error;
   }
+
+  if (readyTransitionError) {
+    // P7.1: import produced data but the generation did not reach READY. This is
+    // NOT a completed structuring. Do NOT stale prior READY drafts (they remain
+    // the current search data), keep import counts, and surface a deferred state.
+    await client.pipelineRun
+      .update({ where: { id: pipelineRun.id }, data: { status: "WARNING", finishedAt: new Date() } })
+      .catch(() => undefined);
+    const mapped = mapWorkerZipFailureCode("GENERATION_READY_DEFERRED");
+    return {
+      ok: false,
+      ...baseSuccessResult,
+      warnings,
+      nextStep: "RETRY",
+      generationReady: false,
+      error: {
+        code: "GENERATION_READY_DEFERRED",
+        message: mapped.message,
+        retryable: true,
+        supportRequired: mapped.supportRequired,
+        stage: result.logicalStage,
+      },
+    };
+  }
+
+  // READY reached: only now retire prior active drafts for the version.
+  await transitions.staleOthers(version.id, generationId).catch(() => undefined);
 
   await client.pipelineRun
     .update({ where: { id: pipelineRun.id }, data: { status: "PASS", finishedAt: new Date() } })
@@ -299,15 +338,9 @@ export async function runProviderWorkerZipImport(
 
   return {
     ok: true,
-    pipelineRunId: pipelineRun.id,
-    searchIndexGenerationId: result.searchIndexGenerationId ?? generationId,
-    logicalStage: result.logicalStage,
-    pipelineStatus: result.pipelineStatus,
-    importedChunkCount: result.importedChunkCount,
-    importedEmbeddingCount: result.importedEmbeddingCount,
-    pgvectorReflected: result.pgvectorReflected,
+    ...baseSuccessResult,
     warnings,
     nextStep: "SEARCH_DATA_VALIDATION",
-    generationReady,
+    generationReady: true,
   };
 }

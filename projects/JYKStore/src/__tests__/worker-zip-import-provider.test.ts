@@ -20,6 +20,13 @@ import {
   WorkerZipImportServiceError,
   type WorkerZipGenerationTransitions,
 } from "../lib/python-worker/worker-zip-import-provider-service.ts";
+import {
+  checkWorkerZipContentLength,
+  mapWorkerZipImportHttpResponse,
+  MAX_WORKER_ZIP_UPLOAD_BYTES,
+  validateWorkerZipFile,
+} from "../lib/python-worker/worker-zip-route-helpers.ts";
+import { isStagingVisibleDoclingBundle } from "../lib/docling-import/docling-import-lifecycle-service.ts";
 
 function makePayload(overrides?: Partial<WorkerOutputImportPayload>): WorkerOutputImportPayload {
   return {
@@ -140,12 +147,49 @@ describe("worker-zip generation bridge (P7)", () => {
     assert.equal(bundleData!.stagingReason, "worker_zip_bridge");
     assert.equal(ndData!.adapterType, WORKER_ZIP_ADAPTER_TYPE);
     assert.equal(ndData!.isActive, false);
+    assert.equal((ndData!.structureSummaryJson as { source?: string }).source, "worker_zip_bridge");
 
     // Generation is bound to the synthesized ND and the caller-provided id.
     assert.equal(genArgs!.id, "gen-1");
     assert.equal(genArgs!.chunkGenerationId, "gen-1");
     assert.equal(genArgs!.normalizedDocumentId, "nd-1");
     assert.ok(genArgs!.descriptor);
+    // P7.1: bridge must NOT stale prior READY drafts at creation time.
+    assert.equal(genArgs!.stalePreviousDrafts, false);
+  });
+
+  it("bridge bundle is excluded from the Docling staging-visibility predicate", async () => {
+    let bundleData: Record<string, unknown> | null = null;
+    const tx = {
+      doclingImportBundle: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          bundleData = data;
+          return { id: "bundle-1" };
+        },
+      },
+      normalizedDocument: { create: async () => ({ id: "nd-1" }) },
+    };
+    await synthesizeWorkerZipSearchGeneration({
+      generationId: "gen-1",
+      payload: makePayload(),
+      pipelineRunId: "run1",
+      prismaClient: { $transaction: async (cb: (c: unknown) => unknown) => cb(tx) } as never,
+      createGeneration: (async (args: Record<string, unknown>) => ({ id: args.id })) as never,
+    });
+
+    // Reconstruct the stored row (storageStatus defaults to ACTIVE in the schema).
+    const storedBundle = {
+      isActive: bundleData!.isActive as boolean,
+      deletedAt: bundleData!.deletedAt as Date | null,
+      storageStatus: "ACTIVE" as never,
+      status: bundleData!.status as never,
+    };
+    assert.equal(isStagingVisibleDoclingBundle(storedBundle), false);
+    // Sanity: a genuine Docling staging bundle (no deletedAt) IS visible.
+    assert.equal(
+      isStagingVisibleDoclingBundle({ ...storedBundle, deletedAt: null, status: "UPLOADED" as never }),
+      true,
+    );
   });
 });
 
@@ -181,12 +225,17 @@ function makeServicePrisma(
   } as never;
 }
 
-function makeTransitions(harness: ServiceHarness): WorkerZipGenerationTransitions {
+function makeTransitions(
+  harness: ServiceHarness,
+  overrides?: Partial<WorkerZipGenerationTransitions>,
+): WorkerZipGenerationTransitions {
   return {
     toEmbedding: async () => harness.transitionCalls.push("EMBEDDING"),
     toIndexing: async () => harness.transitionCalls.push("INDEXING"),
     toReady: async () => harness.transitionCalls.push("READY"),
     toFailed: async () => harness.transitionCalls.push("FAILED"),
+    staleOthers: async () => harness.transitionCalls.push("STALE"),
+    ...overrides,
   };
 }
 
@@ -245,8 +294,58 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     assert.equal(result.searchIndexGenerationId, resolvedGenerationId);
     // The bridge used the caller-pre-generated id (so failures can be marked later).
     assert.deepEqual(harness.synthCalledWith, [resolvedGenerationId]);
-    assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY"]);
+    // P7.1: prior drafts are staled ONLY after READY (last step).
+    assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY", "STALE"]);
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
+  });
+
+  it("READY-transition failure: ok=false, RETRY, generationReady=false, no stale, WARNING run", async () => {
+    const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
+
+    const result = await runProviderWorkerZipImport({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      inputZipPath: "/tmp/x.zip",
+      prismaClient: makeServicePrisma(harness),
+      findProfile: async () => ({ id: "prof-1" }),
+      transitions: makeTransitions(harness, {
+        toReady: async () => {
+          harness.transitionCalls.push("READY_FAIL");
+          throw new Error("count mismatch internal detail");
+        },
+      }),
+      synthesizeGeneration: (async ({ generationId }: { generationId: string }) => {
+        harness.synthCalledWith.push(generationId);
+        return { searchIndexGenerationId: generationId, bundleId: "b", normalizedDocumentId: "n" };
+      }) as never,
+      runPipeline: (async (input: {
+        deps: { resolveSearchIndexGenerationId: (ctx: unknown) => Promise<string> };
+      }) => {
+        const gid = await input.deps.resolveSearchIndexGenerationId({
+          payload: makePayload(),
+          packId: "packA",
+          packVersionId: "verA",
+          pipelineRunId: "prun-1",
+        });
+        return okPipelineResult(gid);
+      }) as never,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.generationReady, false);
+    assert.equal(result.nextStep, "RETRY");
+    assert.equal(result.error?.code, "GENERATION_READY_DEFERRED");
+    assert.equal(result.error?.supportRequired, true);
+    // Import counts are preserved for diagnostics.
+    assert.equal(result.importedChunkCount, 3);
+    assert.equal(result.importedEmbeddingCount, 3);
+    // Existing READY drafts must NOT be staled when the new one did not reach READY.
+    assert.ok(!harness.transitionCalls.includes("STALE"));
+    // Raw internal detail must not leak.
+    assert.equal(/count mismatch internal detail/.test(result.error?.message ?? ""), false);
+    // Run is not marked PASS.
+    assert.notEqual(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
   });
 
   it("failure after generation created: marks FAILED + FAIL, maps user error", async () => {
@@ -302,6 +401,8 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     // User-facing message must not leak the raw internal detail.
     assert.equal(/raw internal detail/.test(result.error?.message ?? ""), false);
     assert.ok(harness.transitionCalls.includes("FAILED"));
+    // Existing READY drafts are preserved on a hard pipeline failure.
+    assert.ok(!harness.transitionCalls.includes("STALE"));
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "FAIL");
   });
 
@@ -381,19 +482,33 @@ function readSrc(relFromSrc: string): string {
 }
 
 describe("worker-zip route + UI wiring (P7 source contracts)", () => {
-  it("route authenticates, validates .zip + size, and awaits the service synchronously", () => {
+  it("route authenticates, guards content-length before formData, and awaits the service", () => {
     const src = readSrc("app/api/v1/provider/packs/[packId]/worker-zip/route.ts");
     assert.match(src, /requireProviderApiAuth/);
     assert.match(src, /runProviderWorkerZipImport/);
     assert.match(src, /withTempFileFromStream/);
-    assert.match(src, /\.zip/);
-    assert.match(src, /WORKER_ZIP_FILE_TOO_LARGE/);
-    assert.match(src, /status:\s*413/);
+    assert.match(src, /mapWorkerZipImportHttpResponse/);
+    // P7.1: content-length guard must run before request.formData().
+    const clIdx = src.indexOf("checkWorkerZipContentLength");
+    const fdIdx = src.indexOf("request.formData()");
+    assert.ok(clIdx >= 0 && fdIdx >= 0 && clIdx < fdIdx);
   });
 
   it("bridge does not import the Docling ND knowledge builder (role separation)", () => {
     const src = readSrc("lib/python-worker/worker-zip-generation-bridge.ts");
     assert.ok(!/from\s+["']@\/lib\/docling-knowledge\/docling-nd-knowledge-builder/.test(src));
+  });
+
+  it("provider service does not import the legacy Docling upload session service", () => {
+    const src = readSrc("lib/python-worker/worker-zip-import-provider-service.ts");
+    assert.ok(!/from\s+["']@\/lib\/docling-import\/docling-upload-session-service/.test(src));
+    assert.ok(!/from\s+["']@\/lib\/docling-knowledge\/docling-nd-knowledge-builder/.test(src));
+  });
+
+  it("ProviderDoclingImportTab does not call the worker-zip API", () => {
+    const src = readSrc("components/provider-distribution/ProviderDoclingImportTab.tsx");
+    assert.ok(!/startProviderWorkerZipImportApi/.test(src));
+    assert.ok(!/worker-zip/.test(src));
   });
 
   it("UI card is ZIP-only and calls the dedicated worker-zip API", () => {
@@ -417,7 +532,46 @@ describe("mapWorkerZipFailureCode (P7 safe copy)", () => {
   it("keeps oversized-file failures self-serviceable", () => {
     assert.equal(mapWorkerZipFailureCode("WORKER_ZIP_FILE_TOO_LARGE").supportRequired, false);
   });
+  it("flags deferred readiness as support-required (not completed)", () => {
+    const mapped = mapWorkerZipFailureCode("GENERATION_READY_DEFERRED");
+    assert.equal(mapped.supportRequired, true);
+    assert.match(mapped.message, /지연/);
+  });
   it("defaults unknown codes to support-required", () => {
     assert.equal(mapWorkerZipFailureCode("SOMETHING_ELSE").supportRequired, true);
+  });
+});
+
+describe("worker-zip route helpers (P7.1 behavior)", () => {
+  it("rejects by content-length before parsing when over the limit", () => {
+    const rejection = checkWorkerZipContentLength(String(MAX_WORKER_ZIP_UPLOAD_BYTES + 1));
+    assert.ok(rejection);
+    assert.equal(rejection!.status, 413);
+    assert.equal(rejection!.code, "WORKER_ZIP_FILE_TOO_LARGE");
+  });
+  it("passes content-length within the limit / missing / non-numeric", () => {
+    assert.equal(checkWorkerZipContentLength(String(1024)), null);
+    assert.equal(checkWorkerZipContentLength(null), null);
+    assert.equal(checkWorkerZipContentLength("not-a-number"), null);
+  });
+  it("validates the uploaded file (missing / non-zip / oversize / ok)", () => {
+    assert.equal(validateWorkerZipFile(null)?.code, "FILE_REQUIRED");
+    assert.equal(validateWorkerZipFile({ name: "a.txt", size: 10 })?.code, "INVALID_FILE_TYPE");
+    assert.equal(
+      validateWorkerZipFile({ name: "a.zip", size: MAX_WORKER_ZIP_UPLOAD_BYTES + 1 })?.code,
+      "WORKER_ZIP_FILE_TOO_LARGE",
+    );
+    assert.equal(validateWorkerZipFile({ name: "a.zip", size: 10 }), null);
+    assert.equal(validateWorkerZipFile({ name: "A.ZIP", size: 10 }), null);
+  });
+  it("maps ok results to 200 and processed-but-failed results to 422", () => {
+    assert.equal(
+      mapWorkerZipImportHttpResponse({ ok: true } as never).status,
+      200,
+    );
+    assert.equal(
+      mapWorkerZipImportHttpResponse({ ok: false } as never).status,
+      422,
+    );
   });
 });
