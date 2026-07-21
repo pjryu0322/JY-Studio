@@ -232,58 +232,105 @@ export function classifyWorkerZipError(
 }
 
 /**
- * Run the ZIP Worker import pipeline. Never throws: failures are captured in the
- * returned result's `error` (with `retryable`) and the temp dir is always cleaned up.
+ * Mutable per-run state shared by the pipeline orchestrator and its step helpers.
+ *
+ * `stage` = the stage currently being attempted (used for error.stage /
+ * logicalStage). `base.warnings` and `base.storedObjectKeys` are the SAME array
+ * references as `warnings` / `storedObjectKeys`, so pushing to either is
+ * reflected when a result spreads `...base`.
  */
-export async function runWorkerZipImportPipeline(
-  input: WorkerZipPipelineInput,
-): Promise<WorkerZipPipelineResult> {
-  const prefix = input.objectStoragePrefix?.trim() || DEFAULT_OBJECT_STORAGE_PREFIX;
-  const ctx = {
-    prefix,
-    packId: input.packId,
-    packVersionId: input.packVersionId,
-    pipelineRunId: input.pipelineRunId,
-  };
-  const sourceZipObjectKey = buildWorkerRunSourceZipObjectKey(ctx);
-  const warnings: WorkerZipPipelineWarning[] = [];
-  const storedObjectKeys: string[] = [];
+type WorkerZipPipelineContext = {
+  input: WorkerZipPipelineInput;
+  deps: WorkerZipPipelineDeps;
+  prefix: string;
+  sourceZipObjectKey: string;
+  warnings: WorkerZipPipelineWarning[];
+  storedObjectKeys: string[];
+  base: WorkerZipPipelineResult;
+  maxSourceZipUploadBytes: number;
+  maxWorkerOutputUploadBytes: number;
+  stage: WorkerZipLogicalStage;
+  outputDir?: string;
+};
 
-  const base: WorkerZipPipelineResult = {
+/** Build the pristine "not started" result (also the spread base for every branch). */
+function emptyBaseResult(sourceZipObjectKey: string): WorkerZipPipelineResult {
+  return {
     ok: false,
     logicalStage: "SUBMITTED",
     pipelineStatus: mapWorkerZipStageToPipelineStatus("SUBMITTED"),
     sourceZipObjectKey,
-    storedObjectKeys,
+    storedObjectKeys: [],
     importedChunkCount: 0,
     importedEmbeddingCount: 0,
     pgvectorReflected: false,
     vectorUpsertedCount: 0,
     vectorSkippedCount: 0,
-    warnings,
+    warnings: [],
   };
+}
 
-  let stage: WorkerZipLogicalStage = "SUBMITTED";
-  let outputDir: string | undefined;
-  let deps: WorkerZipPipelineDeps;
-  try {
-    deps = resolveDeps(input);
-  } catch (error) {
-    // Storage resolution (or dep wiring) failed before we started.
-    return {
-      ...base,
-      error: classifyWorkerZipError(error, "SUBMITTED"),
-      pipelineStatus: "FAILED",
-    };
+/**
+ * Assemble the shared pipeline context. Pure: no storage / worker / DB
+ * side-effects (temp dir is only created later, in {@link runPythonWorker}).
+ */
+function buildPipelineContext(
+  input: WorkerZipPipelineInput,
+  deps: WorkerZipPipelineDeps,
+  prefix: string,
+  sourceZipObjectKey: string,
+): WorkerZipPipelineContext {
+  const base = emptyBaseResult(sourceZipObjectKey);
+  return {
+    input,
+    deps,
+    prefix,
+    sourceZipObjectKey,
+    warnings: base.warnings,
+    storedObjectKeys: base.storedObjectKeys,
+    base,
+    maxSourceZipUploadBytes:
+      input.maxSourceZipUploadBytes ?? DEFAULT_MAX_SOURCE_ZIP_UPLOAD_BYTES,
+    maxWorkerOutputUploadBytes:
+      input.maxWorkerOutputUploadBytes ?? DEFAULT_MAX_WORKER_OUTPUT_UPLOAD_BYTES,
+    stage: "SUBMITTED",
+  };
+}
+
+/**
+ * Record `completed` as the current stage and (best-effort) via `markStage`.
+ * Only called after the stage's work succeeds (WORKER_RUNNING is the one
+ * in-progress exception, recorded right before the worker runs).
+ */
+async function markStageCompleted(
+  ctx: WorkerZipPipelineContext,
+  completed: WorkerZipLogicalStage,
+): Promise<PipelineStatus> {
+  ctx.stage = completed;
+  const pipelineStatus = mapWorkerZipStageToPipelineStatus(completed);
+  if (ctx.deps.markStage) {
+    try {
+      await ctx.deps.markStage(completed, pipelineStatus);
+    } catch {
+      // stage tracking is best-effort
+    }
   }
+  return pipelineStatus;
+}
 
-  // P6 §3: fail fast when there is no way to obtain a SearchIndexGeneration.
-  // A resolver may need the worker output payload before it can resolve, so we
-  // only early-fail when neither a bound id nor a resolver exists — before any
-  // ZIP storage / worker run / output storage / SourceDocument / importToDb.
-  if (!input.searchIndexGenerationId && !deps.resolveSearchIndexGenerationId) {
+/**
+ * P6 §3 early-fail: when there is no way to obtain a SearchIndexGeneration.
+ * A resolver may need the worker output payload before it can resolve, so we
+ * only early-fail when neither a bound id nor a resolver exists — before any
+ * ZIP storage / temp dir / worker run / output storage / SourceDocument /
+ * importToDb. Returns the failure result, or `null` to continue.
+ */
+function validateGenerationBinding(
+  ctx: WorkerZipPipelineContext,
+): WorkerZipPipelineResult | null {
+  if (!ctx.input.searchIndexGenerationId && !ctx.deps.resolveSearchIndexGenerationId) {
     return {
-      ...base,
+      ...ctx.base,
       logicalStage: "ACCEPTED",
       pipelineStatus: "FAILED",
       error: {
@@ -295,245 +342,335 @@ export async function runWorkerZipImportPipeline(
       },
     };
   }
+  return null;
+}
 
-  // `stage` = the stage currently being attempted (used for error.stage /
-  // logicalStage). `markCompleted` records a stage as DONE via markStage; it is
-  // only called after the stage's work succeeds (WORKER_RUNNING is the one
-  // in-progress exception, recorded right before the worker runs).
-  const markCompleted = async (completed: WorkerZipLogicalStage) => {
-    stage = completed;
-    const pipelineStatus = mapWorkerZipStageToPipelineStatus(completed);
-    if (deps.markStage) {
-      try {
-        await deps.markStage(completed, pipelineStatus);
-      } catch {
-        // stage tracking is best-effort
+/** Step 1: store the original ZIP (size-guarded before it is read into memory). */
+async function storeSourceArchive(ctx: WorkerZipPipelineContext): Promise<void> {
+  ctx.stage = "ARCHIVE_STORED";
+  const { input, deps } = ctx;
+  const zipSize = deps.getFileSize(input.inputZipPath);
+  if (zipSize > ctx.maxSourceZipUploadBytes) {
+    throw new WorkerZipPipelineFailure({
+      code: "WORKER_ZIP_FILE_TOO_LARGE",
+      message: `source ZIP is ${zipSize} bytes, exceeds limit ${ctx.maxSourceZipUploadBytes}`,
+      retryable: false,
+      stage: ctx.stage,
+    });
+  }
+  const zipBytes = deps.readFileBytes(input.inputZipPath);
+  await deps.storage.putSmallObject({
+    packId: input.packId,
+    versionId: input.packVersionId,
+    payloadId: input.pipelineRunId,
+    originalFileName: "original.zip",
+    mimeType: "application/zip",
+    bytes: zipBytes,
+    checksumSha256: sha256Hex(zipBytes),
+    objectKey: ctx.sourceZipObjectKey,
+  });
+  await markStageCompleted(ctx, "ARCHIVE_STORED");
+}
+
+/**
+ * Steps 2–3: create the temp working dir and run the Python Worker.
+ * WORKER_RUNNING is recorded as an in-progress stage right before the run.
+ * On worker failure this throws (import / SourceDocument are never reached).
+ */
+async function runPythonWorker(ctx: WorkerZipPipelineContext): Promise<void> {
+  const { input, deps } = ctx;
+  ctx.outputDir = deps.makeTempDir();
+  ctx.stage = "WORKER_RUNNING";
+  await markStageCompleted(ctx, "WORKER_RUNNING");
+  const run = await deps.runWorker({
+    inputZipPath: input.inputZipPath,
+    outputDir: ctx.outputDir,
+    packName: input.packName,
+    productVersion: input.productVersion,
+    language: input.language,
+    scriptPath: input.workerScriptPath,
+    pythonPath: input.pythonPath,
+    maxFileBytes: input.maxFileBytes,
+    maxTotalBytes: input.maxTotalBytes,
+    env: input.env,
+  });
+  if (!run.ok) {
+    throw new WorkerZipPipelineFailure({
+      code: run.timedOut ? "WORKER_RUN_TIMEOUT" : "WORKER_RUN_FAILED",
+      message: run.errorMessage,
+      retryable: run.timedOut,
+      stage: ctx.stage,
+    });
+  }
+  ctx.base.workerStdoutTail = run.stdout.slice(-4000);
+  ctx.base.workerStderrTail = run.stderr.slice(-4000);
+  await markStageCompleted(ctx, "WORKER_OUTPUT_CREATED");
+}
+
+/** Step 4: validate worker output (no chunk regen) and collect its warnings. */
+async function prepareAndValidateWorkerOutput(
+  ctx: WorkerZipPipelineContext,
+): Promise<WorkerOutputImportPayload> {
+  ctx.stage = "WORKER_OUTPUT_VALIDATED";
+  const { input, deps } = ctx;
+  const prepared = deps.prepareImport({
+    outputDir: ctx.outputDir!,
+    packId: input.packId,
+    packVersionId: input.packVersionId,
+    pipelineRunId: input.pipelineRunId,
+    objectStoragePrefix: ctx.prefix,
+  });
+  if (!prepared.ok) {
+    const first = prepared.errors[0];
+    throw new WorkerZipPipelineFailure({
+      code: first?.code ?? "WORKER_OUTPUT_INVALID",
+      message: first?.message ?? "worker output failed validation",
+      retryable: false,
+      stage: ctx.stage,
+    });
+  }
+  const payload = prepared.payload;
+  for (const w of payload.warnings) ctx.warnings.push(w);
+
+  if (
+    payload.validationReport.status !== "ok" ||
+    (payload.validationReport.errors?.length ?? 0) > 0
+  ) {
+    throw new WorkerZipPipelineFailure({
+      code: "VALIDATION_REPORT_NOT_OK",
+      message: `validation_report.status must be "ok" (got "${payload.validationReport.status ?? "unknown"}")`,
+      retryable: false,
+      stage: ctx.stage,
+    });
+  }
+  await markStageCompleted(ctx, "WORKER_OUTPUT_VALIDATED");
+  return payload;
+}
+
+/** Step 5: store worker output files (keys must match payload.storedFiles). */
+async function storeWorkerOutput(
+  ctx: WorkerZipPipelineContext,
+  payload: WorkerOutputImportPayload,
+): Promise<void> {
+  ctx.stage = "WORKER_OUTPUT_STORED";
+  const { input, deps } = ctx;
+  for (const file of payload.storedFiles) {
+    if (!file.present) {
+      if (file.required) {
+        throw new WorkerZipPipelineFailure({
+          code: "MISSING_REQUIRED_OUTPUT",
+          message: `required worker output file missing: ${file.relativePath}`,
+          retryable: false,
+          stage: ctx.stage,
+        });
       }
+      ctx.warnings.push({
+        code: "OPTIONAL_OUTPUT_MISSING",
+        message: `optional worker output file missing: ${file.relativePath}`,
+        path: file.relativePath,
+      });
+      continue;
     }
-    return pipelineStatus;
-  };
-
-  const maxSourceZipUploadBytes =
-    input.maxSourceZipUploadBytes ?? DEFAULT_MAX_SOURCE_ZIP_UPLOAD_BYTES;
-  const maxWorkerOutputUploadBytes =
-    input.maxWorkerOutputUploadBytes ?? DEFAULT_MAX_WORKER_OUTPUT_UPLOAD_BYTES;
-
-  try {
-    // deps/input are ready.
-    await markCompleted("ACCEPTED");
-
-    // 1. Store the original ZIP (size-guarded before it is read into memory).
-    stage = "ARCHIVE_STORED";
-    const zipSize = deps.getFileSize(input.inputZipPath);
-    if (zipSize > maxSourceZipUploadBytes) {
+    const absPath = path.join(ctx.outputDir!, file.relativePath);
+    const fileSize = deps.getFileSize(absPath);
+    if (fileSize > ctx.maxWorkerOutputUploadBytes) {
       throw new WorkerZipPipelineFailure({
-        code: "WORKER_ZIP_FILE_TOO_LARGE",
-        message: `source ZIP is ${zipSize} bytes, exceeds limit ${maxSourceZipUploadBytes}`,
+        code: "WORKER_OUTPUT_FILE_TOO_LARGE",
+        message: `worker output ${file.relativePath} is ${fileSize} bytes, exceeds limit ${ctx.maxWorkerOutputUploadBytes}`,
         retryable: false,
-        stage,
+        stage: ctx.stage,
       });
     }
-    const zipBytes = deps.readFileBytes(input.inputZipPath);
+    const bytes = deps.readFileBytes(absPath);
     await deps.storage.putSmallObject({
       packId: input.packId,
       versionId: input.packVersionId,
       payloadId: input.pipelineRunId,
-      originalFileName: "original.zip",
-      mimeType: "application/zip",
-      bytes: zipBytes,
-      checksumSha256: sha256Hex(zipBytes),
-      objectKey: sourceZipObjectKey,
+      originalFileName: path.posix.basename(file.relativePath.replace(/\\/g, "/")),
+      mimeType: mimeForRelativePath(file.relativePath),
+      bytes,
+      checksumSha256: file.sha256,
+      objectKey: file.objectKey,
     });
-    await markCompleted("ARCHIVE_STORED");
+    ctx.storedObjectKeys.push(file.objectKey);
+  }
+  await markStageCompleted(ctx, "WORKER_OUTPUT_STORED");
+}
 
-    // 2. Temp working dir + 3. run the Python Worker.
-    outputDir = deps.makeTempDir();
-    stage = "WORKER_RUNNING";
-    // In-progress stage: recorded right before the worker runs (see note above).
-    await markCompleted("WORKER_RUNNING");
-    const run = await deps.runWorker({
-      inputZipPath: input.inputZipPath,
-      outputDir,
-      packName: input.packName,
-      productVersion: input.productVersion,
-      language: input.language,
-      scriptPath: input.workerScriptPath,
-      pythonPath: input.pythonPath,
-      maxFileBytes: input.maxFileBytes,
-      maxTotalBytes: input.maxTotalBytes,
-      env: input.env,
+/**
+ * Step 6: bind to a SearchIndexGeneration BEFORE any DB side-effect (creation
+ * deferred to P5.x). Done before persistSourceDocuments so a missing binding
+ * fails without persisting SourceDocument rows.
+ */
+async function resolveGenerationBinding(
+  ctx: WorkerZipPipelineContext,
+  payload: WorkerOutputImportPayload,
+): Promise<string> {
+  const { input, deps } = ctx;
+  const searchIndexGenerationId =
+    input.searchIndexGenerationId ??
+    (deps.resolveSearchIndexGenerationId
+      ? await deps.resolveSearchIndexGenerationId({
+          payload,
+          packId: input.packId,
+          packVersionId: input.packVersionId,
+          pipelineRunId: input.pipelineRunId,
+        })
+      : undefined);
+  if (!searchIndexGenerationId) {
+    throw new WorkerZipPipelineFailure({
+      code: "SEARCH_GENERATION_REQUIRED",
+      message:
+        "no searchIndexGenerationId provided and no resolver configured (generation creation is deferred to P5.x)",
+      retryable: false,
+      stage: ctx.stage,
     });
-    if (!run.ok) {
-      throw new WorkerZipPipelineFailure({
-        code: run.timedOut ? "WORKER_RUN_TIMEOUT" : "WORKER_RUN_FAILED",
-        message: run.errorMessage,
-        retryable: run.timedOut,
-        stage,
-      });
+  }
+  return searchIndexGenerationId;
+}
+
+/** Step 7: SourceDocument mapping (only after the generation is bound). */
+function persistSourceDocuments(
+  ctx: WorkerZipPipelineContext,
+  payload: WorkerOutputImportPayload,
+): Promise<Record<string, string>> {
+  return ctx.deps.ensureSourceDocuments({
+    payload,
+    productVersion: ctx.input.productVersion,
+    prismaClient: ctx.input.prismaClient,
+  });
+}
+
+/** Step 8: import worker output into Store DB + vector index (no TS re-chunk/re-embed). */
+async function importWorkerResult(
+  ctx: WorkerZipPipelineContext,
+  payload: WorkerOutputImportPayload,
+  searchIndexGenerationId: string,
+  sourceDocumentIdByPath: Record<string, string>,
+): Promise<WorkerOutputDbImportResult> {
+  ctx.stage = "IMPORTED";
+  const importResult = await ctx.deps.importToDb({
+    payload,
+    searchIndexGenerationId,
+    chunkGenerationId: ctx.input.chunkGenerationId,
+    sourceDocumentIdByPath,
+    prismaClient: ctx.input.prismaClient,
+    requirePgvector: ctx.input.requirePgvector,
+  });
+  await markStageCompleted(ctx, "IMPORTED");
+  if (importResult.vectorSyncWarning) {
+    ctx.warnings.push({ code: "PGVECTOR_FALLBACK", message: importResult.vectorSyncWarning });
+  }
+  return importResult;
+}
+
+/** Step 9: vectors reflected → INDEXING (generation status transitions handled by caller). */
+async function buildPipelineSuccessResult(
+  ctx: WorkerZipPipelineContext,
+  searchIndexGenerationId: string,
+  importResult: WorkerOutputDbImportResult,
+): Promise<WorkerZipPipelineResult> {
+  const pipelineStatus = await markStageCompleted(ctx, "INDEXING");
+  return {
+    ...ctx.base,
+    ok: true,
+    logicalStage: ctx.stage,
+    pipelineStatus,
+    storedObjectKeys: ctx.storedObjectKeys,
+    searchIndexGenerationId,
+    chunkGenerationId: importResult.chunkGenerationId,
+    importedChunkCount: importResult.importedChunkCount,
+    importedEmbeddingCount: importResult.importedEmbeddingCount,
+    pgvectorReflected: importResult.pgvectorReflected,
+    vectorUpsertedCount: importResult.vectorUpsertedCount,
+    vectorSkippedCount: importResult.vectorSkippedCount,
+    vectorSyncWarning: importResult.vectorSyncWarning,
+    warnings: ctx.warnings,
+  };
+}
+
+/** Map a thrown error to the failure result, preserving the attempted stage. */
+function handlePipelineFailure(
+  ctx: WorkerZipPipelineContext,
+  error: unknown,
+): WorkerZipPipelineResult {
+  return {
+    ...ctx.base,
+    ok: false,
+    logicalStage: ctx.stage,
+    pipelineStatus: "FAILED",
+    storedObjectKeys: ctx.storedObjectKeys,
+    warnings: ctx.warnings,
+    error: classifyWorkerZipError(error, ctx.stage),
+  };
+}
+
+/** Best-effort temp cleanup; a no-op on paths where no temp dir was created (early-fail). */
+function cleanupPipelineTempFiles(ctx: WorkerZipPipelineContext): void {
+  if (ctx.outputDir) {
+    try {
+      ctx.deps.cleanupDir(ctx.outputDir);
+    } catch {
+      // cleanup best-effort
     }
-    base.workerStdoutTail = run.stdout.slice(-4000);
-    base.workerStderrTail = run.stderr.slice(-4000);
-    await markCompleted("WORKER_OUTPUT_CREATED");
+  }
+}
 
-    // 4. Validate worker output (no chunk regen).
-    stage = "WORKER_OUTPUT_VALIDATED";
-    const prepared = deps.prepareImport({
-      outputDir,
-      packId: input.packId,
-      packVersionId: input.packVersionId,
-      pipelineRunId: input.pipelineRunId,
-      objectStoragePrefix: prefix,
-    });
-    if (!prepared.ok) {
-      const first = prepared.errors[0];
-      throw new WorkerZipPipelineFailure({
-        code: first?.code ?? "WORKER_OUTPUT_INVALID",
-        message: first?.message ?? "worker output failed validation",
-        retryable: false,
-        stage,
-      });
-    }
-    const payload = prepared.payload;
-    for (const w of payload.warnings) warnings.push(w);
+/**
+ * Run the ZIP Worker import pipeline. Never throws: failures are captured in the
+ * returned result's `error` (with `retryable`) and the temp dir is always cleaned up.
+ *
+ * This is a thin orchestrator; each numbered step lives in a helper above so the
+ * side-effect order (store ZIP → run worker → validate → store output → bind
+ * generation → SourceDocument → import) stays visible and easy to extend.
+ */
+export async function runWorkerZipImportPipeline(
+  input: WorkerZipPipelineInput,
+): Promise<WorkerZipPipelineResult> {
+  const prefix = input.objectStoragePrefix?.trim() || DEFAULT_OBJECT_STORAGE_PREFIX;
+  const sourceZipObjectKey = buildWorkerRunSourceZipObjectKey({
+    prefix,
+    packId: input.packId,
+    packVersionId: input.packVersionId,
+    pipelineRunId: input.pipelineRunId,
+  });
 
-    if (
-      payload.validationReport.status !== "ok" ||
-      (payload.validationReport.errors?.length ?? 0) > 0
-    ) {
-      throw new WorkerZipPipelineFailure({
-        code: "VALIDATION_REPORT_NOT_OK",
-        message: `validation_report.status must be "ok" (got "${payload.validationReport.status ?? "unknown"}")`,
-        retryable: false,
-        stage,
-      });
-    }
-    await markCompleted("WORKER_OUTPUT_VALIDATED");
-
-    // 5. Store worker output files (keys must match payload.storedFiles).
-    stage = "WORKER_OUTPUT_STORED";
-    for (const file of payload.storedFiles) {
-      if (!file.present) {
-        if (file.required) {
-          throw new WorkerZipPipelineFailure({
-            code: "MISSING_REQUIRED_OUTPUT",
-            message: `required worker output file missing: ${file.relativePath}`,
-            retryable: false,
-            stage,
-          });
-        }
-        warnings.push({
-          code: "OPTIONAL_OUTPUT_MISSING",
-          message: `optional worker output file missing: ${file.relativePath}`,
-          path: file.relativePath,
-        });
-        continue;
-      }
-      const absPath = path.join(outputDir, file.relativePath);
-      const fileSize = deps.getFileSize(absPath);
-      if (fileSize > maxWorkerOutputUploadBytes) {
-        throw new WorkerZipPipelineFailure({
-          code: "WORKER_OUTPUT_FILE_TOO_LARGE",
-          message: `worker output ${file.relativePath} is ${fileSize} bytes, exceeds limit ${maxWorkerOutputUploadBytes}`,
-          retryable: false,
-          stage,
-        });
-      }
-      const bytes = deps.readFileBytes(absPath);
-      await deps.storage.putSmallObject({
-        packId: input.packId,
-        versionId: input.packVersionId,
-        payloadId: input.pipelineRunId,
-        originalFileName: path.posix.basename(file.relativePath.replace(/\\/g, "/")),
-        mimeType: mimeForRelativePath(file.relativePath),
-        bytes,
-        checksumSha256: file.sha256,
-        objectKey: file.objectKey,
-      });
-      storedObjectKeys.push(file.objectKey);
-    }
-    await markCompleted("WORKER_OUTPUT_STORED");
-
-    // 6. Bind to a SearchIndexGeneration BEFORE any DB side-effect (creation
-    // deferred to P5.x). Done before ensureSourceDocuments so a missing binding
-    // fails without persisting SourceDocument rows.
-    const searchIndexGenerationId =
-      input.searchIndexGenerationId ??
-      (deps.resolveSearchIndexGenerationId
-        ? await deps.resolveSearchIndexGenerationId({
-            payload,
-            packId: input.packId,
-            packVersionId: input.packVersionId,
-            pipelineRunId: input.pipelineRunId,
-          })
-        : undefined);
-    if (!searchIndexGenerationId) {
-      throw new WorkerZipPipelineFailure({
-        code: "SEARCH_GENERATION_REQUIRED",
-        message:
-          "no searchIndexGenerationId provided and no resolver configured (generation creation is deferred to P5.x)",
-        retryable: false,
-        stage,
-      });
-    }
-
-    // 7. SourceDocument mapping (only after the generation is bound).
-    const sourceDocumentIdByPath = await deps.ensureSourceDocuments({
-      payload,
-      productVersion: input.productVersion,
-      prismaClient: input.prismaClient,
-    });
-
-    // 8. Import into Store DB + vector index.
-    stage = "IMPORTED";
-    const importResult = await deps.importToDb({
-      payload,
-      searchIndexGenerationId,
-      chunkGenerationId: input.chunkGenerationId,
-      sourceDocumentIdByPath,
-      prismaClient: input.prismaClient,
-      requirePgvector: input.requirePgvector,
-    });
-    await markCompleted("IMPORTED");
-    if (importResult.vectorSyncWarning) {
-      warnings.push({ code: "PGVECTOR_FALLBACK", message: importResult.vectorSyncWarning });
-    }
-
-    // 9. Vectors reflected → INDEXING (generation status transitions handled by caller).
-    const pipelineStatus = await markCompleted("INDEXING");
-
-    return {
-      ...base,
-      ok: true,
-      logicalStage: stage,
-      pipelineStatus,
-      storedObjectKeys,
-      searchIndexGenerationId,
-      chunkGenerationId: importResult.chunkGenerationId,
-      importedChunkCount: importResult.importedChunkCount,
-      importedEmbeddingCount: importResult.importedEmbeddingCount,
-      pgvectorReflected: importResult.pgvectorReflected,
-      vectorUpsertedCount: importResult.vectorUpsertedCount,
-      vectorSkippedCount: importResult.vectorSkippedCount,
-      vectorSyncWarning: importResult.vectorSyncWarning,
-      warnings,
-    };
+  let deps: WorkerZipPipelineDeps;
+  try {
+    deps = resolveDeps(input);
   } catch (error) {
+    // Storage resolution (or dep wiring) failed before we started.
     return {
-      ...base,
-      ok: false,
-      logicalStage: stage,
+      ...emptyBaseResult(sourceZipObjectKey),
+      error: classifyWorkerZipError(error, "SUBMITTED"),
       pipelineStatus: "FAILED",
-      storedObjectKeys,
-      warnings,
-      error: classifyWorkerZipError(error, stage),
     };
+  }
+
+  const ctx = buildPipelineContext(input, deps, prefix, sourceZipObjectKey);
+
+  // Early-fail (no side-effects) before any temp dir / storage / worker run.
+  const bindingError = validateGenerationBinding(ctx);
+  if (bindingError) return bindingError;
+
+  try {
+    await markStageCompleted(ctx, "ACCEPTED");
+    await storeSourceArchive(ctx);
+    await runPythonWorker(ctx);
+    const payload = await prepareAndValidateWorkerOutput(ctx);
+    await storeWorkerOutput(ctx, payload);
+    const searchIndexGenerationId = await resolveGenerationBinding(ctx, payload);
+    const sourceDocumentIdByPath = await persistSourceDocuments(ctx, payload);
+    const importResult = await importWorkerResult(
+      ctx,
+      payload,
+      searchIndexGenerationId,
+      sourceDocumentIdByPath,
+    );
+    return await buildPipelineSuccessResult(ctx, searchIndexGenerationId, importResult);
+  } catch (error) {
+    return handlePipelineFailure(ctx, error);
   } finally {
-    if (outputDir) {
-      try {
-        deps.cleanupDir(outputDir);
-      } catch {
-        // cleanup best-effort
-      }
-    }
+    cleanupPipelineTempFiles(ctx);
   }
 }

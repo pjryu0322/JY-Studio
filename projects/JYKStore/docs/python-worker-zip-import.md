@@ -216,6 +216,39 @@ Design notes:
   checksum→fileName) and returns the `sourcePath → SourceDocument.id` map consumed
   by `importWorkerOutputToStoreDb`.
 
+### P7.2: orchestration split (behavior-preserving)
+
+Ahead of async-job / multipart / retry work, `runWorkerZipImportPipeline()` was
+reduced to a thin orchestrator (approx CC 29 → 5) by extracting each numbered step
+into a small private helper that shares a mutable `WorkerZipPipelineContext`:
+
+```text
+buildPipelineContext        base result / keys / deps / size limits (no side-effects)
+validateGenerationBinding   P6 §3 early-fail (no temp dir / storage / worker / import)
+markStageCompleted          completion-only stage tracking (WORKER_RUNNING exception)
+storeSourceArchive          size guard → store source ZIP → ARCHIVE_STORED
+runPythonWorker             temp dir → WORKER_RUNNING → run → WORKER_OUTPUT_CREATED
+prepareAndValidateWorkerOutput  validate output → WORKER_OUTPUT_VALIDATED
+storeWorkerOutput           per-file size guard → store → WORKER_OUTPUT_STORED
+resolveGenerationBinding    bind existing/resolved generation (before any DB write)
+persistSourceDocuments      SourceDocument mapping (only after binding)
+importWorkerResult          importToDb → IMPORTED
+buildPipelineSuccessResult  INDEXING + success shape
+handlePipelineFailure       catch → failure shape (preserves attempted stage)
+cleanupPipelineTempFiles    finally → best-effort temp cleanup (no-op on early-fail)
+```
+
+No behavior change: side-effect order, early-fail (no side-effects), size-guard
+ordering (before `readFileBytes`), the `WORKER_RUNNING` in-progress exception, and
+the public success/failure result shape are all identical and covered by the
+existing `worker-zip-pipeline-service` tests.
+
+> `search-generation-backfill.ts:backfillSearchGenerations` (approx CC 62) is a
+> legacy/backfill path unrelated to the ZIP Worker user-test flow. It is
+> intentionally **out of scope** here (a large decompose would carry regression
+> risk) and is recorded as a legacy/backfill allowlist candidate for a separate
+> P8.x / maintenance task.
+
 Error classification (`classifyWorkerZipError`):
 
 ```text
