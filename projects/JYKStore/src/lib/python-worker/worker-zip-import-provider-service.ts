@@ -255,11 +255,11 @@ export const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
  */
 export const WORKER_ZIP_REQUEST_ACCEPTED_STATUS = "RUNNING";
 
-/** Latest open (PENDING|RUNNING) request-marker status for a pack, or null. */
-async function getLatestRequestMarkerStatus(
+/** Latest open (PENDING|ACCEPTED) request marker for a pack, or null. */
+async function getLatestOpenRequestMarker(
   client: typeof prisma,
   packId: string,
-): Promise<string | null> {
+): Promise<{ status: string; createdAt: Date } | null> {
   const marker = await client.pipelineRun.findFirst({
     where: {
       packId,
@@ -267,9 +267,9 @@ async function getLatestRequestMarkerStatus(
       status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
     },
     orderBy: { createdAt: "desc" },
-    select: { status: true },
+    select: { status: true, createdAt: true },
   });
-  return marker?.status ?? null;
+  return marker ? { status: marker.status, createdAt: marker.createdAt } : null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -396,17 +396,17 @@ export async function withdrawProviderWorkerZipRequest(
     packId: input.packId,
   });
 
-  const [request, lastRun, markerStatus] = await Promise.all([
+  const [request, lastRun, marker] = await Promise.all([
     getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
     client.pipelineRun.findFirst({
       where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
       orderBy: { createdAt: "desc" },
-      select: { status: true },
+      select: { status: true, createdAt: true },
     }),
-    getLatestRequestMarkerStatus(client, pack.packId),
+    getLatestOpenRequestMarker(client, pack.packId),
   ]);
 
-  const status = deriveRequestStatus(request, lastRun?.status ?? null, markerStatus);
+  const status = deriveRequestStatus(request, lastRun, marker);
   if (status === "ACCEPTED") {
     throw new WorkerZipImportServiceError(
       "REQUEST_ALREADY_ACCEPTED",
@@ -443,12 +443,37 @@ export async function withdrawProviderWorkerZipRequest(
   return { ok: true, packId: pack.packId, versionId: version.id };
 }
 
+type RequestMarkerRef = { status: string; createdAt?: Date | string | null } | null;
+type LastRunRef = { status: string; createdAt?: Date | string | null } | null;
+
+function toTime(value: Date | string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
 function deriveRequestStatus(
   request: WorkerZipRequestMetadata | null,
-  lastRunStatus: string | null,
-  markerStatus: string | null = null,
+  lastRun: LastRunRef,
+  marker: RequestMarkerRef = null,
 ): ProviderWorkerZipRequestStatus {
+  const lastRunStatus = lastRun?.status ?? null;
+
+  // An actively running generation always wins.
   if (lastRunStatus === "RUNNING") return "PROCESSING";
+
+  // A fresh request cycle: if an open marker (요청/접수) was created AFTER the last
+  // terminal run, the Provider has re-submitted — reset the visible status so a
+  // prior FAIL/PASS no longer masks the new request.
+  const markerTime = toTime(marker?.createdAt);
+  const runTime = toTime(lastRun?.createdAt);
+  const markerIsFresh =
+    marker != null &&
+    (lastRun == null || (markerTime != null && runTime != null && markerTime >= runTime));
+  if (marker && markerIsFresh) {
+    return marker.status === WORKER_ZIP_REQUEST_ACCEPTED_STATUS ? "ACCEPTED" : "REQUESTED";
+  }
+
   if (lastRunStatus === "PASS") return "COMPLETED";
   // A pre-execution Admin rejection is terminal for this request cycle. It ranks
   // above a stale FAIL run and below a completed run; a fresh Provider submission
@@ -456,7 +481,7 @@ function deriveRequestStatus(
   if (request?.rejection) return "REJECTED";
   if (lastRunStatus === "FAIL") return "FAILED";
   if (!request) return "NONE";
-  if (markerStatus === WORKER_ZIP_REQUEST_ACCEPTED_STATUS) return "ACCEPTED";
+  if (marker?.status === WORKER_ZIP_REQUEST_ACCEPTED_STATUS) return "ACCEPTED";
   return "REQUESTED";
 }
 
@@ -485,14 +510,14 @@ export async function getProviderWorkerZipRequestState(input: {
     packId: input.packId,
   });
 
-  const [request, lastRun, markerStatus, latestReview] = await Promise.all([
+  const [request, lastRun, marker, latestReview] = await Promise.all([
     getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
     client.pipelineRun.findFirst({
       where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
       orderBy: { createdAt: "desc" },
-      select: { status: true, finishedAt: true, summary: true },
+      select: { status: true, finishedAt: true, summary: true, createdAt: true },
     }),
-    getLatestRequestMarkerStatus(client, pack.packId),
+    getLatestOpenRequestMarker(client, pack.packId),
     client.packReview
       .findFirst({
         where: { packId: pack.packId, decision: "REJECT" },
@@ -505,7 +530,7 @@ export async function getProviderWorkerZipRequestState(input: {
   return {
     packId: pack.packId,
     versionId: version.id,
-    requestStatus: deriveRequestStatus(request, lastRun?.status ?? null, markerStatus),
+    requestStatus: deriveRequestStatus(request, lastRun, marker),
     request,
     lastRun: lastRun
       ? {
@@ -593,6 +618,16 @@ export async function runProviderWorkerZipImport(
   const warnings = result.warnings.map((w) => ({ code: w.code, message: w.message }));
 
   if (!result.ok) {
+    // Surface the Python Worker's own output server-side so failures like
+    // "exited with code 1" can be traced to the actual traceback / error.
+    const stderrTail = result.workerStderrTail?.trim() ?? "";
+    if (stderrTail || result.workerStdoutTail) {
+      console.error(
+        `[worker-zip] generation failed pack=${pack.packId} run=${pipelineRun.id} ` +
+          `stage=${result.error?.stage ?? result.logicalStage} code=${result.error?.code}\n` +
+          `stderr:\n${result.workerStderrTail ?? ""}\nstdout:\n${result.workerStdoutTail ?? ""}`,
+      );
+    }
     if (generationCreated) {
       await transitions
         .toFailed(generationId, {
@@ -604,11 +639,16 @@ export async function runProviderWorkerZipImport(
     await client.pipelineRun
       .update({ where: { id: pipelineRun.id }, data: { status: "FAIL", finishedAt: new Date() } })
       .catch(() => undefined);
+    // Attach the stderr tail to the step-log detail so the Admin history panel
+    // shows *why* the run failed, not just the generic mapped message.
+    const stepErrorMessage = stderrTail
+      ? `${result.error?.message ?? "생성 실패"} · ${stderrTail.slice(-400)}`
+      : result.error?.message ?? null;
     await finalizeWorkerZipSteps({
       prismaClient: input.prismaClient,
       runId: pipelineRun.id,
       ok: false,
-      errorMessage: result.error?.message ?? null,
+      errorMessage: stepErrorMessage,
     });
 
     const code = result.error?.code ?? "WORKER_ZIP_PIPELINE_FAILED";
@@ -938,14 +978,14 @@ export async function rejectAdminWorkerZipRequest(
     packId: input.packId,
   });
 
-  const [request, lastRun, markerStatus] = await Promise.all([
+  const [request, lastRun, marker] = await Promise.all([
     getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
     client.pipelineRun.findFirst({
       where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
       orderBy: { createdAt: "desc" },
-      select: { status: true },
+      select: { status: true, createdAt: true },
     }),
-    getLatestRequestMarkerStatus(client, pack.packId),
+    getLatestOpenRequestMarker(client, pack.packId),
   ]);
 
   if (!request) {
@@ -956,7 +996,7 @@ export async function rejectAdminWorkerZipRequest(
     );
   }
 
-  const status = deriveRequestStatus(request, lastRun?.status ?? null, markerStatus);
+  const status = deriveRequestStatus(request, lastRun, marker);
   if (status === "PROCESSING") {
     throw new WorkerZipImportServiceError(
       "REQUEST_IN_PROGRESS",

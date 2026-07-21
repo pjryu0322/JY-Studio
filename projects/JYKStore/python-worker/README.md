@@ -98,6 +98,13 @@ local output. Store validates worker output, stores artifacts, imports
 chunks/embeddings, and performs DB/vector-index reflection. Python Worker must
 not write Store DB or Object Storage.
 
+Embedding ownership (P7.6): document/chunk embeddings are generated **only** by
+this Worker (`embeddings.json`). The Store has no TypeScript document/chunk
+embedding generator and never re-embeds Worker output — it only validates,
+persists, and reflects these vectors. The single embedding the Store computes at
+runtime is the search **query** vector, using the same E5 model descriptor as
+this Worker so query and chunk vectors are comparable.
+
 ### Embeddings
 
 `embeddings.json` is always written (empty array `[]` when there are no chunks or
@@ -115,17 +122,39 @@ Two modes (via options JSON `options.embedding` or environment):
 
 `local_e5` requires `options.embedding.modelPath` (or
 `JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH`). If the path is missing or does not
-exist, the Worker fails with a clear `EmbeddingError` instead of downloading
-from the network (`local_files_only=True`). The model name is retained as
-descriptor metadata only.
+exist, the Worker fails with a clear `EmbeddingError` (Korean setup hint
+included) instead of downloading from the network (`local_files_only=True`).
+The model name is retained as descriptor metadata only.
 
-Environment variables:
+Environment variables (see `python-worker/.env.example`):
 
 ```text
 JYKSTORE_PYTHON_WORKER_EMBEDDING_MODE=local_e5 | deterministic_stub
 JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH=<local model path>
 JYKSTORE_PYTHON_WORKER_E5_MODEL_NAME=dragonkue/multilingual-e5-small-ko-v2
 ```
+
+#### Installing the local E5 model (one-time)
+
+Model files are **never committed to git** — only the install script and env
+templates are. Download the pinned model once (network is allowed only during
+install), then point the Worker at the installed directory:
+
+```bash
+# 1) install the pinned model (repo root). Requires the pinned 40-char HF SHA.
+#    E5_MODEL_REVISION + E5_MODEL_DIR are required; see the root .env.example.
+npm run embedding-model:install
+
+# 2) point the Worker at the installed directory
+#    (same path as E5_MODEL_DIR from step 1)
+JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH=<E5_MODEL_DIR>
+```
+
+For **offline / air-gapped** hosts, pre-download the model on a connected
+machine, copy the model directory to the target host, and set
+`JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH` to its absolute path. No network access
+is needed at Worker runtime. `sentence-transformers` (and `huggingface-hub`)
+must also be installed in the Worker's Python env — see `requirements.txt`.
 
 Example `options.json` embedding block:
 

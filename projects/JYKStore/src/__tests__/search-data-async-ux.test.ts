@@ -55,7 +55,9 @@ describe("search-data async enqueue + failure UX", () => {
 
   it("does not mutate process.env for pgvector in generate path", () => {
     assert.doesNotMatch(service, /process\.env\.JYKSTORE_REQUIRE_PGVECTOR\s*=/);
-    assert.match(service, /requirePgvector:\s*true/);
+    // P7.6: TS re-embedding removed (no more requirePgvector re-embed option);
+    // pgvector is still enforced fail-closed via assertPgvectorRuntimeReady.
+    assert.match(service, /assertPgvectorRuntimeReady/);
     assert.match(service, /provisionalEnqueueLocalE5Descriptor/);
   });
 

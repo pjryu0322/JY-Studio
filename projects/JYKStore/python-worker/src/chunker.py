@@ -6,11 +6,95 @@ import json
 import re
 from typing import Any
 
+from src.embedding import (
+    E5_MAX_SEQUENCE_TOKENS,
+    build_passage_text,
+    estimate_embedding_token_count,
+)
+
+# The E5 passage input has a hard 512-token gate in build_embeddings (matching
+# the Store policy). The chunker must never emit a chunk whose passage exceeds
+# that limit, or the whole knowledge build fails at embedding time. We size to a
+# preferred budget below the hard gate to leave headroom for token estimation
+# rounding and the "passage: "/title/section/keywords overhead.
+E5_TARGET_PASSAGE_TOKENS = 480
+_CHARS_PER_TOKEN = 4
+# Always keep enough content budget that a chunk carries meaningful text even
+# when the fixed overhead (title/section/keywords) is large.
+_MIN_CONTENT_TOKENS = 48
+
 
 def _slug(text: str) -> str:
     text = (text or "").lower().strip()
     text = re.sub(r"[^\w]+", "-", text, flags=re.UNICODE)
     return text.strip("-")[:60] or "chunk"
+
+
+def _fit_keywords(title: str, heading: str, keywords: list[str]) -> list[str]:
+    """Trim keywords so the passage overhead alone can't blow the token budget.
+
+    Rare: only triggers when a section carries an unusually large keyword set.
+    Content always keeps at least ``_MIN_CONTENT_TOKENS`` of budget.
+    """
+    kws = list(keywords)
+    ceiling = E5_TARGET_PASSAGE_TOKENS - _MIN_CONTENT_TOKENS
+    while kws:
+        probe = {"title": title, "section": heading, "keywords": kws, "content": ""}
+        if estimate_embedding_token_count(build_passage_text(probe)) <= ceiling:
+            break
+        kws.pop()
+    return kws
+
+
+def _content_char_budget(title: str, heading: str, keywords: list[str]) -> int:
+    """Chars of ``content`` that keep the whole E5 passage within budget."""
+    probe = {"title": title, "section": heading, "keywords": keywords, "content": ""}
+    overhead = estimate_embedding_token_count(build_passage_text(probe))
+    content_tokens = max(E5_TARGET_PASSAGE_TOKENS - overhead, _MIN_CONTENT_TOKENS)
+    return content_tokens * _CHARS_PER_TOKEN
+
+
+def _split_content(content: str, char_budget: int) -> list[str]:
+    """Split ``content`` into parts each within ``char_budget`` characters.
+
+    Prefers paragraph ("\\n\\n") then line boundaries; hard-splits only when a
+    single paragraph is itself larger than the budget. Never returns empty parts.
+    """
+    content = content or ""
+    if len(content) <= char_budget:
+        return [content] if content.strip() else []
+
+    parts: list[str] = []
+    current = ""
+
+    def flush() -> None:
+        nonlocal current
+        if current.strip():
+            parts.append(current.strip())
+        current = ""
+
+    for para in content.split("\n\n"):
+        # A single paragraph larger than the budget is hard-split on line/space.
+        while len(para) > char_budget:
+            head = para[:char_budget]
+            cut = max(head.rfind("\n"), head.rfind(" "))
+            if cut < char_budget // 2:
+                cut = char_budget
+            flush()
+            piece = para[:cut].strip()
+            if piece:
+                parts.append(piece)
+            para = para[cut:]
+
+        candidate = f"{current}\n\n{para}".strip() if current else para
+        if len(candidate) > char_budget and current:
+            flush()
+            current = para
+        else:
+            current = candidate
+
+    flush()
+    return [p for p in parts if p.strip()]
 
 
 def _is_low_value_section(
@@ -133,36 +217,46 @@ def build_chunks_and_traces(
             if not content and not code_blocks:
                 continue
 
-            section_no += 1
-            base = _slug(f"{doc.get('documentId', '')}-{heading}")
-            chunk_id = f"{base}-{section_no:03d}"
-            if len(chunk_id) > 120:
-                chunk_id = f"{_slug(doc.get('documentId', 'doc'))}-{section_no:03d}"
-            trace_id = f"trace-{chunk_id}"
+            # Keep chunk passages within the E5 512-token gate: trim any oversized
+            # keyword set, then split the section content into budget-fitting parts
+            # so a single large section never fails the whole embedding build.
+            chunk_keywords = _fit_keywords(title, heading, keywords[:50])
+            char_budget = _content_char_budget(title, heading, chunk_keywords)
+            content_parts = _split_content(content[:20000], char_budget) or [""]
 
-            chunk = {
-                "chunkId": chunk_id,
-                "title": title,
-                "content": content[:20000],
-                "sourceType": doc.get("sourceType"),
-                "sourcePath": source_path,
-                "section": heading,
-                "symbols": symbols[:50],
-                "keywords": keywords[:50],
-                "codeBlocks": code_blocks,
-                "traceId": trace_id,
-            }
-            trace = {
-                "traceId": trace_id,
-                "chunkId": chunk_id,
-                "sourcePath": source_path,
-                "sourceHash": source_hash,
-                "section": heading,
-                "parser": parser,
-                "parserVersion": parser_version,
-            }
-            chunks.append(chunk)
-            traces.append(trace)
+            for part_index, part_content in enumerate(content_parts):
+                section_no += 1
+                base = _slug(f"{doc.get('documentId', '')}-{heading}")
+                chunk_id = f"{base}-{section_no:03d}"
+                if len(chunk_id) > 120:
+                    chunk_id = f"{_slug(doc.get('documentId', 'doc'))}-{section_no:03d}"
+                trace_id = f"trace-{chunk_id}"
+
+                chunk = {
+                    "chunkId": chunk_id,
+                    "title": title,
+                    "content": part_content,
+                    "sourceType": doc.get("sourceType"),
+                    "sourcePath": source_path,
+                    "section": heading,
+                    "symbols": symbols[:50],
+                    "keywords": chunk_keywords,
+                    # Code block metadata rides on the first part only to avoid
+                    # duplicating it across a split section's chunks.
+                    "codeBlocks": code_blocks if part_index == 0 else [],
+                    "traceId": trace_id,
+                }
+                trace = {
+                    "traceId": trace_id,
+                    "chunkId": chunk_id,
+                    "sourcePath": source_path,
+                    "sourceHash": source_hash,
+                    "section": heading,
+                    "parser": parser,
+                    "parserVersion": parser_version,
+                }
+                chunks.append(chunk)
+                traces.append(trace)
 
     return chunks, traces
 

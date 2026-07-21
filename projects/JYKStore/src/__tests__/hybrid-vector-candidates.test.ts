@@ -58,8 +58,33 @@ describe("pgvector hybrid candidate policy", () => {
       join(dirname(fileURLToPath(import.meta.url)), "..", "lib", "retrieval", "hybrid-ranking-service.ts"),
       "utf8",
     );
-    const embedCalls = source.match(/adapter\.embed\(/g) ?? [];
-    assert.equal(embedCalls.length, 1, "generation path must call adapter.embed exactly once");
+    // P7.6: query embedding moved to the dedicated runtime-only module. The
+    // hybrid generation path must embed the query exactly once (via
+    // embedSearchQuery) and must not call adapter.embed directly.
+    const embedSearchQueryCalls = source.match(/embedSearchQuery\(/g) ?? [];
+    assert.equal(
+      embedSearchQueryCalls.length,
+      1,
+      "generation path must embed the query exactly once",
+    );
+    assert.ok(!source.includes("adapter.embed("), "no direct adapter.embed in hybrid service");
+    const runtimeQueryEmbedding = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "lib",
+        "embedding",
+        "runtime-query-embedding.ts",
+      ),
+      "utf8",
+    );
+    const runtimeEmbedCalls = runtimeQueryEmbedding.match(/adapter\.embed\(/g) ?? [];
+    assert.equal(
+      runtimeEmbedCalls.length,
+      1,
+      "runtime query embedding calls adapter.embed exactly once",
+    );
+    assert.ok(!runtimeQueryEmbedding.includes("embedBatch"), "query runtime never uses embedBatch");
     assert.match(source, /querySearchIndexVectorsByGeneration/);
     assert.match(source, /requireSearchGeneration|requireGeneration/);
     assert.match(source, /Generation lookup failure is not legacy/);

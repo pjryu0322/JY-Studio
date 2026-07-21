@@ -270,7 +270,10 @@ describe("pipeline ownership boundary (static)", () => {
     assert.ok(builder.includes("assertPrimaryContentCoverage"));
     assert.ok(!pipeline.includes("rebuildPackEmbeddings"));
     assert.ok(!pipeline.includes("runDoclingRetrievalEvaluation"));
-    assert.ok(worker.includes("rebuildPackEmbeddings"));
+    // P7.6: TS doc/chunk embedding generation removed everywhere — the legacy
+    // worker embed step is fail-closed (Python Worker owns embeddings.json).
+    assert.ok(!worker.includes("rebuildPackEmbeddings"));
+    assert.ok(worker.includes("LEGACY_BUILDER_DISABLED"));
     assert.ok(worker.includes("attempt > 0"));
   });
 });

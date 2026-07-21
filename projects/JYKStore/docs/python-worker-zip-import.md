@@ -7,6 +7,22 @@ Store validates worker output, stores artifacts, imports chunks/embeddings, and
 performs DB/vector-index reflection. Python Worker must not write Store DB or
 Object Storage.
 
+### Embedding ownership (P7.6)
+
+- **Document/chunk embeddings are generated ONLY by the Python Worker**
+  (`embeddings.json`, local E5). There is no TypeScript document/chunk embedding
+  generator: the former `rebuildPackEmbeddings` was removed, and the legacy
+  Docling `search-data-generation` embed step is fail-closed
+  (`LEGACY_BUILDER_DISABLED`). The Store validates, persists
+  (`KnowledgeChunkEmbedding`), and reflects (`SearchIndexVector` / pgvector) the
+  Worker's vectors — it never re-embeds Worker output.
+- **The only embedding TypeScript computes at runtime is the search QUERY
+  vector** (`@/lib/embedding/runtime-query-embedding` → `embedSearchQuery`),
+  produced at query time from the `SearchIndexGeneration` descriptor (which
+  mirrors the Worker's E5 model), so the query vector matches stored chunk
+  vectors. This is "runtime query embedding only" and must never be used to embed
+  documents or chunks.
+
 Store / TypeScript Worker:
 
 1. Stores the original ZIP in Object Storage

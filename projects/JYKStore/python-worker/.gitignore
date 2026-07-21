@@ -8,3 +8,14 @@ output/*
 *.egg-info/
 dist/
 build/
+
+# Local env (never commit real values); keep the .env.example template.
+.env
+.env*.local
+!.env.example
+
+# Local E5 model files must never be committed (install/download only).
+models/
+**/multilingual-e5-small-ko-v2/
+jykstore-model-manifest.json
+.install-complete

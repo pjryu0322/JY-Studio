@@ -26,10 +26,12 @@ from src.exclusion_policy import (
     load_exclusion_policy,
 )
 from src.embedding import (
+    E5_MAX_SEQUENCE_TOKENS,
     EmbeddingError,
     build_content_hash,
     build_embeddings,
     build_passage_text,
+    estimate_embedding_token_count,
     resolve_embedding_config,
     write_embeddings,
 )
@@ -217,6 +219,46 @@ class ChunkTraceTests(unittest.TestCase):
         self.assertEqual(chunks[0]["traceId"], traces[0]["traceId"])
         self.assertEqual(chunks[0]["chunkId"], traces[0]["chunkId"])
         self.assertEqual(traces[0]["sourceHash"], "abc123")
+
+    def test_oversized_section_splits_into_budget_fitting_chunks(self):
+        # A section far larger than the E5 512-token passage budget must be split
+        # into multiple chunks, each of which passes the embedding token gate.
+        big_body = "\n\n".join(
+            f"Paragraph {i}: " + ("가나다라마바사아자차 " * 40) for i in range(20)
+        )
+        docs = [
+            {
+                "documentId": "rmate-grid-v6-docs-api-arraycollection-class",
+                "sourcePath": "Docs/api/ArrayCollection.html",
+                "sourceType": "api_html",
+                "title": "ArrayCollection",
+                "sections": [
+                    {"heading": "Overview", "content": big_body, "codeBlocks": []}
+                ],
+                "entities": [],
+                "codeBlocks": [],
+                "metadata": {
+                    "parser": "html_api",
+                    "parserVersion": "0.1.0",
+                    "symbols": ["ArrayCollection"],
+                    "keywords": ["collection", "array"],
+                },
+            }
+        ]
+        inv = {"Docs/api/ArrayCollection.html": {"sha256": "deadbeef"}}
+        chunks, traces = build_chunks_and_traces(docs, inv)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(len(chunks), len(traces))
+        self.assertEqual(len({c["chunkId"] for c in chunks}), len(chunks))
+        for chunk in chunks:
+            tokens = estimate_embedding_token_count(build_passage_text(chunk))
+            self.assertLessEqual(tokens, E5_MAX_SEQUENCE_TOKENS)
+
+        # The whole split section must embed without tripping the 512-token gate.
+        cfg = resolve_embedding_config({"mode": "deterministic_stub", "dimension": 8}, {})
+        embeddings = build_embeddings(chunks, cfg)
+        self.assertEqual(len(embeddings), len(chunks))
         self.assertEqual(traces[0]["parser"], "html_api")
 
 

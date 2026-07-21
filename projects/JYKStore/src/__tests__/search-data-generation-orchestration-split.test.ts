@@ -70,7 +70,10 @@ describe("search-data generation orchestration Phase B split", () => {
     assert.match(worker, /runSearchDataEmbeddingAndIndex/);
     assert.match(worker, /failSearchDataProcessJob/);
     assert.match(processHelper, /assertClaimReadyForEmbedding/);
-    assert.match(processEmbed, /rebuildPackEmbeddings/);
+    // P7.6: TS doc/chunk embedding generation removed — legacy embed step is
+    // fail-closed (Python Worker owns embeddings.json), never re-embeds in TS.
+    assert.doesNotMatch(processEmbed, /rebuildPackEmbeddings/);
+    assert.match(processEmbed, /LEGACY_BUILDER_DISABLED/);
   });
 
   it("docling-knowledge-pipeline-execute does not import search-data embed/eval/activate", () => {

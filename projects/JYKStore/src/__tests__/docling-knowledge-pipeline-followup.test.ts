@@ -141,7 +141,9 @@ describe("docling knowledge pipeline follow-up hardening", () => {
     assert.ok(executeModules.includes("검색데이터 생성 대기"));
     assert.ok(executeModules.includes("awaiting search data"));
     assert.ok(searchData.includes("await activateDraftIndexGeneration"));
-    assert.ok(searchData.includes("rebuildPackEmbeddings"));
+    // P7.6: TS doc/chunk embedding generation removed — legacy embed fail-closed.
+    assert.ok(!searchData.includes("rebuildPackEmbeddings"));
+    assert.ok(searchData.includes("LEGACY_BUILDER_DISABLED"));
     assert.ok(searchData.includes("attempt > 0"));
     assert.ok(searchData.includes('step: "READY_FOR_REVIEW"'));
   });

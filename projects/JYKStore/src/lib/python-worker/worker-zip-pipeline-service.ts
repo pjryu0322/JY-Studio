@@ -401,6 +401,10 @@ async function runPythonWorker(ctx: WorkerZipPipelineContext): Promise<void> {
     env: input.env,
   });
   if (!run.ok) {
+    // Capture the worker's own output on failure too, so the Python error/
+    // traceback is diagnosable (otherwise only "exited with code N" survives).
+    ctx.base.workerStdoutTail = run.stdout.slice(-4000);
+    ctx.base.workerStderrTail = run.stderr.slice(-4000);
     throw new WorkerZipPipelineFailure({
       code: run.timedOut ? "WORKER_RUN_TIMEOUT" : "WORKER_RUN_FAILED",
       message: run.errorMessage,

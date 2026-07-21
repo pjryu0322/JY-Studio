@@ -1,8 +1,18 @@
 /**
- * Embedding rebuild + indexing completion / mismatch failure writes.
+ * P7.6: Legacy Docling embed step is fail-closed.
+ *
+ * TS document/chunk embedding GENERATION has been removed — the Python Worker
+ * (ZIP pipeline) is the single source of embeddings (`embeddings.json`) and the
+ * Store only validates/persists/reflects that output. The former TS
+ * chunk-embedding generator therefore no longer exists; the legacy Docling
+ * search-data generation embed step throws `LEGACY_BUILDER_DISABLED` instead of
+ * re-embedding on the TS side.
+ *
+ * Indexing completion / mismatch failure writes are retained for the
+ * Worker-driven generation lifecycle bookkeeping.
  */
-import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
-import { DOCLING_RETRIEVAL_CHUNK_TYPE } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import type { EmbeddingRebuildResultDto } from "@/lib/embedding-dto";
+import { LEGACY_BUILDER_DISABLED_ERROR } from "@/lib/legacy-builder-disabled";
 import { prisma } from "@/lib/prisma";
 import { markSearchGenerationIndexing } from "@/lib/search-generation/search-generation-service";
 import {
@@ -50,33 +60,20 @@ export async function markIndexingStepRunning(
   });
 }
 
+/**
+ * P7.6: fail-closed. TS document/chunk embedding generation is removed. The
+ * Python Worker (ZIP pipeline) produces `embeddings.json`; the Store never
+ * re-embeds on the TS side. The legacy Docling search-data generation embed
+ * step therefore refuses to run instead of generating vectors in TypeScript.
+ */
 export async function rebuildClaimedPackEmbeddings(
   claimed: ClaimedSearchDataGeneration,
-) {
-  return rebuildPackEmbeddings({
-    packId: claimed.packId,
-    versionId: claimed.versionId,
-    force: true,
-    chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-    indexGenerationId: claimed.chunkGenerationId,
-    searchIndexGenerationId: claimed.id,
-    pipelineRunId: claimed.pipelineRunId,
-    fingerprint: claimed.fingerprint,
-    normalizedDocumentId: claimed.normalizedDocumentId,
-    chunkGenerationId: claimed.chunkGenerationId,
-    includeInactiveForGeneration: true,
-    requirePgvector: true,
-    onChunkProcessed: async (processedCount) => {
-      await prisma.searchIndexGeneration.updateMany({
-        where: {
-          id: claimed.id,
-          attempt: claimed.attempt,
-          status: "EMBEDDING",
-        },
-        data: { embeddedCount: processedCount },
-      });
-    },
-  });
+): Promise<EmbeddingRebuildResultDto> {
+  void claimed;
+  throw new Error(
+    `${LEGACY_BUILDER_DISABLED_ERROR}: 내부 TS 문서/청크 임베딩 생성은 종료되었습니다. ` +
+      "임베딩은 ZIP Worker(embeddings.json)에서만 생성됩니다.",
+  );
 }
 
 export async function completeEmbeddingIndexing(input: {

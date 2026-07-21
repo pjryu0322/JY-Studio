@@ -1157,9 +1157,12 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
   }) {
     const marked: Record<string, unknown>[] = [];
     let rejectedWith: Record<string, unknown> | null = null;
+    // A rejected request has its marker retired (SKIPPED) — no open marker coexists.
     const markerRuns = overrides?.markerStatus
       ? [{ status: overrides.markerStatus }]
-      : [{ status: "PENDING" }];
+      : overrides?.rejection
+        ? []
+        : [{ status: "PENDING" }];
     const prismaClient = {
       pipelineRun: {
         findFirst: async ({ where }: { where: { status?: unknown; triggerType?: string } }) => {
@@ -1283,6 +1286,72 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
     });
     assert.equal(state.requestStatus, "REJECTED");
     assert.equal(state.request?.rejection?.reason, "ZIP 파일 오류");
+  });
+
+  it("a fresh re-request (marker newer than a prior FAILED run) shows REQUESTED, not FAILED", async () => {
+    const oldRun = new Date("2026-07-21T11:30:00.000Z");
+    const newMarker = new Date("2026-07-21T12:03:00.000Z");
+    const state = await getProviderWorkerZipRequestState({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: {
+          findFirst: async ({ where }: { where: { status?: unknown } }) => {
+            if (where?.status && typeof where.status === "object") {
+              return { status: "PENDING", createdAt: newMarker };
+            }
+            return { status: "FAIL", finishedAt: oldRun, summary: null, createdAt: oldRun };
+          },
+        },
+        packReview: { findFirst: async () => null },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 10,
+        checksumSha256: "h",
+        uploadedAt: newMarker.toISOString(),
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(state.requestStatus, "REQUESTED");
+  });
+
+  it("a stale marker older than a COMPLETED run still shows COMPLETED", async () => {
+    const oldMarker = new Date("2026-07-21T10:00:00.000Z");
+    const newRun = new Date("2026-07-21T12:00:00.000Z");
+    const state = await getProviderWorkerZipRequestState({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: {
+          findFirst: async ({ where }: { where: { status?: unknown } }) => {
+            if (where?.status && typeof where.status === "object") {
+              return { status: "PENDING", createdAt: oldMarker };
+            }
+            return { status: "PASS", finishedAt: newRun, summary: null, createdAt: newRun };
+          },
+        },
+        packReview: { findFirst: async () => null },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 10,
+        checksumSha256: "h",
+        uploadedAt: oldMarker.toISOString(),
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(state.requestStatus, "COMPLETED");
   });
 
   it("toWorkerZipRunView derives currentStep, summary, and errorMessage", () => {

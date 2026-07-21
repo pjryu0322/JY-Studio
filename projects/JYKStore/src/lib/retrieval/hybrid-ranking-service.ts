@@ -7,7 +7,7 @@ import type {
   EmbeddingDescriptor,
   EmbeddingProviderAdapter,
 } from "@/lib/embedding/embedding-provider-adapter";
-import { resolveEmbeddingProviderAdapterForDescriptor } from "@/lib/embedding/embedding-provider-registry";
+import { embedSearchQuery } from "@/lib/embedding/runtime-query-embedding";
 import { embedText } from "@/lib/embedding-service";
 import { prisma } from "@/lib/prisma";
 import type { RetrievalFilters } from "@/lib/retrieval-dto";
@@ -96,10 +96,12 @@ export async function applyHybridVectorRanking(
       modelRevision: generation.embeddingModelRevision,
       dimension: generation.embeddingDimension,
     };
-    const resolveAdapter =
-      input.resolveAdapter ?? resolveEmbeddingProviderAdapterForDescriptor;
-    const adapter = resolveAdapter(descriptor);
-    const queryEmbedding = await adapter.embed({ text: searchQuery });
+    // P7.6: runtime query embedding only — never re-embeds documents/chunks.
+    const queryEmbedding = await embedSearchQuery({
+      descriptor,
+      text: searchQuery,
+      resolveAdapter: input.resolveAdapter,
+    });
     const queryVector = queryEmbedding.vector;
     const topK = input.topK ?? 10;
     const vectorTopK = resolveVectorCandidateTopK(topK);

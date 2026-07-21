@@ -194,6 +194,7 @@
   "src/__tests__/search-data-scaffold-enqueue.test.ts",
   "src/__tests__/search-data-scaffold-enqueue.db.test.ts",
   "src/__tests__/search-data-generation-orchestration-split.test.ts",
+  "src/__tests__/p7-6-embedding-ownership.test.ts",
   "src/__tests__/search-data-generation-phase3-inner.test.ts",
   "src/__tests__/search-data-generation-commonization.test.ts",
   "src/__tests__/token-aware-resplit-preservation.test.ts",

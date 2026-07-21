@@ -187,6 +187,18 @@ def _stub_vector(text: str, dimension: int) -> list[float]:
     return [v / norm for v in values]
 
 
+# One-time install of the pinned local E5 model (network allowed only there):
+#   set E5_MODEL_REVISION + E5_MODEL_DIR, then run `npm run embedding-model:install`.
+# Point the Worker at the installed directory via JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH
+# (offline/production: pre-download the model and set that env to its path).
+_MODEL_SETUP_HINT = (
+    "로컬 E5 임베딩 모델이 설치되어 있지 않습니다. "
+    "E5_MODEL_REVISION 과 E5_MODEL_DIR 을 지정한 뒤 `npm run embedding-model:install` 로 "
+    "모델을 1회 설치하고, JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH 에 설치된 모델 디렉터리 "
+    "경로를 지정하세요. (오프라인/운영 환경: 사전 다운로드한 모델 경로를 해당 env 로 지정)"
+)
+
+
 def _load_e5_model(config: dict[str, Any]):
     # local_e5 must never trigger a network download. A local model path is
     # required and validated before importing / loading the model.
@@ -194,22 +206,28 @@ def _load_e5_model(config: dict[str, Any]):
     if not model_path:
         raise EmbeddingError(
             "local_e5 requires a local modelPath; set options.embedding.modelPath "
-            "or JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH"
+            "or JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH. " + _MODEL_SETUP_HINT
         )
     resolved = Path(model_path)
     if not resolved.exists():
-        raise EmbeddingError(f"local_e5 modelPath does not exist: {model_path}")
+        raise EmbeddingError(
+            f"local_e5 modelPath does not exist: {model_path}. " + _MODEL_SETUP_HINT
+        )
     if not resolved.is_dir():
         # A file path (e.g. a single weight) is rejected: a model directory is
         # required so offline loading cannot fall back to a network download.
-        raise EmbeddingError("local_e5 modelPath must be a local model directory")
+        raise EmbeddingError(
+            "local_e5 modelPath must be a local model directory: "
+            f"{model_path}. " + _MODEL_SETUP_HINT
+        )
 
     try:
         from sentence_transformers import SentenceTransformer
     except Exception as exc:  # noqa: BLE001
         raise EmbeddingError(
-            "sentence-transformers is not installed; install it or use "
-            "deterministic_stub mode for tests"
+            "sentence-transformers is not installed; install the local_e5 extras "
+            "(see python-worker/requirements.txt) or use deterministic_stub mode "
+            "for tests"
         ) from exc
 
     try:
