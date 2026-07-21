@@ -75,8 +75,64 @@ Validator enforces chunk ↔ embedding integrity:
   that length with only finite values (no `NaN` / `Infinity`)
 - `provider` / `model` / `contentHash` are non-empty
 
-DB persistence (`KnowledgeChunkEmbedding`) and pgvector upsert are a **later**
-step and are not implemented here.
+DB persistence (`KnowledgeChunkEmbedding`) happens in the DB import step below;
+pgvector upsert is deferred to P4.
+
+## DB import (P3)
+
+`prepareWorkerOutputImport()` keeps its role: **validate worker output + build a
+payload** (`WorkerOutputImportPayload`). DB reflection is a separate service,
+`worker-output-db-import-service.ts`:
+
+```ts
+importWorkerOutputToStoreDb({
+  payload,
+  chunkGenerationId?,
+  searchIndexGenerationId?,
+  sourceDocumentIdByPath?,
+  prismaClient?,
+  requirePgvector?, // P4; throws today
+});
+```
+
+Behavior:
+
+- Re-asserts import safety before any write: `validationReport.status === "ok"`,
+  `errors.length === 0`, `chunks.length === embeddings.length`, and every
+  `embedding.chunkId` present in `chunks`. `failed` / `partial` reports are
+  rejected (partial is conservative — deferred to a later policy decision).
+- Persists each `chunks.json` entry as a `KnowledgeChunk`
+  (`chunkType = WORKER_RETRIEVAL_CHUNK`, `versionId = payload.packVersionId`,
+  `tags = chunk.tags ?? chunk.keywords ?? []`, `sourceDocumentId` from
+  `sourceDocumentIdByPath[sourcePath]` or `null`, Worker provenance in
+  `metadata`).
+- Persists each `embeddings.json` entry as a `KnowledgeChunkEmbedding` using the
+  **newly created `KnowledgeChunk.id`** (not the Worker `chunkId`), carrying
+  `provider / model / dimension / vector / contentHash` and
+  `searchIndexGenerationId` when provided.
+- Runs chunk + embedding writes in **one transaction** (an embedding failure
+  rolls back the chunks).
+- Re-run policy: an import for the same `chunkGenerationId` deletes that
+  generation's chunks first (cascade removes their embeddings); other
+  generations are untouched. Count fields on an existing
+  `SearchIndexGeneration` are refreshed (`chunkCount` / `embeddedCount` /
+  `failedCount`); status transitions stay with the search-data pipeline.
+
+Implemented in this step:
+
+```text
+validated worker output → KnowledgeChunk
+embeddings.json → KnowledgeChunkEmbedding
+```
+
+Remaining:
+
+```text
+SearchIndexVector / pgvector reflection (P4)
+SearchIndexGeneration creation + status transitions
+ZIP upload API / job loop end-to-end
+provider / admin UX
+```
 
 ## Phase 1 audit (overlap)
 
@@ -103,7 +159,8 @@ Logical ZIP stages map onto existing `PipelineStatus` values. See
 
 ## Remaining work (out of this slice)
 
-- Persist imported chunks/embeddings into Store DB / vector-index tables
+- `SearchIndexVector` / pgvector reflection (P4)
+- `SearchIndexGeneration` creation + status transitions on import
 - Wire provider ZIP upload API / job table end-to-end
 - Index / provider confirm / admin approve UX
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

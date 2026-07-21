@@ -49,6 +49,19 @@ export {
 } from "@/lib/python-worker/worker-output-import-service";
 
 export {
+  assertWorkerOutputImportable,
+  buildWorkerOutputImportPlan,
+  importWorkerOutputToStoreDb,
+  WORKER_RETRIEVAL_CHUNK_TYPE,
+  WorkerOutputDbImportError,
+  type WorkerChunkCreatePlan,
+  type WorkerEmbeddingCreatePlan,
+  type WorkerOutputDbImportInput,
+  type WorkerOutputDbImportResult,
+  type WorkerOutputImportPlan,
+} from "@/lib/python-worker/worker-output-db-import-service";
+
+export {
   runPythonWorkerCli,
   type PythonWorkerRunInput,
   type PythonWorkerRunResult,
