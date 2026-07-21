@@ -15,11 +15,16 @@ import {
   WorkerZipGenerationBridgeError,
 } from "../lib/python-worker/worker-zip-generation-bridge.ts";
 import {
+  acceptAdminWorkerZipRequest,
   getProviderWorkerZipRequestState,
+  listAdminWorkerZipRequests,
   mapWorkerZipFailureCode,
   runAdminWorkerZipGeneration,
   runProviderWorkerZipImport,
   submitProviderWorkerZipRequest,
+  withdrawProviderWorkerZipRequest,
+  WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+  WORKER_ZIP_REQUEST_TRIGGER,
   WorkerZipImportServiceError,
   type WorkerZipGenerationTransitions,
 } from "../lib/python-worker/worker-zip-import-provider-service.ts";
@@ -488,6 +493,9 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(src, /requireProviderApiAuth/);
     assert.match(src, /submitProviderWorkerZipRequest/);
     assert.match(src, /getProviderWorkerZipRequestState/);
+    // 요청 회수(withdraw) must be available to the Provider while 접수 대기.
+    assert.match(src, /export async function DELETE/);
+    assert.match(src, /withdrawProviderWorkerZipRequest/);
     // The Provider route must NOT execute the Worker (execution is Admin-only).
     assert.ok(!/runProviderWorkerZipImport|runAdminWorkerZipGeneration/.test(src));
     // P7.1: content-length guard must still run before request.formData().
@@ -501,6 +509,9 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(src, /requireAdminSession/);
     assert.match(src, /runAdminWorkerZipGeneration/);
     assert.match(src, /resolveAdminDraftPack/);
+    // 접수(accept) is available via PATCH so the request becomes 접수완료.
+    assert.match(src, /export async function PATCH/);
+    assert.match(src, /acceptAdminWorkerZipRequest/);
   });
 
   it("bridge does not import the Docling ND knowledge builder (role separation)", () => {
@@ -542,6 +553,23 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const src = readSrc("components/AdminWorkerZipGenerationCard.tsx");
     assert.match(src, /runAdminWorkerZipGeneration/);
     assert.match(src, /지식데이터 생성 실행/);
+    // 접수(accept) action before execution.
+    assert.match(src, /acceptAdminWorkerZipRequest/);
+    assert.match(src, /생성 요청 접수/);
+  });
+
+  it("admin request-queue route lists pending requests for admins only", () => {
+    const src = readSrc("app/api/v1/admin/worker-zip-requests/route.ts");
+    assert.match(src, /requireAdminSession/);
+    assert.match(src, /listAdminWorkerZipRequests/);
+  });
+
+  it("admin console surfaces the generation request queue", () => {
+    const src = readSrc("components/AdminReviewListPageClient.tsx");
+    assert.match(src, /AdminWorkerZipRequestQueue/);
+    const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");
+    assert.match(queue, /fetchAdminWorkerZipRequests/);
+    assert.match(queue, /접수하고 생성 실행/);
   });
 });
 
@@ -610,6 +638,286 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
       (err: unknown) =>
         err instanceof WorkerZipImportServiceError && err.code === "PACK_NOT_EDITABLE",
     );
+  });
+
+  it("submitProviderWorkerZipRequest records a PENDING request marker for the admin queue", async () => {
+    const created: Record<string, unknown>[] = [];
+    await submitProviderWorkerZipRequest({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      bytes: new Uint8Array([1]),
+      originalFileName: "a.zip",
+      prismaClient: {
+        knowledgePack: {
+          findFirst: async () => ({
+            packId: "packA",
+            name: "A",
+            status: "DRAFT",
+            versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+          }),
+        },
+        pipelineRun: {
+          updateMany: async () => ({ count: 0 }),
+          create: async ({ data }: { data: Record<string, unknown> }) => {
+            created.push(data);
+            return { id: "r" };
+          },
+        },
+      } as never,
+      findProfile: async () => ({ id: "prof-1" }),
+      storeRequest: (async (i: Record<string, unknown>) => ({
+        objectKey: "k",
+        originalFileName: i.originalFileName as string,
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: i.uploadedByUserId as string,
+      })) as never,
+    });
+    assert.equal(created.length, 1);
+    assert.equal(created[0]!.triggerType, WORKER_ZIP_REQUEST_TRIGGER);
+    assert.equal(created[0]!.status, "PENDING");
+  });
+
+  it("listAdminWorkerZipRequests dedupes DRAFT requests by pack (newest first)", async () => {
+    const items = await listAdminWorkerZipRequests({
+      prismaClient: {
+        pipelineRun: {
+          findMany: async () => [
+            {
+              packId: "packA",
+              createdAt: new Date(2),
+              pack: {
+                name: "A",
+                providerProfile: { displayName: "Prov A" },
+                versions: [{ id: "verA", version: "1.0.0" }],
+              },
+            },
+            {
+              packId: "packA",
+              createdAt: new Date(1),
+              pack: {
+                name: "A",
+                providerProfile: { displayName: "Prov A" },
+                versions: [{ id: "verA", version: "1.0.0" }],
+              },
+            },
+            {
+              packId: "packB",
+              createdAt: new Date(0),
+              pack: { name: "B", providerProfile: null, versions: [] },
+            },
+          ],
+        },
+      } as never,
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(items.length, 2);
+    assert.equal(items[0]!.packId, "packA");
+    assert.equal(items[0]!.originalFileName, "a.zip");
+    assert.equal(items[0]!.providerName, "Prov A");
+    assert.equal(items[1]!.packId, "packB");
+    assert.equal(items[1]!.originalFileName, null);
+  });
+
+  it("withdrawProviderWorkerZipRequest removes a pending request and retires the marker", async () => {
+    let deleted = false;
+    const marked: Record<string, unknown>[] = [];
+    const result = await withdrawProviderWorkerZipRequest({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        knowledgePack: {
+          findFirst: async () => ({
+            packId: "packA",
+            name: "A",
+            status: "DRAFT",
+            versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+          }),
+        },
+        pipelineRun: {
+          findFirst: async () => null,
+          updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+            marked.push(data);
+            return { count: 1 };
+          },
+        },
+      } as never,
+      findProfile: async () => ({ id: "prof-1" }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+      deleteRequest: (async () => {
+        deleted = true;
+      }) as never,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(deleted, true);
+    assert.equal(marked[0]!.status, "SKIPPED");
+  });
+
+  it("withdrawProviderWorkerZipRequest rejects when generation is already processing", async () => {
+    let deleted = false;
+    await assert.rejects(
+      withdrawProviderWorkerZipRequest({
+        userId: "u1",
+        clientId: "cl1",
+        packId: "packA",
+        prismaClient: {
+          knowledgePack: {
+            findFirst: async () => ({
+              packId: "packA",
+              name: "A",
+              status: "DRAFT",
+              versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+            }),
+          },
+          pipelineRun: {
+            findFirst: async () => ({ status: "RUNNING" }),
+            updateMany: async () => ({ count: 0 }),
+          },
+        } as never,
+        findProfile: async () => ({ id: "prof-1" }),
+        getRequestMetadata: (async () => ({
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+        })) as never,
+        deleteRequest: (async () => {
+          deleted = true;
+        }) as never,
+      }),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_IN_PROGRESS",
+    );
+    assert.equal(deleted, false);
+  });
+
+  it("acceptAdminWorkerZipRequest marks a pending request 접수완료 (ACCEPTED)", async () => {
+    const updated: Record<string, unknown>[] = [];
+    const res = await acceptAdminWorkerZipRequest({
+      adminUserId: "admin1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        knowledgePack: {
+          findFirst: async () => ({
+            packId: "packA",
+            name: "A",
+            status: "DRAFT",
+            versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+          }),
+        },
+        pipelineRun: {
+          updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+            updated.push(data);
+            return { count: 1 };
+          },
+          findFirst: async () => null,
+          create: async () => ({ id: "r" }),
+        },
+      } as never,
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(res.requestStatus, "ACCEPTED");
+    assert.equal(updated[0]!.status, WORKER_ZIP_REQUEST_ACCEPTED_STATUS);
+  });
+
+  it("getProviderWorkerZipRequestState returns ACCEPTED when the request is 접수완료", async () => {
+    const state = await getProviderWorkerZipRequestState({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        knowledgePack: {
+          findFirst: async () => ({
+            packId: "packA",
+            name: "A",
+            status: "DRAFT",
+            providerProfileId: "prof-1",
+            versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+          }),
+        },
+        pipelineRun: {
+          findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+            where.triggerType === WORKER_ZIP_REQUEST_TRIGGER
+              ? { status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS }
+              : null,
+        },
+        packReview: { findFirst: async () => null },
+      } as never,
+      findProfile: async () => ({ id: "prof-1" }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(state.requestStatus, "ACCEPTED");
+  });
+
+  it("withdrawProviderWorkerZipRequest rejects once the admin has accepted (접수완료)", async () => {
+    let deleted = false;
+    await assert.rejects(
+      withdrawProviderWorkerZipRequest({
+        userId: "u1",
+        clientId: "cl1",
+        packId: "packA",
+        prismaClient: {
+          knowledgePack: {
+            findFirst: async () => ({
+              packId: "packA",
+              name: "A",
+              status: "DRAFT",
+              versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+            }),
+          },
+          pipelineRun: {
+            findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+              where.triggerType === WORKER_ZIP_REQUEST_TRIGGER
+                ? { status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS }
+                : null,
+            updateMany: async () => ({ count: 0 }),
+          },
+        } as never,
+        findProfile: async () => ({ id: "prof-1" }),
+        getRequestMetadata: (async () => ({
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+        })) as never,
+        deleteRequest: (async () => {
+          deleted = true;
+        }) as never,
+      }),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_ALREADY_ACCEPTED",
+    );
+    assert.equal(deleted, false);
   });
 
   it("getProviderWorkerZipRequestState derives COMPLETED from the last PASS run", async () => {

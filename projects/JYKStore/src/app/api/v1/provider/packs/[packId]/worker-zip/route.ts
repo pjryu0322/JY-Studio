@@ -19,6 +19,7 @@ import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import {
   getProviderWorkerZipRequestState,
   submitProviderWorkerZipRequest,
+  withdrawProviderWorkerZipRequest,
   WorkerZipImportServiceError,
 } from "@/lib/python-worker/worker-zip-import-provider-service";
 import {
@@ -90,6 +91,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
     logSafeRouteError({
       scope: "provider/worker-zip",
       method: "POST",
+      path: "/api/v1/provider/packs/[packId]/worker-zip",
+      error,
+    });
+    return jsonWithClientIdCookie(
+      { error: "서버 오류가 발생했습니다.", code: "INTERNAL_ERROR" },
+      clientId,
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
+  const { packId } = await context.params;
+
+  try {
+    const result = await withdrawProviderWorkerZipRequest({
+      userId,
+      clientId,
+      packId: packId?.trim() ?? "",
+    });
+    return jsonWithClientIdCookie({ clientId, ...result }, clientId, { status: 200 });
+  } catch (error) {
+    if (error instanceof WorkerZipImportServiceError) {
+      return jsonWithClientIdCookie(
+        { error: error.message, code: error.code },
+        clientId,
+        { status: error.httpStatus },
+      );
+    }
+    logSafeRouteError({
+      scope: "provider/worker-zip",
+      method: "DELETE",
       path: "/api/v1/provider/packs/[packId]/worker-zip",
       error,
     });

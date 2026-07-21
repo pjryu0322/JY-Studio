@@ -901,7 +901,7 @@ export type ProviderWorkerZipRequestState = {
   clientId: string;
   packId: string;
   versionId: string;
-  requestStatus: "NONE" | "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  requestStatus: "NONE" | "REQUESTED" | "ACCEPTED" | "PROCESSING" | "COMPLETED" | "FAILED";
   request: {
     originalFileName: string;
     fileSize: number;
@@ -947,6 +947,27 @@ export async function requestProviderWorkerZipGenerationApi(
     | null;
   if (response.ok && data && typeof (data as ProviderWorkerZipRequestResponse).ok === "boolean") {
     return data as ProviderWorkerZipRequestResponse;
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/**
+ * Withdraw a pending generation request (요청 회수). Only valid while the request is
+ * still 접수 대기 (REQUESTED); otherwise the server rejects with a mapped message.
+ */
+export async function withdrawProviderWorkerZipRequestApi(
+  packId: string,
+): Promise<{ ok: boolean; packId: string; versionId: string }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "DELETE", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; packId?: string; versionId?: string; error?: string; message?: string; code?: string }
+    | null;
+  if (response.ok && data && data.ok === true) {
+    return { ok: true, packId: data.packId ?? packId, versionId: data.versionId ?? "" };
   }
   const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);

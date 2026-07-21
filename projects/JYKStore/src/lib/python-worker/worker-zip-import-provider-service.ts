@@ -30,6 +30,7 @@ import { Readable } from "node:stream";
 import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { synthesizeWorkerZipSearchGeneration } from "@/lib/python-worker/worker-zip-generation-bridge";
 import {
+  deleteWorkerZipRequest,
   getWorkerZipRequestBytes,
   getWorkerZipRequestMetadata,
   storeWorkerZipRequest,
@@ -226,6 +227,43 @@ export const resolveAdminDraftPack: WorkerZipPackResolver = async (client, input
   return { pack, version };
 };
 
+/**
+ * P7.3: PipelineRun.triggerType marker for a Provider generation REQUEST.
+ *
+ * The request itself is store-only (no Worker run), but a lightweight PipelineRun
+ * marker (status PENDING) is created so the Admin queue can list DRAFT packs with a
+ * pending request via a DB query (triggerType is indexed) — no schema change. The
+ * marker is retired (PASS) once an Admin executes generation, or superseded
+ * (SKIPPED) when the Provider re-submits.
+ */
+export const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
+
+/**
+ * P7.3: request marker status encoding the 접수(accept) lifecycle (no schema change):
+ * - PENDING  → 접수 대기 (REQUESTED)   — Provider may withdraw
+ * - RUNNING  → 접수완료 (ACCEPTED)     — Admin received it; Provider may NOT withdraw
+ * - PASS     → retired after a successful generation
+ * - SKIPPED  → withdrawn / superseded by a re-submission
+ */
+export const WORKER_ZIP_REQUEST_ACCEPTED_STATUS = "RUNNING";
+
+/** Latest open (PENDING|RUNNING) request-marker status for a pack, or null. */
+async function getLatestRequestMarkerStatus(
+  client: typeof prisma,
+  packId: string,
+): Promise<string | null> {
+  const marker = await client.pipelineRun.findFirst({
+    where: {
+      packId,
+      triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+      status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { status: true },
+  });
+  return marker?.status ?? null;
+}
+
 /* ------------------------------------------------------------------ *
  * P7.3: Provider "생성 요청" (store-only — the Provider never runs the Worker).
  * ------------------------------------------------------------------ */
@@ -233,6 +271,7 @@ export const resolveAdminDraftPack: WorkerZipPackResolver = async (client, input
 export type ProviderWorkerZipRequestStatus =
   | "NONE"
   | "REQUESTED"
+  | "ACCEPTED"
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED";
@@ -284,6 +323,26 @@ export async function submitProviderWorkerZipRequest(
     env: input.env,
   });
 
+  // Retire any prior open marker, then record a fresh PENDING request marker so
+  // the Admin queue can surface this DRAFT pack. Non-fatal if it fails.
+  try {
+    await client.pipelineRun.updateMany({
+      where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
+      data: { status: "SKIPPED", finishedAt: new Date() },
+    });
+    await client.pipelineRun.create({
+      data: {
+        packId: pack.packId,
+        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+        triggeredByClientId: input.clientId,
+        status: "PENDING",
+        summary: `지식데이터 생성 요청: ${stored.originalFileName}`,
+      },
+    });
+  } catch {
+    // The request ZIP is stored regardless; the marker is best-effort.
+  }
+
   return {
     ok: true,
     packId: pack.packId,
@@ -298,15 +357,94 @@ export async function submitProviderWorkerZipRequest(
   };
 }
 
+export type WithdrawProviderWorkerZipRequestInput = {
+  userId: string;
+  clientId: string;
+  packId: string;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  findProfile?: (userId: string, clientId: string) => Promise<{ id: string } | null>;
+  getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+  deleteRequest?: typeof deleteWorkerZipRequest;
+};
+
+/**
+ * Withdraw a pending generation request (Provider "요청 회수"). Only allowed while
+ * the request is still 접수 대기 (REQUESTED) — i.e. before an Admin starts/finishes
+ * generation. Removes the stored ZIP + metadata and retires the request marker.
+ */
+export async function withdrawProviderWorkerZipRequest(
+  input: WithdrawProviderWorkerZipRequestInput,
+): Promise<{ ok: true; packId: string; versionId: string }> {
+  const client = input.prismaClient ?? prisma;
+  const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
+  const getRequestMetadata = input.getRequestMetadata ?? getWorkerZipRequestMetadata;
+  const deleteRequest = input.deleteRequest ?? deleteWorkerZipRequest;
+
+  const { pack, version } = await requireOwnedDraftPack(client, findProfile, {
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const [request, lastRun, markerStatus] = await Promise.all([
+    getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
+    client.pipelineRun.findFirst({
+      where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+    getLatestRequestMarkerStatus(client, pack.packId),
+  ]);
+
+  const status = deriveRequestStatus(request, lastRun?.status ?? null, markerStatus);
+  if (status === "ACCEPTED") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_ALREADY_ACCEPTED",
+      "관리자가 접수하여 회수할 수 없습니다.",
+      409,
+    );
+  }
+  if (status === "PROCESSING") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_IN_PROGRESS",
+      "이미 지식데이터 생성이 진행 중이라 회수할 수 없습니다.",
+      409,
+    );
+  }
+  if (status !== "REQUESTED") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_NOT_WITHDRAWABLE",
+      "접수 대기 상태의 요청만 회수할 수 있습니다.",
+      409,
+    );
+  }
+
+  await deleteRequest({ packId: pack.packId, packVersionId: version.id, env: input.env });
+
+  try {
+    await client.pipelineRun.updateMany({
+      where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
+      data: { status: "SKIPPED", finishedAt: new Date() },
+    });
+  } catch {
+    // Non-fatal: the stored request is already removed.
+  }
+
+  return { ok: true, packId: pack.packId, versionId: version.id };
+}
+
 function deriveRequestStatus(
   request: WorkerZipRequestMetadata | null,
   lastRunStatus: string | null,
+  markerStatus: string | null = null,
 ): ProviderWorkerZipRequestStatus {
   if (lastRunStatus === "RUNNING") return "PROCESSING";
   if (lastRunStatus === "PASS") return "COMPLETED";
   if (lastRunStatus === "FAIL") return "FAILED";
-  if (request) return "REQUESTED";
-  return "NONE";
+  if (!request) return "NONE";
+  if (markerStatus === WORKER_ZIP_REQUEST_ACCEPTED_STATUS) return "ACCEPTED";
+  return "REQUESTED";
 }
 
 /**
@@ -334,13 +472,14 @@ export async function getProviderWorkerZipRequestState(input: {
     packId: input.packId,
   });
 
-  const [request, lastRun, latestReview] = await Promise.all([
+  const [request, lastRun, markerStatus, latestReview] = await Promise.all([
     getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
     client.pipelineRun.findFirst({
       where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
       orderBy: { createdAt: "desc" },
       select: { status: true, finishedAt: true, summary: true },
     }),
+    getLatestRequestMarkerStatus(client, pack.packId),
     client.packReview
       .findFirst({
         where: { packId: pack.packId, decision: "REJECT" },
@@ -353,7 +492,7 @@ export async function getProviderWorkerZipRequestState(input: {
   return {
     packId: pack.packId,
     versionId: version.id,
-    requestStatus: deriveRequestStatus(request, lastRun?.status ?? null),
+    requestStatus: deriveRequestStatus(request, lastRun?.status ?? null, markerStatus),
     request,
     lastRun: lastRun
       ? {
@@ -599,7 +738,18 @@ export async function runAdminWorkerZipGeneration(
     );
   }
 
-  return withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
+  // Executing implies acceptance: lock the request (접수완료) before running so the
+  // Provider can no longer withdraw it mid-generation.
+  try {
+    await client.pipelineRun.updateMany({
+      where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
+      data: { status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS },
+    });
+  } catch {
+    // Non-fatal: acceptance marker is best-effort.
+  }
+
+  const result = await withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
     runImport({
       userId: input.adminUserId,
       clientId: input.clientId,
@@ -611,4 +761,175 @@ export async function runAdminWorkerZipGeneration(
       resolvePack: resolveAdminDraftPack,
     }),
   );
+
+  // On success, retire the open request marker so it leaves the Admin queue.
+  if (result.ok) {
+    try {
+      await client.pipelineRun.updateMany({
+        where: {
+          packId: pack.packId,
+          triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+          status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+        },
+        data: { status: "PASS", finishedAt: new Date() },
+      });
+    } catch {
+      // Non-fatal: the generation already succeeded.
+    }
+  }
+
+  return result;
+}
+
+export type AcceptAdminWorkerZipRequestInput = {
+  adminUserId: string;
+  clientId: string;
+  packId: string;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  resolvePack?: WorkerZipPackResolver;
+  getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+};
+
+/**
+ * Admin 접수(accept): mark a pending generation request as 접수완료 (ACCEPTED). After
+ * this, the Provider can no longer withdraw the request. Idempotent — accepting an
+ * already-accepted request is a no-op.
+ */
+export async function acceptAdminWorkerZipRequest(
+  input: AcceptAdminWorkerZipRequestInput,
+): Promise<{ ok: true; packId: string; versionId: string; requestStatus: ProviderWorkerZipRequestStatus }> {
+  const client = input.prismaClient ?? prisma;
+  const resolvePack = input.resolvePack ?? resolveAdminDraftPack;
+  const getRequestMetadata = input.getRequestMetadata ?? getWorkerZipRequestMetadata;
+
+  const { pack, version } = await resolvePack(client, {
+    userId: input.adminUserId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const request = await getRequestMetadata({
+    packId: pack.packId,
+    packVersionId: version.id,
+    env: input.env,
+  });
+  if (!request) {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_NOT_FOUND",
+      "접수할 생성 요청(ZIP 자료)이 없습니다.",
+      404,
+    );
+  }
+
+  const updated = await client.pipelineRun.updateMany({
+    where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
+    data: { status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS, triggeredByClientId: input.clientId },
+  });
+
+  // No PENDING marker (e.g. a legacy request without a marker): ensure an accepted
+  // marker exists so the state consistently reads 접수완료.
+  if (updated.count === 0) {
+    const existing = await client.pipelineRun.findFirst({
+      where: {
+        packId: pack.packId,
+        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+        status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+      },
+      select: { id: true },
+    });
+    if (!existing) {
+      await client.pipelineRun.create({
+        data: {
+          packId: pack.packId,
+          triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+          triggeredByClientId: input.clientId,
+          status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+          summary: `지식데이터 생성 요청 접수: ${request.originalFileName}`,
+        },
+      });
+    }
+  }
+
+  return { ok: true, packId: pack.packId, versionId: version.id, requestStatus: "ACCEPTED" };
+}
+
+/* ------------------------------------------------------------------ *
+ * P7.3: Admin 접수함 — DRAFT packs with a pending generation request.
+ * ------------------------------------------------------------------ */
+
+export type AdminWorkerZipRequestListItem = {
+  packId: string;
+  packName: string;
+  providerName: string | null;
+  versionLabel: string | null;
+  requestedAt: string;
+  originalFileName: string | null;
+  /** True once an Admin has 접수(accepted) the request (접수완료). */
+  accepted: boolean;
+};
+
+/**
+ * List DRAFT packs that have a pending ZIP generation request (접수 대기), newest
+ * first, deduped by pack. Backed by the indexed PipelineRun request marker.
+ */
+export async function listAdminWorkerZipRequests(input?: {
+  prismaClient?: typeof prisma;
+  env?: NodeJS.ProcessEnv;
+  getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+}): Promise<AdminWorkerZipRequestListItem[]> {
+  const client = input?.prismaClient ?? prisma;
+  const getRequestMetadata = input?.getRequestMetadata ?? getWorkerZipRequestMetadata;
+
+  const runs = await client.pipelineRun.findMany({
+    where: {
+      triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+      status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+      pack: { status: PackStatus.DRAFT },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      packId: true,
+      createdAt: true,
+      status: true,
+      pack: {
+        select: {
+          name: true,
+          providerProfile: { select: { displayName: true } },
+          versions: {
+            orderBy: latestKnowledgePackVersionOrderBy,
+            take: 1,
+            select: { id: true, version: true },
+          },
+        },
+      },
+    },
+  });
+
+  const seen = new Set<string>();
+  const items: AdminWorkerZipRequestListItem[] = [];
+  for (const run of runs) {
+    if (seen.has(run.packId)) continue;
+    seen.add(run.packId);
+    const version = run.pack?.versions?.[0] ?? null;
+    let originalFileName: string | null = null;
+    if (version) {
+      const meta = await getRequestMetadata({
+        packId: run.packId,
+        packVersionId: version.id,
+        env: input?.env,
+      }).catch(() => null);
+      originalFileName = meta?.originalFileName ?? null;
+    }
+    items.push({
+      packId: run.packId,
+      packName: run.pack?.name ?? run.packId,
+      providerName: run.pack?.providerProfile?.displayName ?? null,
+      versionLabel: version?.version ?? null,
+      requestedAt: run.createdAt.toISOString(),
+      originalFileName,
+      accepted: run.status === WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+    });
+  }
+  return items;
 }

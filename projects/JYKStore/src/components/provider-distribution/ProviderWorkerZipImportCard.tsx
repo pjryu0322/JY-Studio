@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchProviderWorkerZipRequestStateApi,
   requestProviderWorkerZipGenerationApi,
+  withdrawProviderWorkerZipRequestApi,
   type ProviderWorkerZipRequestState,
 } from "@/lib/provider-center-api";
 
@@ -23,6 +24,7 @@ export function ProviderWorkerZipImportCard({
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<ProviderWorkerZipRequestState | null>(null);
 
@@ -54,8 +56,26 @@ export function ProviderWorkerZipImportCard({
     }
   };
 
+  const onWithdraw = async () => {
+    if (!editable || withdrawing || submitting) return;
+    if (typeof window !== "undefined" && !window.confirm("생성 요청을 회수할까요? 첨부한 자료가 삭제됩니다.")) {
+      return;
+    }
+    setWithdrawing(true);
+    setError(null);
+    try {
+      await withdrawProviderWorkerZipRequestApi(packId);
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "요청 회수에 실패했습니다.");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   const request = state?.request ?? null;
   const status = state?.requestStatus ?? "NONE";
+  const canWithdraw = status === "REQUESTED";
 
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
@@ -111,6 +131,21 @@ export function ProviderWorkerZipImportCard({
             <dt className="text-slate-500">요청 상태</dt>
             <dd className={`font-semibold ${statusToneClass(status)}`}>{statusLabel(status)}</dd>
           </div>
+          {canWithdraw ? (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => void onWithdraw()}
+                disabled={!editable || withdrawing || submitting}
+                className="min-h-[36px] w-full rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 disabled:opacity-60"
+              >
+                {withdrawing ? "회수 중…" : "요청 회수"}
+              </button>
+              <p className="mt-1 text-[11px] text-slate-500">
+                접수 대기 상태에서만 회수할 수 있습니다. 관리자가 생성을 시작하면 회수할 수 없습니다.
+              </p>
+            </div>
+          ) : null}
         </dl>
       ) : (
         <p className="text-xs text-slate-500">아직 등록된 자료가 없습니다. ZIP을 첨부해 요청하세요.</p>
@@ -137,6 +172,8 @@ function statusLabel(status: ProviderWorkerZipRequestState["requestStatus"]): st
   switch (status) {
     case "REQUESTED":
       return "생성 요청됨 (접수 대기)";
+    case "ACCEPTED":
+      return "접수완료 (생성 대기)";
     case "PROCESSING":
       return "처리 중";
     case "COMPLETED":

@@ -27,7 +27,7 @@ export type AdminWorkerZipRequestState = {
   clientId: string;
   packId: string;
   versionId: string;
-  requestStatus: "NONE" | "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  requestStatus: "NONE" | "REQUESTED" | "ACCEPTED" | "PROCESSING" | "COMPLETED" | "FAILED";
   request: {
     originalFileName: string;
     fileSize: number;
@@ -50,6 +50,34 @@ export type AdminWorkerZipGenerationResult = {
   warnings: { code: string; message: string }[];
   error?: { code: string; message: string; retryable: boolean; supportRequired: boolean };
 };
+
+export type AdminWorkerZipRequestListItem = {
+  packId: string;
+  packName: string;
+  providerName: string | null;
+  versionLabel: string | null;
+  requestedAt: string;
+  originalFileName: string | null;
+  accepted: boolean;
+};
+
+/** List DRAFT packs with a pending ZIP generation request (접수 대기). */
+export async function fetchAdminWorkerZipRequests(): Promise<{
+  clientId: string;
+  items: AdminWorkerZipRequestListItem[];
+}> {
+  const response = await fetch("/api/v1/admin/worker-zip-requests", {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    items: AdminWorkerZipRequestListItem[];
+  };
+}
 
 export async function fetchAdminWorkerZipRequestState(
   packId: string,
@@ -82,6 +110,29 @@ export async function runAdminWorkerZipGeneration(
     | null;
   if (data && typeof (data as AdminWorkerZipGenerationResult).ok === "boolean") {
     return data as AdminWorkerZipGenerationResult;
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/** Admin 접수(accept) — mark the request 접수완료 so the Provider can no longer withdraw. */
+export async function acceptAdminWorkerZipRequest(
+  packId: string,
+): Promise<{ ok: boolean; packId: string; versionId: string; requestStatus: string }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "PATCH", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; packId?: string; versionId?: string; requestStatus?: string; error?: string; message?: string; code?: string }
+    | null;
+  if (response.ok && data && data.ok === true) {
+    return {
+      ok: true,
+      packId: data.packId ?? packId,
+      versionId: data.versionId ?? "",
+      requestStatus: data.requestStatus ?? "ACCEPTED",
+    };
   }
   const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);

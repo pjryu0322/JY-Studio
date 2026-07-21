@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminReviewStatusBadge } from "@/components/AdminReviewStatusBadge";
+import { AdminWorkerZipRequestQueue } from "@/components/AdminWorkerZipRequestQueue";
 import type { AdminReviewListItemDto } from "@/lib/admin-review-dto";
 import { fetchAdminReviewItems } from "@/lib/admin-review-api";
 import {
@@ -45,7 +46,9 @@ export function AdminReviewListPageClient() {
   }, [refresh]);
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-6 pb-6">
+      <AdminWorkerZipRequestQueue />
+
       <div className="px-1">
         <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEWS_LIST_TITLE}</h2>
         <p className="mt-1 text-xs text-store-muted">REVIEWING 상태 지식팩만 표시됩니다.</p>

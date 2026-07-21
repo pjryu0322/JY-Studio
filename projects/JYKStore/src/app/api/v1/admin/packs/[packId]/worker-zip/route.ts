@@ -3,16 +3,19 @@
  * driven for the ZIP path. Gated by `requireAdminSession` so Providers (and
  * plain users) cannot run the generation directly.
  *
- * - GET  → the received request state (attached ZIP, request status, last result)
- *          so the Admin can 접수/확인 before executing.
- * - POST → download the Provider-submitted ZIP and run the Worker against the
- *          DRAFT pack. The pack stays DRAFT; promotion to review is a separate
- *          admin step after verification.
+ * - GET   → the received request state (attached ZIP, request status, last result)
+ *           so the Admin can 접수/확인 before executing.
+ * - PATCH → 접수(accept) the request (접수완료). After this the Provider can no longer
+ *           withdraw it. The pack stays DRAFT.
+ * - POST  → download the Provider-submitted ZIP and run the Worker against the
+ *           DRAFT pack. The pack stays DRAFT; promotion to review is a separate
+ *           admin step after verification.
  */
 import { NextRequest } from "next/server";
 import { requireAdminSession } from "@/lib/admin-route-guard";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import {
+  acceptAdminWorkerZipRequest,
   getProviderWorkerZipRequestState,
   resolveAdminDraftPack,
   runAdminWorkerZipGeneration,
@@ -48,6 +51,30 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const clientId = ensureClientId(request);
+  const adminAuth = await requireAdminSession(request, clientId);
+  if (!adminAuth.ok) {
+    return jsonWithClientIdCookie(
+      { error: { code: adminAuth.code, message: adminAuth.message } },
+      clientId,
+      { status: adminAuth.status },
+    );
+  }
+  const { packId } = await context.params;
+
+  try {
+    const result = await acceptAdminWorkerZipRequest({
+      adminUserId: adminAuth.adminUserId,
+      clientId,
+      packId: packId?.trim() ?? "",
+    });
+    return jsonWithClientIdCookie({ clientId, ...result }, clientId, { status: 200 });
+  } catch (error) {
+    return mapAdminWorkerZipError(error, clientId, "PATCH");
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
   const adminAuth = await requireAdminSession(request, clientId);
@@ -75,7 +102,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 }
 
-function mapAdminWorkerZipError(error: unknown, clientId: string, method: "GET" | "POST") {
+function mapAdminWorkerZipError(
+  error: unknown,
+  clientId: string,
+  method: "GET" | "POST" | "PATCH",
+) {
   if (error instanceof WorkerZipImportServiceError) {
     return jsonWithClientIdCookie(
       { error: error.message, code: error.code },

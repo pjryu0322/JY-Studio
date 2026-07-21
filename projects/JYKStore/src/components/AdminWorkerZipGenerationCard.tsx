@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  acceptAdminWorkerZipRequest,
   fetchAdminWorkerZipRequestState,
   runAdminWorkerZipGeneration,
   type AdminWorkerZipGenerationResult,
@@ -18,6 +19,7 @@ import {
 export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: string }) {
   const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
   const [running, setRunning] = useState(false);
+  const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AdminWorkerZipGenerationResult | null>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -34,6 +36,20 @@ export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: stri
   useEffect(() => {
     void loadState();
   }, [loadState]);
+
+  const onAccept = async () => {
+    if (accepting || running) return;
+    setAccepting(true);
+    setError(null);
+    try {
+      await acceptAdminWorkerZipRequest(packId);
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "접수에 실패했습니다.");
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   const onExecute = async () => {
     if (running) return;
@@ -53,7 +69,10 @@ export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: stri
 
   const request = state?.request ?? null;
   const hasRequest = Boolean(request);
-  const inProgress = state?.requestStatus === "PROCESSING";
+  const status = state?.requestStatus ?? "NONE";
+  const inProgress = status === "PROCESSING";
+  const isAccepted = status === "ACCEPTED";
+  const canAccept = status === "REQUESTED";
   const completed = result?.ok === true && result.generationReady === true;
   const failed = result != null && result.ok === false;
 
@@ -92,14 +111,34 @@ export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: stri
         </p>
       )}
 
+      {canAccept ? (
+        <button
+          type="button"
+          onClick={() => void onAccept()}
+          disabled={accepting || running}
+          className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
+        >
+          {accepting ? "접수 중…" : "생성 요청 접수"}
+        </button>
+      ) : null}
+
       <button
         type="button"
         onClick={() => void onExecute()}
-        disabled={running || !hasRequest || inProgress}
+        disabled={running || !hasRequest || inProgress || canAccept}
         className="min-h-[44px] w-full rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-60"
       >
         {running ? "생성 실행 중…" : "지식데이터 생성 실행"}
       </button>
+
+      {canAccept ? (
+        <p className="text-[11px] text-slate-500">
+          먼저 “생성 요청 접수”를 하면 제공자가 자료를 회수할 수 없으며, 이후 생성을 실행할 수 있습니다.
+        </p>
+      ) : null}
+      {isAccepted ? (
+        <p className="text-[11px] text-indigo-700">접수완료 — 제공자는 더 이상 요청을 회수할 수 없습니다.</p>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -157,6 +196,8 @@ function statusLabel(status: AdminWorkerZipRequestState["requestStatus"]): strin
   switch (status) {
     case "REQUESTED":
       return "접수 대기";
+    case "ACCEPTED":
+      return "접수완료";
     case "PROCESSING":
       return "처리 중";
     case "COMPLETED":

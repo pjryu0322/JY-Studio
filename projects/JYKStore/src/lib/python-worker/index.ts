@@ -118,19 +118,27 @@ export {
 } from "@/lib/python-worker/worker-zip-generation-bridge";
 
 export {
+  acceptAdminWorkerZipRequest,
   getProviderWorkerZipRequestState,
+  listAdminWorkerZipRequests,
   mapWorkerZipFailureCode,
   resolveAdminDraftPack,
   runAdminWorkerZipGeneration,
   runProviderWorkerZipImport,
   submitProviderWorkerZipRequest,
+  withdrawProviderWorkerZipRequest,
+  WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+  WORKER_ZIP_REQUEST_TRIGGER,
   WorkerZipImportServiceError,
+  type AcceptAdminWorkerZipRequestInput,
+  type AdminWorkerZipRequestListItem,
   type ProviderWorkerZipImportResult,
   type ProviderWorkerZipRequestState,
   type ProviderWorkerZipRequestStatus,
   type RunAdminWorkerZipGenerationInput,
   type RunProviderWorkerZipImportInput,
   type SubmitProviderWorkerZipRequestInput,
+  type WithdrawProviderWorkerZipRequestInput,
   type WorkerZipImportUserError,
   type WorkerZipPackResolver,
 } from "@/lib/python-worker/worker-zip-import-provider-service";

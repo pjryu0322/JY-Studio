@@ -131,3 +131,18 @@ export async function getWorkerZipRequestBytes(
     return null;
   }
 }
+
+/**
+ * Remove the requested ZIP + metadata sidecar (Provider "요청 회수"). Best-effort:
+ * a missing object is treated as already gone rather than an error.
+ */
+export async function deleteWorkerZipRequest(
+  locator: WorkerZipRequestLocator,
+): Promise<void> {
+  const storage = resolveStorage(locator);
+  const objectKey = zipKeyFor(locator.packId, locator.packVersionId);
+  await Promise.all([
+    storage.deleteObject({ objectKey }).catch(() => undefined),
+    storage.deleteObject({ objectKey: metaKeyFor(objectKey) }).catch(() => undefined),
+  ]);
+}
