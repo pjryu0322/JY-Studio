@@ -889,3 +889,59 @@ export function providerDoclingFigurePreviewUrl(
 ): string {
   return `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}/figures/${encodeURIComponent(figureId)}/preview`;
 }
+
+/**
+ * P7: ZIP Worker import result (synchronous). This is the ZIP Worker path — NOT
+ * the legacy Docling import — so it lives as its own client call.
+ */
+export type ProviderWorkerZipImportResponse = {
+  clientId: string;
+  ok: boolean;
+  pipelineRunId: string;
+  searchIndexGenerationId?: string;
+  logicalStage: string;
+  pipelineStatus: string;
+  importedChunkCount: number;
+  importedEmbeddingCount: number;
+  pgvectorReflected: boolean;
+  warnings: { code: string; message: string }[];
+  nextStep: "SEARCH_DATA_VALIDATION" | "RETRY";
+  generationReady: boolean;
+  error?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    supportRequired: boolean;
+    stage: string;
+  };
+};
+
+/**
+ * Upload a ZIP and run the Worker import synchronously. A processed-but-failed
+ * pipeline (HTTP 422 with `ok:false`) is returned as data so the caller can show
+ * the mapped error / next step; auth/ownership failures throw.
+ */
+export async function startProviderWorkerZipImportApi(
+  packId: string,
+  file: File,
+): Promise<ProviderWorkerZipImportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "POST", credentials: "include", body: form },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | (ProviderWorkerZipImportResponse & { error?: { code?: string; message?: string } })
+    | { error?: string; message?: string; code?: string }
+    | null;
+  if (data && typeof (data as ProviderWorkerZipImportResponse).ok === "boolean") {
+    return data as ProviderWorkerZipImportResponse;
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  if (failure.code) {
+    const { mapDoclingImportUserError } = await import("@/lib/docling-import/docling-import-ui");
+    throw new Error(mapDoclingImportUserError(failure.code, failure.message ?? failure.error));
+  }
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}

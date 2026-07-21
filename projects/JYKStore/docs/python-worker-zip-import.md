@@ -241,7 +241,7 @@ derived by the existing pure helpers (do **not** re-derive state in components):
 | --- | --- | --- |
 | 기본정보 | `basic` | Pack / PackVersion basic fields |
 | 자료 등록 | `payload` | Object Storage upload / SourceDocument exists |
-| 데이터 구조화 | `knowledge` | worker run + output validated/imported (`WORKER_RUNNING` → `WORKER_OUTPUT_STORED`) |
+| 데이터 구조화 | `knowledge` | worker run + output validated/imported (`WORKER_RUNNING` → `WORKER_OUTPUT_STORED`); triggered by `POST .../worker-zip` (P7, synchronous) |
 | 검색데이터 생성·검증 | `serviceValidation` | `SearchIndexGeneration` / `SearchIndexVector` + retrieval validation |
 | 유통정보·검수요청 | `distributionReview` | distribution metadata + review readiness |
 
@@ -285,16 +285,72 @@ labeled distinctly (`PackDownloadInfoSection` / `PackPrimaryActions`).
 Logical ZIP stages map onto existing `PipelineStatus` values. See
 `src/lib/python-worker/worker-zip-pipeline-stages.ts`.
 
+## P7: ZIP upload route + generation bridge (synchronous minimal connection)
+
+The provider "데이터 구조화 시작" action now runs end-to-end.
+
+Flow:
+
+```text
+POST /api/v1/provider/packs/{packId}/worker-zip  (multipart/form-data, field: file)
+  → route: auth + .zip/size validation → spill to temp file (withTempFileFromStream)
+  → runProviderWorkerZipImport() [awaited synchronously]
+      → ownership + DRAFT check → create PipelineRun
+      → runWorkerZipImportPipeline({ deps.resolveSearchIndexGenerationId })
+          (resolver runs AFTER worker output is validated/stored)
+          → synthesizeWorkerZipSearchGeneration()  ← compatibility bridge
+          → importWorkerOutputToStoreDb() (chunks + embeddings + pgvector)
+      → transition generation PENDING → EMBEDDING → INDEXING → READY
+      → PipelineRun PASS/FAIL
+  → 200 (ok) / 422 (processed-but-failed) with a safe DTO
+```
+
+### SearchIndexGeneration compatibility bridge (`worker-zip-generation-bridge.ts`)
+
+`SearchIndexGeneration.normalizedDocumentId` (FK) → `NormalizedDocument.bundleId`
+(FK) → `DoclingImportBundle` are required. To create a generation **without a
+schema change**, the ZIP path synthesizes the *minimum* bundle + normalized
+document. This is a **compatibility bridge — not** a return to the Docling
+pipeline:
+
+- Rows are tagged `adapterType = "WORKER_ZIP"` (`WORKER_ZIP_ADAPTER_TYPE`) and
+  `stagingReason / normalizationReport / structureSummaryJson = worker_zip_bridge`.
+- Rows are hidden from Docling flows: `isActive = false` (skips active-bundle /
+  active-ND queries) and `deletedAt` set (skips
+  `findLatestStagingBundleForVersion`).
+- The embedding descriptor is derived from the Worker's own `embeddings.json`
+  (`deriveWorkerZipEmbeddingDescriptor`) so `importWorkerOutputToStoreDb`'s
+  descriptor check agrees. **No TS re-chunk / re-embed.**
+- Generation creation stays in the route/service layer; the pipeline core never
+  invents a generation. The service pre-generates the id so a post-creation
+  failure can still be marked `FAILED`.
+
+### Role separation vs. legacy Docling import
+
+| Concern | Legacy Docling import | ZIP Worker path (P7) |
+| --- | --- | --- |
+| Client call | `startProviderDoclingUpload...` | `startProviderWorkerZipImportApi` |
+| Route | `.../docling-import/...` | `.../worker-zip` |
+| Service | `docling-upload-session-service.ts` | `worker-zip-import-provider-service.ts` |
+| Bundle/ND `adapterType` | `DOCLING` | `WORKER_ZIP` (hidden, bridge-only) |
+| UI | `ProviderDoclingImportTab` | `ProviderWorkerZipImportCard` |
+
+### Deferred to P7.1 (async job model)
+
+This round is a **synchronous minimal connection**: the route `await`s the
+service directly. Deferred:
+
+- Async job handoff — enqueue a `PENDING` run and let a poll worker claim/process
+  it (mirroring `search-data-generation-worker.ts`), returning `202 Accepted`
+  with a status endpoint instead of blocking the request.
+- Streaming/multipart upload for large ZIPs (P5.2) — the route still rejects
+  oversized files (413) rather than streaming them.
+- Schema change to make `SearchIndexGeneration.normalizedDocumentId` nullable so
+  the synthesized bundle/ND bridge can be removed.
+
 ## Remaining work (out of this slice)
 
-- `SearchIndexGeneration` + `NormalizedDocument` creation for the ZIP path (P5.x;
-  needs the ND↔`DoclingImportBundle` schema decision) — the orchestration service
-  currently binds to an existing generation / injected resolver
-- Full generation status-transition automation (embedding → indexing → ready) on
-  import; the service reports counts and leaves transitions to the caller
-- HTTP ZIP-upload route (`multipart/form-data`) + async job model that drives
-  `runWorkerZipImportPipeline`
-- P5.2: decide streaming/multipart upload for the source ZIP / worker output
-  (P5.1 only added in-memory size guards) before the route/job wiring
-- Index / provider confirm / admin approve UX
+- P7.1: async job model + `202 Accepted` + status polling (see above)
+- P5.2: streaming/multipart upload for the source ZIP / worker output
+- Schema change to drop the bridge (nullable `normalizedDocumentId`)
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

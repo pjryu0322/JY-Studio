@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { ProviderDoclingImportTab } from "@/components/provider-distribution/ProviderDoclingImportTab";
+import { ProviderWorkerZipImportCard } from "@/components/provider-distribution/ProviderWorkerZipImportCard";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { createProviderPackVersionApi } from "@/lib/provider-center-api";
@@ -81,6 +82,12 @@ export function ProviderMaterialRegistrationTab({
           onGoToKnowledge={onGoToKnowledge}
         />
       </section>
+
+      <ProviderWorkerZipImportCard
+        packId={packId}
+        editable={editable}
+        onGoToKnowledge={onGoToKnowledge}
+      />
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">

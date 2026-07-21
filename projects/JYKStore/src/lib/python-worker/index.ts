@@ -95,3 +95,23 @@ export {
   WORKER_ZIP_LOGICAL_STAGES,
   type WorkerZipLogicalStage,
 } from "@/lib/python-worker/worker-zip-pipeline-stages";
+
+export {
+  computeWorkerZipNormalizedDocumentFingerprint,
+  deriveWorkerZipEmbeddingDescriptor,
+  synthesizeWorkerZipSearchGeneration,
+  WORKER_ZIP_ADAPTER_TYPE,
+  WORKER_ZIP_BRIDGE_SOURCE,
+  WorkerZipGenerationBridgeError,
+  type SynthesizeWorkerZipSearchGenerationInput,
+  type SynthesizeWorkerZipSearchGenerationResult,
+} from "@/lib/python-worker/worker-zip-generation-bridge";
+
+export {
+  mapWorkerZipFailureCode,
+  runProviderWorkerZipImport,
+  WorkerZipImportServiceError,
+  type ProviderWorkerZipImportResult,
+  type RunProviderWorkerZipImportInput,
+  type WorkerZipImportUserError,
+} from "@/lib/python-worker/worker-zip-import-provider-service";
