@@ -186,10 +186,12 @@ export async function synthesizeWorkerZipSearchGeneration(
       chunkGenerationId: input.generationId,
       descriptor,
       attempt: 0,
-      // P7.1: preserve an existing READY DRAFT until THIS generation reaches
-      // READY. The service stales prior drafts only after a successful READY
-      // transition.
-      stalePreviousDrafts: false,
+      // P7.1.1 hotfix: the DB enforces one active DRAFT generation per version
+      // (partial unique index). We therefore use the default stale-at-creation
+      // policy (stalePreviousDrafts=true) so a prior active DRAFT is retired as
+      // this generation is inserted. True deferred-stale (preserve an existing
+      // READY DRAFT until the new one is READY) needs a schema/index change and
+      // is deferred to P7.2/P8.
       client: tx,
     });
 

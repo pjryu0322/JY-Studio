@@ -33,7 +33,6 @@ import {
   markSearchGenerationFailed,
   markSearchGenerationIndexing,
   markSearchGenerationReady,
-  markSearchGenerationStale,
 } from "@/lib/search-generation/search-generation-service";
 
 export class WorkerZipImportServiceError extends Error {
@@ -79,8 +78,6 @@ export type WorkerZipGenerationTransitions = {
     id: string,
     failure: { failureCode: string; failureMessage?: string | null },
   ) => Promise<unknown>;
-  /** Retire prior active drafts (except the given id). Called ONLY after READY. */
-  staleOthers: (versionId: string, exceptId: string) => Promise<unknown>;
 };
 
 export type RunProviderWorkerZipImportInput = {
@@ -105,7 +102,6 @@ function defaultTransitions(client: typeof prisma): WorkerZipGenerationTransitio
     toIndexing: (id, counts) => markSearchGenerationIndexing(id, counts, client),
     toReady: (id, counts) => markSearchGenerationReady(id, counts, client),
     toFailed: (id, failure) => markSearchGenerationFailed(id, failure, client),
-    staleOthers: (versionId, exceptId) => markSearchGenerationStale(versionId, client, { exceptId }),
   };
 }
 
@@ -306,11 +302,12 @@ export async function runProviderWorkerZipImport(
   }
 
   if (readyTransitionError) {
-    // P7.1: import produced data but the generation did not reach READY. This is
-    // NOT a completed structuring. Do NOT stale prior READY drafts (they remain
-    // the current search data), keep import counts, and surface a deferred state.
+    // P7.1.1: import produced data but the generation did not reach READY. This
+    // is NOT a completed structuring, so it is recorded as a run failure (FAIL —
+    // a valid PipelineStepStatus). Import counts are preserved in the DTO for
+    // diagnostics; the user sees ok=false / RETRY / generationReady=false.
     await client.pipelineRun
-      .update({ where: { id: pipelineRun.id }, data: { status: "WARNING", finishedAt: new Date() } })
+      .update({ where: { id: pipelineRun.id }, data: { status: "FAIL", finishedAt: new Date() } })
       .catch(() => undefined);
     const mapped = mapWorkerZipFailureCode("GENERATION_READY_DEFERRED");
     return {
@@ -329,9 +326,8 @@ export async function runProviderWorkerZipImport(
     };
   }
 
-  // READY reached: only now retire prior active drafts for the version.
-  await transitions.staleOthers(version.id, generationId).catch(() => undefined);
-
+  // READY reached. Prior active DRAFTs were already retired at generation-creation
+  // time (stale-at-creation), which the DB partial unique index requires.
   await client.pipelineRun
     .update({ where: { id: pipelineRun.id }, data: { status: "PASS", finishedAt: new Date() } })
     .catch(() => undefined);

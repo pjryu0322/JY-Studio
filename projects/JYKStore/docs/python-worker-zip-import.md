@@ -337,18 +337,24 @@ pipeline:
 
 ## P7.1: stabilization + legacy isolation
 
-### Protect an existing READY DRAFT generation
+### Draft generation handling (current schema limits)
 
-A new ZIP run must not destroy a previously validated search generation.
+The DB enforces **one active DRAFT generation per version** via the partial
+unique index `SearchIndexGeneration_one_active_draft_per_version`
+(`scope = 'DRAFT' AND status IN ('PENDING','EMBEDDING','INDEXING','READY')`).
+Two active DRAFTs for the same version cannot coexist.
 
-- `createSearchGenerationForPipeline({ stalePreviousDrafts })` — new option,
-  default `true` (unchanged legacy Docling behavior). The ZIP bridge passes
-  `false`, so creating the bridge generation no longer stales prior drafts.
-- Prior active drafts are retired **only after the new generation reaches
-  READY** (`transitions.staleOthers(versionId, exceptId)` in
-  `worker-zip-import-provider-service.ts`).
-- On any failure (pipeline failure OR READY-transition failure) the existing
-  READY DRAFT is preserved and no stale runs.
+- `createSearchGenerationForPipeline({ stalePreviousDrafts })` — option kept,
+  default `true`. All callers (Docling + ZIP Worker bridge) use the default, so a
+  prior active DRAFT is **staled at generation-creation time** as the new one is
+  inserted (required by the unique index).
+- Consequence (P7.1.1 hotfix): a new ZIP run stales the existing active DRAFT at
+  **start**. Automatically preserving an existing READY DRAFT when the new run
+  later fails is **not supported under the current schema**.
+- Future (P7.2/P8), to enable true deferred-stale:
+  - add a `BUILDING` scope/status to `SearchIndexGeneration`, or
+  - redesign the active-unique index alongside nullable `normalizedDocumentId`, or
+  - separate the draft *build* generation from the *review-ready* generation.
 
 ### READY-transition failure is not "완료"
 
@@ -359,7 +365,8 @@ completed structuring:
   `generationReady: false`, `error.code: "GENERATION_READY_DEFERRED"`,
   `supportRequired: true`, and **preserves** `importedChunkCount /
   importedEmbeddingCount` for diagnostics.
-- `PipelineRun` is recorded as `WARNING` (not `PASS`).
+- `PipelineRun` is recorded as `FAIL` (a valid `PipelineStepStatus`; never
+  `WARNING`/`PASS`).
 - `ProviderWorkerZipImportCard` shows "완료" **only** when
   `result.ok && result.generationReady === true`; the deferred case renders
   "데이터는 생성됐지만 검색데이터 준비가 지연되었습니다" + 관리자 문의 / 다시 실행.

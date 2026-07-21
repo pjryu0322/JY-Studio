@@ -154,8 +154,10 @@ describe("worker-zip generation bridge (P7)", () => {
     assert.equal(genArgs!.chunkGenerationId, "gen-1");
     assert.equal(genArgs!.normalizedDocumentId, "nd-1");
     assert.ok(genArgs!.descriptor);
-    // P7.1: bridge must NOT stale prior READY drafts at creation time.
-    assert.equal(genArgs!.stalePreviousDrafts, false);
+    // P7.1.1: the DB allows one active DRAFT per version, so the bridge must NOT
+    // pass stalePreviousDrafts=false (that would collide with an existing READY
+    // DRAFT). It relies on the default stale-at-creation policy.
+    assert.notEqual(genArgs!.stalePreviousDrafts, false);
   });
 
   it("bridge bundle is excluded from the Docling staging-visibility predicate", async () => {
@@ -234,7 +236,6 @@ function makeTransitions(
     toIndexing: async () => harness.transitionCalls.push("INDEXING"),
     toReady: async () => harness.transitionCalls.push("READY"),
     toFailed: async () => harness.transitionCalls.push("FAILED"),
-    staleOthers: async () => harness.transitionCalls.push("STALE"),
     ...overrides,
   };
 }
@@ -294,12 +295,13 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     assert.equal(result.searchIndexGenerationId, resolvedGenerationId);
     // The bridge used the caller-pre-generated id (so failures can be marked later).
     assert.deepEqual(harness.synthCalledWith, [resolvedGenerationId]);
-    // P7.1: prior drafts are staled ONLY after READY (last step).
-    assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY", "STALE"]);
+    // P7.1.1: prior active DRAFTs are retired at generation-creation time (the DB
+    // allows one active DRAFT per version), so no separate post-READY stale step.
+    assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY"]);
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
   });
 
-  it("READY-transition failure: ok=false, RETRY, generationReady=false, no stale, WARNING run", async () => {
+  it("READY-transition failure: ok=false, RETRY, generationReady=false, run FAIL", async () => {
     const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
 
     const result = await runProviderWorkerZipImport({
@@ -340,12 +342,10 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     // Import counts are preserved for diagnostics.
     assert.equal(result.importedChunkCount, 3);
     assert.equal(result.importedEmbeddingCount, 3);
-    // Existing READY drafts must NOT be staled when the new one did not reach READY.
-    assert.ok(!harness.transitionCalls.includes("STALE"));
     // Raw internal detail must not leak.
     assert.equal(/count mismatch internal detail/.test(result.error?.message ?? ""), false);
-    // Run is not marked PASS.
-    assert.notEqual(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
+    // P7.1.1: run is recorded as FAIL (a valid PipelineStepStatus), never WARNING.
+    assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "FAIL");
   });
 
   it("failure after generation created: marks FAILED + FAIL, maps user error", async () => {
@@ -401,8 +401,6 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     // User-facing message must not leak the raw internal detail.
     assert.equal(/raw internal detail/.test(result.error?.message ?? ""), false);
     assert.ok(harness.transitionCalls.includes("FAILED"));
-    // Existing READY drafts are preserved on a hard pipeline failure.
-    assert.ok(!harness.transitionCalls.includes("STALE"));
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "FAIL");
   });
 

@@ -32,10 +32,14 @@ export async function createSearchGenerationForPipeline(input: {
   descriptor?: Awaited<ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>>;
   attempt?: number;
   /**
-   * Whether to stale prior active drafts at creation time. Default `true`
-   * (legacy Docling behavior). The ZIP Worker bridge passes `false` so an
-   * existing READY DRAFT is preserved until the new generation actually reaches
-   * READY (deferred stale, see worker-zip-import-provider-service).
+   * Whether to stale prior active drafts at creation time. Default `true`.
+   *
+   * NOTE (P7.1.1): the DB enforces one active DRAFT generation per version
+   * (partial unique index `SearchIndexGeneration_one_active_draft_per_version`),
+   * so `false` cannot be used while another active DRAFT exists — the insert
+   * would violate the constraint. All current callers (Docling + ZIP Worker
+   * bridge) rely on the default `true`. This option is reserved for a future
+   * schema/index redesign (P7.2/P8) that would enable true deferred-stale.
    */
   stalePreviousDrafts?: boolean;
   client?: SyncClient;
