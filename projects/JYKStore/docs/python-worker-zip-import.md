@@ -568,6 +568,59 @@ counting `excludedFiles`) and it is surfaced to the Admin generation result
 - Per-provider / per-pack exclusion policy override; policy in DB
 - Worker pre-run ZIP preview API; downloadable detailed `excludedFiles` report
 
+## P7.5: Admin worker operation UX (reject + live progress + runs history)
+
+Adds Admin operational controls around the ZIP generation run. No schema change,
+no async job queue — the run stays synchronous (the POST awaits the pipeline), but
+per-stage progress is now persisted and pollable.
+
+### Reject (자료 반려)
+
+- Route: `POST /api/v1/admin/packs/[packId]/worker-zip/reject` (admin-gated), body
+  `{ reason }` (required). Service: `rejectAdminWorkerZipRequest`.
+- Allowed only from `REQUESTED` or `ACCEPTED`; blocked for `PROCESSING`/`COMPLETED`
+  and for an already-`REJECTED` request.
+- **Storage (no schema change)**: the rejection (`reason`/`rejectedAt`/`rejectedByUserId`)
+  is written onto the existing request sidecar (`request.json`) via
+  `markWorkerZipRequestRejected`. The **original ZIP is preserved** for audit. The
+  `WORKER_ZIP_REQUEST` marker is retired (`SKIPPED`) so it leaves the Admin 접수함.
+- The pack **stays `DRAFT`**. A fresh Provider submission overwrites the sidecar
+  (clearing `rejection`) → status returns to `REQUESTED`.
+- `deriveRequestStatus` gains a `REJECTED` branch (ranked below `COMPLETED`, above a
+  stale `FAILED`). Provider status type + `ProviderWorkerZipRequestStatus` gain
+  `REJECTED`.
+
+### Live step progress (실행 중 시각화)
+
+- The pipeline's existing `markStage` hook now writes `PipelineStepLog` rows during
+  the run (`createWorkerZipStepRecorder` in `worker-zip-step-log.ts`): each stage
+  closes the prior `RUNNING` step (`PASS`) and opens a new `RUNNING` step. On finish,
+  `finalizeWorkerZipSteps` closes the last step `PASS` (attaching a counts summary in
+  `details`) or `FAIL` (with the error message).
+- Status API: `GET /api/v1/admin/packs/[packId]/worker-zip/status` returns
+  `{ requestStatus, run: { currentStep, currentStepLabel, message, startedAt,
+  finishedAt, summary, stepLogs } }`.
+- The Admin card fires the (synchronous) execute POST **and concurrently polls** the
+  status API every ~2.5s, rendering an 8-node stepper + elapsed timer. Polling stops
+  when the POST resolves. Execute + 반려 buttons are disabled while running.
+
+### Worker runs history (Worker 작업 내역)
+
+- API: `GET /api/v1/admin/packs/[packId]/worker-zip/runs` (`listWorkerZipRuns`) →
+  recent `WORKER_ZIP_IMPORT` runs with status, current/failed step, timing, counts,
+  and expandable step logs. Rendered by `AdminWorkerZipRunsPanel` under the card.
+
+### Terminology
+
+- Client-safe step catalog/labels live in `worker-zip-step-labels.ts` (no Prisma
+  import) so client components can render steps. Provider copy uses 생성 요청 반려 /
+  관리자 처리 중 / 생성 완료·실패 — never `PipelineRun`/`PipelineStepLog`/sidecar terms.
+
+### Follow-ups (P8, not in this slice)
+
+- Global `GET /api/v1/admin/worker-jobs` operations view (this slice is pack-scoped)
+- True background execution + `202 Accepted` (if runs get long enough to need it)
+
 ## Remaining work (out of this slice)
 
 - P7.2: async job model + `202 Accepted` + status polling (see above)

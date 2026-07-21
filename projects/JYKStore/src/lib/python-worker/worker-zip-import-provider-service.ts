@@ -27,6 +27,10 @@ import {
   type WorkerZipPipelineResult,
 } from "@/lib/python-worker/worker-zip-pipeline-service";
 import type { WorkerExclusionSummary } from "@/lib/python-worker/worker-output-contract";
+import {
+  createWorkerZipStepRecorder,
+  finalizeWorkerZipSteps,
+} from "@/lib/python-worker/worker-zip-step-log";
 import { Readable } from "node:stream";
 import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { synthesizeWorkerZipSearchGeneration } from "@/lib/python-worker/worker-zip-generation-bridge";
@@ -34,6 +38,7 @@ import {
   deleteWorkerZipRequest,
   getWorkerZipRequestBytes,
   getWorkerZipRequestMetadata,
+  markWorkerZipRequestRejected,
   storeWorkerZipRequest,
   type WorkerZipRequestMetadata,
 } from "@/lib/python-worker/worker-zip-request-storage";
@@ -275,6 +280,7 @@ export type ProviderWorkerZipRequestStatus =
   | "NONE"
   | "REQUESTED"
   | "ACCEPTED"
+  | "REJECTED"
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED";
@@ -444,6 +450,10 @@ function deriveRequestStatus(
 ): ProviderWorkerZipRequestStatus {
   if (lastRunStatus === "RUNNING") return "PROCESSING";
   if (lastRunStatus === "PASS") return "COMPLETED";
+  // A pre-execution Admin rejection is terminal for this request cycle. It ranks
+  // above a stale FAIL run and below a completed run; a fresh Provider submission
+  // overwrites the sidecar (clearing `rejection`), returning to REQUESTED.
+  if (request?.rejection) return "REJECTED";
   if (lastRunStatus === "FAIL") return "FAILED";
   if (!request) return "NONE";
   if (markerStatus === WORKER_ZIP_REQUEST_ACCEPTED_STATUS) return "ACCEPTED";
@@ -560,6 +570,13 @@ export async function runProviderWorkerZipImport(
     env: input.env,
     prismaClient: input.prismaClient,
     deps: {
+      // P7.5: record per-stage progress so the Admin status API can render a live
+      // stepper while this synchronous run is in flight. Best-effort; never throws.
+      markStage: createWorkerZipStepRecorder({
+        prismaClient: input.prismaClient,
+        runId: pipelineRun.id,
+        packId: pack.packId,
+      }),
       resolveSearchIndexGenerationId: async ({ payload }) => {
         await synthesizeGeneration({
           generationId,
@@ -587,6 +604,12 @@ export async function runProviderWorkerZipImport(
     await client.pipelineRun
       .update({ where: { id: pipelineRun.id }, data: { status: "FAIL", finishedAt: new Date() } })
       .catch(() => undefined);
+    await finalizeWorkerZipSteps({
+      prismaClient: input.prismaClient,
+      runId: pipelineRun.id,
+      ok: false,
+      errorMessage: result.error?.message ?? null,
+    });
 
     const code = result.error?.code ?? "WORKER_ZIP_PIPELINE_FAILED";
     const mapped = mapWorkerZipFailureCode(code);
@@ -648,6 +671,12 @@ export async function runProviderWorkerZipImport(
     await client.pipelineRun
       .update({ where: { id: pipelineRun.id }, data: { status: "FAIL", finishedAt: new Date() } })
       .catch(() => undefined);
+    await finalizeWorkerZipSteps({
+      prismaClient: input.prismaClient,
+      runId: pipelineRun.id,
+      ok: false,
+      errorMessage: mapWorkerZipFailureCode("GENERATION_READY_DEFERRED").message,
+    });
     const mapped = mapWorkerZipFailureCode("GENERATION_READY_DEFERRED");
     return {
       ok: false,
@@ -670,6 +699,16 @@ export async function runProviderWorkerZipImport(
   await client.pipelineRun
     .update({ where: { id: pipelineRun.id }, data: { status: "PASS", finishedAt: new Date() } })
     .catch(() => undefined);
+  await finalizeWorkerZipSteps({
+    prismaClient: input.prismaClient,
+    runId: pipelineRun.id,
+    ok: true,
+    summary: {
+      importedChunkCount: result.importedChunkCount,
+      importedEmbeddingCount: result.importedEmbeddingCount,
+      excludedFiles: result.exclusionSummary?.total ?? 0,
+    },
+  });
 
   return {
     ok: true,
@@ -857,6 +896,127 @@ export async function acceptAdminWorkerZipRequest(
   }
 
   return { ok: true, packId: pack.packId, versionId: version.id, requestStatus: "ACCEPTED" };
+}
+
+export type RejectAdminWorkerZipRequestInput = {
+  adminUserId: string;
+  clientId: string;
+  packId: string;
+  reason: string;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  resolvePack?: WorkerZipPackResolver;
+  getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+  markRejected?: typeof markWorkerZipRequestRejected;
+};
+
+/**
+ * P7.5: Admin "자료 반려" — reject a generation request (접수 전/후 모두 가능). The
+ * original ZIP is preserved; the pack stays DRAFT so the Provider can fix the ZIP
+ * and re-request. Rejection is blocked once generation is running or terminal.
+ */
+export async function rejectAdminWorkerZipRequest(
+  input: RejectAdminWorkerZipRequestInput,
+): Promise<{ ok: true; packId: string; versionId: string; requestStatus: "REJECTED"; message: string }> {
+  const client = input.prismaClient ?? prisma;
+  const resolvePack = input.resolvePack ?? resolveAdminDraftPack;
+  const getRequestMetadata = input.getRequestMetadata ?? getWorkerZipRequestMetadata;
+  const markRejected = input.markRejected ?? markWorkerZipRequestRejected;
+
+  const reason = input.reason?.trim() ?? "";
+  if (!reason) {
+    throw new WorkerZipImportServiceError(
+      "REJECTION_REASON_REQUIRED",
+      "반려 사유를 입력해 주세요.",
+      400,
+    );
+  }
+
+  const { pack, version } = await resolvePack(client, {
+    userId: input.adminUserId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const [request, lastRun, markerStatus] = await Promise.all([
+    getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
+    client.pipelineRun.findFirst({
+      where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+    getLatestRequestMarkerStatus(client, pack.packId),
+  ]);
+
+  if (!request) {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_NOT_FOUND",
+      "반려할 생성 요청(ZIP 자료)이 없습니다.",
+      404,
+    );
+  }
+
+  const status = deriveRequestStatus(request, lastRun?.status ?? null, markerStatus);
+  if (status === "PROCESSING") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_IN_PROGRESS",
+      "지식데이터 생성이 진행 중이라 반려할 수 없습니다.",
+      409,
+    );
+  }
+  if (status === "COMPLETED") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_ALREADY_COMPLETED",
+      "이미 생성이 완료되어 반려할 수 없습니다.",
+      409,
+    );
+  }
+  if (status === "REJECTED") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_ALREADY_REJECTED",
+      "이미 반려된 요청입니다.",
+      409,
+    );
+  }
+  if (status !== "REQUESTED" && status !== "ACCEPTED") {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_NOT_REJECTABLE",
+      "요청됨 또는 접수됨 상태에서만 반려할 수 있습니다.",
+      409,
+    );
+  }
+
+  // Record the rejection on the request sidecar (keeps the original ZIP).
+  await markRejected({
+    packId: pack.packId,
+    packVersionId: version.id,
+    reason,
+    rejectedByUserId: input.adminUserId,
+    env: input.env,
+  });
+
+  // Retire the open request marker so it leaves the Admin 접수함 queue. The pack
+  // stays DRAFT; the Provider can re-submit a corrected ZIP.
+  try {
+    await client.pipelineRun.updateMany({
+      where: {
+        packId: pack.packId,
+        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+        status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+      },
+      data: { status: "SKIPPED", finishedAt: new Date(), summary: `반려: ${reason.slice(0, 200)}` },
+    });
+  } catch {
+    // Non-fatal: the rejection is already recorded on the sidecar.
+  }
+
+  return {
+    ok: true,
+    packId: pack.packId,
+    versionId: version.id,
+    requestStatus: "REJECTED",
+    message: "생성 요청이 반려되었습니다.",
+  };
 }
 
 /* ------------------------------------------------------------------ *

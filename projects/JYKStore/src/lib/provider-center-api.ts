@@ -901,12 +901,25 @@ export type ProviderWorkerZipRequestState = {
   clientId: string;
   packId: string;
   versionId: string;
-  requestStatus: "NONE" | "REQUESTED" | "ACCEPTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  requestStatus:
+    | "NONE"
+    | "REQUESTED"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "FAILED";
   request: {
     originalFileName: string;
     fileSize: number;
     uploadedAt: string;
     uploadedByUserId: string;
+    /** P7.5: present when an Admin rejected the request. */
+    rejection?: {
+      reason: string;
+      rejectedAt: string;
+      rejectedByUserId: string;
+    };
   } | null;
   lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
   reviewMemo: string | null;

@@ -27,7 +27,14 @@ export type AdminWorkerZipRequestState = {
   clientId: string;
   packId: string;
   versionId: string;
-  requestStatus: "NONE" | "REQUESTED" | "ACCEPTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  requestStatus:
+    | "NONE"
+    | "REQUESTED"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "FAILED";
   request: {
     originalFileName: string;
     fileSize: number;
@@ -143,6 +150,99 @@ export async function acceptAdminWorkerZipRequest(
   }
   const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/** P7.5: Admin 자료 반려 — reject the request with a required reason (접수 전/후 모두). */
+export async function rejectAdminWorkerZipRequest(
+  packId: string,
+  reason: string,
+): Promise<{ ok: boolean; packId: string; versionId: string; requestStatus: string; message: string }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/reject`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; packId?: string; versionId?: string; requestStatus?: string; message?: string; error?: string; code?: string }
+    | null;
+  if (response.ok && data && data.ok === true) {
+    return {
+      ok: true,
+      packId: data.packId ?? packId,
+      versionId: data.versionId ?? "",
+      requestStatus: data.requestStatus ?? "REJECTED",
+      message: data.message ?? "생성 요청이 반려되었습니다.",
+    };
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/** P7.5: one persisted step log line for the Admin stepper / history. */
+export type AdminWorkerZipStepLog = {
+  step: string;
+  status: "PENDING" | "RUNNING" | "PASS" | "WARNING" | "FAIL" | "SKIPPED";
+  message: string | null;
+  createdAt: string;
+};
+
+export type AdminWorkerZipRunView = {
+  runId: string;
+  status: "PENDING" | "RUNNING" | "PASS" | "WARNING" | "FAIL" | "SKIPPED";
+  currentStep: string | null;
+  currentStepLabel: string;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  message: string | null;
+  errorMessage: string | null;
+  summary: {
+    importedChunkCount?: number;
+    importedEmbeddingCount?: number;
+    excludedFiles?: number;
+  } | null;
+  stepLogs: AdminWorkerZipStepLog[];
+};
+
+export type AdminWorkerZipStatus = {
+  clientId: string;
+  packId: string;
+  requestStatus: AdminWorkerZipRequestState["requestStatus"];
+  run: AdminWorkerZipRunView | null;
+};
+
+/** P7.5: poll live generation status (current step + step logs) for a pack. */
+export async function fetchAdminWorkerZipStatus(packId: string): Promise<AdminWorkerZipStatus> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/status`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminWorkerZipStatus;
+}
+
+/** P7.5: fetch recent generation runs (Worker 작업 내역) for a pack. */
+export async function fetchAdminWorkerZipRuns(
+  packId: string,
+): Promise<{ clientId: string; packId: string; runs: AdminWorkerZipRunView[] }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/runs`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    packId: string;
+    runs: AdminWorkerZipRunView[];
+  };
 }
 
 export async function fetchAdminReviewItems(): Promise<AdminReviewListResponse> {

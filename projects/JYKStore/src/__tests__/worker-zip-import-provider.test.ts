@@ -19,6 +19,7 @@ import {
   getProviderWorkerZipRequestState,
   listAdminWorkerZipRequests,
   mapWorkerZipFailureCode,
+  rejectAdminWorkerZipRequest,
   runAdminWorkerZipGeneration,
   runProviderWorkerZipImport,
   submitProviderWorkerZipRequest,
@@ -28,6 +29,12 @@ import {
   WorkerZipImportServiceError,
   type WorkerZipGenerationTransitions,
 } from "../lib/python-worker/worker-zip-import-provider-service.ts";
+import { toWorkerZipRunView, describeWorkerZipStep } from "../lib/python-worker/worker-zip-step-log.ts";
+import {
+  describeWorkerZipStepLabel,
+  formatDurationMs,
+  workerZipStepIndex,
+} from "../lib/worker-zip-step-labels.ts";
 import {
   checkWorkerZipContentLength,
   mapWorkerZipImportHttpResponse,
@@ -1139,5 +1146,224 @@ describe("worker-zip route helpers (P7.1 behavior)", () => {
       mapWorkerZipImportHttpResponse({ ok: false } as never).status,
       422,
     );
+  });
+});
+
+describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
+  function fakeReject(overrides?: {
+    findFirstRun?: () => Promise<{ status: string } | null>;
+    markerStatus?: string;
+    rejection?: { reason: string; rejectedAt: string; rejectedByUserId: string };
+  }) {
+    const marked: Record<string, unknown>[] = [];
+    let rejectedWith: Record<string, unknown> | null = null;
+    const markerRuns = overrides?.markerStatus
+      ? [{ status: overrides.markerStatus }]
+      : [{ status: "PENDING" }];
+    const prismaClient = {
+      pipelineRun: {
+        findFirst: async ({ where }: { where: { status?: unknown; triggerType?: string } }) => {
+          // getLatestRequestMarkerStatus queries by status: { in: [...] }
+          if (where?.status && typeof where.status === "object") {
+            return markerRuns[0] ?? null;
+          }
+          // last WORKER_ZIP_IMPORT run
+          return overrides?.findFirstRun ? overrides.findFirstRun() : Promise.resolve(null);
+        },
+        updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+          marked.push(data);
+          return { count: 1 };
+        },
+      },
+    } as never;
+    const call = (reason: string) =>
+      rejectAdminWorkerZipRequest({
+        adminUserId: "admin-1",
+        clientId: "cl1",
+        packId: "packA",
+        reason,
+        prismaClient,
+        resolvePack: async () => ({
+          pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+          version: { id: "verA", version: "1.0.0", language: "KO" },
+        }),
+        getRequestMetadata: (async () => ({
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+          rejection: overrides?.rejection,
+        })) as never,
+        markRejected: (async (input: Record<string, unknown>) => {
+          rejectedWith = input;
+          return { originalFileName: "a.zip" };
+        }) as never,
+      });
+    return { call, marked, getRejectedWith: () => rejectedWith };
+  }
+
+  it("rejects a REQUESTED request, records the reason, and retires the marker (SKIPPED)", async () => {
+    const h = fakeReject({ markerStatus: "PENDING" });
+    const res = await h.call("구조화 대상 문서가 부족합니다.");
+    assert.equal(res.requestStatus, "REJECTED");
+    assert.equal(h.getRejectedWith()!.reason, "구조화 대상 문서가 부족합니다.");
+    assert.equal(h.marked[0]!.status, "SKIPPED");
+  });
+
+  it("rejects an ACCEPTED request as well", async () => {
+    const h = fakeReject({ markerStatus: WORKER_ZIP_REQUEST_ACCEPTED_STATUS });
+    const res = await h.call("보안상 처리 불가 파일 포함");
+    assert.equal(res.requestStatus, "REJECTED");
+  });
+
+  it("blocks rejection while generation is RUNNING (PROCESSING)", async () => {
+    const h = fakeReject({ findFirstRun: async () => ({ status: "RUNNING" }) });
+    await assert.rejects(
+      h.call("late reject"),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_IN_PROGRESS",
+    );
+  });
+
+  it("blocks rejection after completion (PASS)", async () => {
+    const h = fakeReject({ findFirstRun: async () => ({ status: "PASS" }) });
+    await assert.rejects(
+      h.call("too late"),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_ALREADY_COMPLETED",
+    );
+  });
+
+  it("blocks a duplicate rejection", async () => {
+    const h = fakeReject({
+      rejection: { reason: "prev", rejectedAt: "2026-01-01T00:00:00.000Z", rejectedByUserId: "admin-0" },
+    });
+    await assert.rejects(
+      h.call("again"),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_ALREADY_REJECTED",
+    );
+  });
+
+  it("requires a non-empty rejection reason", async () => {
+    const h = fakeReject();
+    await assert.rejects(
+      h.call("   "),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REJECTION_REASON_REQUIRED",
+    );
+  });
+
+  it("getProviderWorkerZipRequestState surfaces REJECTED + reason from the sidecar", async () => {
+    const state = await getProviderWorkerZipRequestState({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: { findFirst: async () => null },
+        packReview: { findFirst: async () => null },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 10,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+        rejection: {
+          reason: "ZIP 파일 오류",
+          rejectedAt: "2026-01-02T00:00:00.000Z",
+          rejectedByUserId: "admin-1",
+        },
+      })) as never,
+    });
+    assert.equal(state.requestStatus, "REJECTED");
+    assert.equal(state.request?.rejection?.reason, "ZIP 파일 오류");
+  });
+
+  it("toWorkerZipRunView derives currentStep, summary, and errorMessage", () => {
+    const base = new Date("2026-07-21T11:10:00.000Z");
+    const okRun = toWorkerZipRunView({
+      id: "run-ok",
+      status: "PASS",
+      summary: "완료",
+      startedAt: base,
+      finishedAt: new Date(base.getTime() + 92_000),
+      steps: [
+        { step: "SOURCE_REGISTERING", status: "PASS", message: "접수", details: null, createdAt: base },
+        {
+          step: "INDEXING",
+          status: "PASS",
+          message: "검색 인덱스",
+          details: { importedChunkCount: 12, importedEmbeddingCount: 12, excludedFiles: 3 },
+          createdAt: new Date(base.getTime() + 90_000),
+        },
+      ],
+    });
+    assert.equal(okRun.currentStep, "INDEXING");
+    assert.equal(okRun.durationMs, 92_000);
+    assert.equal(okRun.summary?.importedChunkCount, 12);
+    assert.equal(okRun.summary?.excludedFiles, 3);
+
+    const failRun = toWorkerZipRunView({
+      id: "run-fail",
+      status: "FAIL",
+      summary: null,
+      startedAt: base,
+      finishedAt: new Date(base.getTime() + 5_000),
+      steps: [
+        { step: "STRUCTURING", status: "PASS", message: null, details: null, createdAt: base },
+        {
+          step: "INDEXING",
+          status: "FAIL",
+          message: "검색 인덱스 반영 중 오류",
+          details: null,
+          createdAt: new Date(base.getTime() + 4_000),
+        },
+      ],
+    });
+    assert.equal(failRun.errorMessage, "검색 인덱스 반영 중 오류");
+    assert.equal(failRun.currentStep, "INDEXING");
+  });
+
+  it("step labels/index/duration helpers behave", () => {
+    assert.equal(describeWorkerZipStep("STRUCTURING"), "문서 구조화");
+    assert.equal(describeWorkerZipStepLabel("INDEXING"), "검색 인덱스");
+    assert.equal(describeWorkerZipStepLabel(null), "");
+    assert.ok(workerZipStepIndex("STRUCTURING") > workerZipStepIndex("SOURCE_VALIDATING"));
+    assert.equal(workerZipStepIndex("UNKNOWN"), -1);
+    assert.equal(formatDurationMs(92_000), "01:32");
+    assert.equal(formatDurationMs(null), "-");
+  });
+
+  it("admin/provider source wiring is present (routes + UI)", () => {
+    const read = (rel: string) => readFileSync(path.join(process.cwd(), rel), "utf8");
+
+    // Reject / status / runs routes exist and are admin-gated.
+    const rejectRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/reject/route.ts");
+    assert.match(rejectRoute, /requireAdminSession/);
+    assert.match(rejectRoute, /rejectAdminWorkerZipRequest/);
+    const statusRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/status/route.ts");
+    assert.match(statusRoute, /getLatestWorkerZipRun/);
+    const runsRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/runs/route.ts");
+    assert.match(runsRoute, /listWorkerZipRuns/);
+
+    // Admin card wires reject form, live stepper polling, and the runs panel.
+    const adminCard = read("src/components/AdminWorkerZipGenerationCard.tsx");
+    assert.match(adminCard, /자료 반려/);
+    assert.match(adminCard, /fetchAdminWorkerZipStatus/);
+    assert.match(adminCard, /setInterval/);
+    assert.match(adminCard, /AdminWorkerZipRunsPanel/);
+
+    // Provider card shows the rejection reason and never leaks internal terms.
+    const providerCard = read(
+      "src/components/provider-distribution/ProviderWorkerZipImportCard.tsx",
+    );
+    assert.match(providerCard, /생성 요청 반려/);
+    assert.match(providerCard, /사유/);
   });
 });

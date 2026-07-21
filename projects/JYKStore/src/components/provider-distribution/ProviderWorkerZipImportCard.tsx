@@ -76,6 +76,8 @@ export function ProviderWorkerZipImportCard({
   const request = state?.request ?? null;
   const status = state?.requestStatus ?? "NONE";
   const canWithdraw = status === "REQUESTED";
+  const isRejected = status === "REJECTED";
+  const rejectionReason = request?.rejection?.reason?.trim() || state?.reviewMemo?.trim() || null;
 
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
@@ -133,6 +135,20 @@ export function ProviderWorkerZipImportCard({
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
+        </div>
+      ) : null}
+
+      {isRejected ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <p className="font-semibold">생성 요청 반려</p>
+          <p className="mt-0.5">
+            관리자가 지식데이터 생성 요청을 반려했습니다. 안내된 사유를 확인한 뒤 ZIP 파일을 수정해 다시 요청해 주세요.
+          </p>
+          {rejectionReason ? (
+            <p className="mt-1 whitespace-pre-wrap rounded-lg bg-white/70 px-2 py-1 text-red-900">
+              사유: {rejectionReason}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -197,8 +213,10 @@ function statusLabel(status: ProviderWorkerZipRequestState["requestStatus"]): st
       return "생성 요청됨 (접수 대기)";
     case "ACCEPTED":
       return "접수완료 (생성 대기)";
+    case "REJECTED":
+      return "생성 요청 반려";
     case "PROCESSING":
-      return "처리 중";
+      return "관리자 처리 중";
     case "COMPLETED":
       return "생성 완료";
     case "FAILED":
@@ -213,6 +231,7 @@ function statusToneClass(status: ProviderWorkerZipRequestState["requestStatus"])
     case "COMPLETED":
       return "text-emerald-700";
     case "FAILED":
+    case "REJECTED":
       return "text-red-700";
     case "PROCESSING":
       return "text-indigo-700";

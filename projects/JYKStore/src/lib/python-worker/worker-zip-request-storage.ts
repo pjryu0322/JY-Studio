@@ -17,6 +17,14 @@ import { buildWorkerRequestSourceZipObjectKey } from "@/lib/python-worker/worker
 
 const DEFAULT_OBJECT_STORAGE_PREFIX = "payloads";
 
+/** P7.5: Admin rejection record kept on the request sidecar (no schema change). */
+export type WorkerZipRequestRejection = {
+  reason: string;
+  /** ISO 8601 timestamp of the rejection. */
+  rejectedAt: string;
+  rejectedByUserId: string;
+};
+
 export type WorkerZipRequestMetadata = {
   originalFileName: string;
   fileSize: number;
@@ -24,6 +32,11 @@ export type WorkerZipRequestMetadata = {
   /** ISO 8601 timestamp of the request submission. */
   uploadedAt: string;
   uploadedByUserId: string;
+  /**
+   * P7.5: set when an Admin rejects the request. The original ZIP is preserved
+   * for audit; a fresh Provider submission overwrites this sidecar (clearing it).
+   */
+  rejection?: WorkerZipRequestRejection;
 };
 
 export type WorkerZipRequestLocator = {
@@ -116,6 +129,45 @@ export async function getWorkerZipRequestMetadata(
   } catch {
     return null;
   }
+}
+
+/**
+ * P7.5: Admin "자료 반려" — attach a rejection record to the request sidecar while
+ * KEEPING the original ZIP (audit/traceability). Returns the updated metadata, or
+ * null when there is no request to reject.
+ */
+export async function markWorkerZipRequestRejected(
+  input: WorkerZipRequestLocator & {
+    reason: string;
+    rejectedByUserId: string;
+    now?: () => Date;
+  },
+): Promise<WorkerZipRequestMetadata | null> {
+  const storage = resolveStorage(input);
+  const objectKey = zipKeyFor(input.packId, input.packVersionId);
+  const existing = await getWorkerZipRequestMetadata(input);
+  if (!existing) return null;
+
+  const updated: WorkerZipRequestMetadata = {
+    ...existing,
+    rejection: {
+      reason: input.reason,
+      rejectedAt: (input.now?.() ?? new Date()).toISOString(),
+      rejectedByUserId: input.rejectedByUserId,
+    },
+  };
+  const metaBytes = new TextEncoder().encode(JSON.stringify(updated));
+  await storage.putSmallObject({
+    packId: input.packId,
+    versionId: input.packVersionId,
+    payloadId: "worker-request-meta",
+    originalFileName: "request.json",
+    mimeType: "application/json",
+    bytes: metaBytes,
+    checksumSha256: createHash("sha256").update(metaBytes).digest("hex"),
+    objectKey: metaKeyFor(objectKey),
+  });
+  return updated;
 }
 
 /** Read the requested ZIP bytes for Admin execution, or null when absent. */
