@@ -170,7 +170,7 @@ one library-level flow, `runWorkerZipImportPipeline(input)`:
 
 ```text
 store source ZIP → run Python Worker → validate output → store worker output →
-SourceDocument mapping → bind SearchIndexGeneration → importWorkerOutputToStoreDb
+bind SearchIndexGeneration → SourceDocument mapping → importWorkerOutputToStoreDb
 ```
 
 Design notes:
@@ -178,6 +178,20 @@ Design notes:
 - **Never throws.** Failures are captured in `result.error` with a `retryable`
   hint and the `logicalStage` where they occurred. The temp working dir is always
   cleaned up (`finally`).
+- **Ordering (P5.1).** The `SearchIndexGeneration` binding is checked *before*
+  `ensureSourceDocuments`, so a missing/unresolved generation fails with
+  `SEARCH_GENERATION_REQUIRED` without persisting any `SourceDocument` rows.
+- **Stage tracking = completion (P5.1).** `markStage` records a stage only after
+  its work succeeds (so a failed step never appears as a completed stage in job/run
+  metadata). `WORKER_RUNNING` is the single in-progress exception, recorded right
+  before the worker runs.
+- **Upload size guards (P5.1).** The source ZIP and each worker output file are
+  still read fully into memory (`readFileBytes` + `putSmallObject`), so oversized
+  files are rejected (via an injectable `getFileSize`) *before* they are read:
+  `maxSourceZipUploadBytes` (default 200MB) → `WORKER_ZIP_FILE_TOO_LARGE`,
+  `maxWorkerOutputUploadBytes` (default 100MB) → `WORKER_OUTPUT_FILE_TOO_LARGE`
+  (both non-retryable). Streaming/multipart upload is deferred to P5.2 (decided
+  before the HTTP route/job wiring).
 - **Fully injectable.** `runWorker` / `prepareImport` / `importToDb` / `storage` /
   `readFileBytes` / `makeTempDir` / `cleanupDir` / `ensureSourceDocuments` /
   `resolveSearchIndexGenerationId` are all overridable via `input.deps`, so the
@@ -202,7 +216,8 @@ retryable   : WORKER_RUN_TIMEOUT, PAYLOAD_STORAGE_UNAVAILABLE,
               SEARCH_RUNTIME_UNAVAILABLE, LOCK_CONFLICT
 non-retryable: WorkerOutputDbImportError.*, WORKER_RUN_FAILED,
               VALIDATION_REPORT_NOT_OK, WORKER_OUTPUT_INVALID,
-              MISSING_REQUIRED_OUTPUT, SEARCH_GENERATION_REQUIRED
+              MISSING_REQUIRED_OUTPUT, SEARCH_GENERATION_REQUIRED,
+              WORKER_ZIP_FILE_TOO_LARGE, WORKER_OUTPUT_FILE_TOO_LARGE
 ```
 
 Deferred to a later slice: the HTTP ZIP-upload route and the async job model that
@@ -240,5 +255,7 @@ Logical ZIP stages map onto existing `PipelineStatus` values. See
   import; the service reports counts and leaves transitions to the caller
 - HTTP ZIP-upload route (`multipart/form-data`) + async job model that drives
   `runWorkerZipImportPipeline`
+- P5.2: decide streaming/multipart upload for the source ZIP / worker output
+  (P5.1 only added in-memory size guards) before the route/job wiring
 - Index / provider confirm / admin approve UX
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

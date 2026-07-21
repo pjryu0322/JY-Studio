@@ -19,7 +19,7 @@
  * Python / pgvector / Object Storage / a real DB.
  */
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PipelineStatus } from "@prisma/client";
@@ -50,6 +50,14 @@ import { ensureWorkerSourceDocuments } from "@/lib/python-worker/worker-source-d
 import { getConfiguredObjectStorage } from "@/lib/object-storage/object-storage-factory";
 
 const DEFAULT_OBJECT_STORAGE_PREFIX = "payloads";
+
+/**
+ * Memory-safety guards (P5.1): source ZIP and worker output are still read fully
+ * into memory (`readFileBytes` + `putSmallObject`). Until streaming/multipart is
+ * decided (P5.2), oversized files are rejected before they are read.
+ */
+const DEFAULT_MAX_SOURCE_ZIP_UPLOAD_BYTES = 200 * 1024 * 1024;
+const DEFAULT_MAX_WORKER_OUTPUT_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 /** Error codes classified as retryable (transient). */
 const RETRYABLE_CODES = new Set<string>([
@@ -106,6 +114,8 @@ export type WorkerZipPipelineDeps = {
   importToDb: (input: WorkerOutputDbImportInput) => Promise<WorkerOutputDbImportResult>;
   storage: WorkerZipStorage;
   readFileBytes: (absPath: string) => Uint8Array;
+  /** Byte size of a local file; used for upload size guards before reading it. */
+  getFileSize: (absPath: string) => number;
   makeTempDir: () => string;
   cleanupDir: (dir: string) => void;
   ensureSourceDocuments: (input: {
@@ -141,6 +151,10 @@ export type WorkerZipPipelineInput = {
   workerScriptPath?: string;
   maxFileBytes?: number;
   maxTotalBytes?: number;
+  /** Upload size guard for the source ZIP (default 200MB). */
+  maxSourceZipUploadBytes?: number;
+  /** Upload size guard per worker output file (default 100MB). */
+  maxWorkerOutputUploadBytes?: number;
   env?: NodeJS.ProcessEnv;
   prismaClient?: typeof prisma;
   deps?: Partial<WorkerZipPipelineDeps>;
@@ -185,6 +199,7 @@ function resolveDeps(input: WorkerZipPipelineInput): WorkerZipPipelineDeps {
     // Resolve storage lazily only when not injected (throws if unconfigured).
     storage: provided.storage ?? getConfiguredObjectStorage(input.env),
     readFileBytes: provided.readFileBytes ?? ((p) => readFileSync(p)),
+    getFileSize: provided.getFileSize ?? ((p) => statSync(p).size),
     makeTempDir:
       provided.makeTempDir ?? (() => mkdtempSync(path.join(tmpdir(), "jyk-worker-zip-"))),
     cleanupDir: provided.cleanupDir ?? ((dir) => rmSync(dir, { recursive: true, force: true })),
@@ -262,12 +277,16 @@ export async function runWorkerZipImportPipeline(
     };
   }
 
-  const advance = async (next: WorkerZipLogicalStage) => {
-    stage = next;
-    const pipelineStatus = mapWorkerZipStageToPipelineStatus(next);
+  // `stage` = the stage currently being attempted (used for error.stage /
+  // logicalStage). `markCompleted` records a stage as DONE via markStage; it is
+  // only called after the stage's work succeeds (WORKER_RUNNING is the one
+  // in-progress exception, recorded right before the worker runs).
+  const markCompleted = async (completed: WorkerZipLogicalStage) => {
+    stage = completed;
+    const pipelineStatus = mapWorkerZipStageToPipelineStatus(completed);
     if (deps.markStage) {
       try {
-        await deps.markStage(next, pipelineStatus);
+        await deps.markStage(completed, pipelineStatus);
       } catch {
         // stage tracking is best-effort
       }
@@ -275,11 +294,26 @@ export async function runWorkerZipImportPipeline(
     return pipelineStatus;
   };
 
-  try {
-    await advance("ACCEPTED");
+  const maxSourceZipUploadBytes =
+    input.maxSourceZipUploadBytes ?? DEFAULT_MAX_SOURCE_ZIP_UPLOAD_BYTES;
+  const maxWorkerOutputUploadBytes =
+    input.maxWorkerOutputUploadBytes ?? DEFAULT_MAX_WORKER_OUTPUT_UPLOAD_BYTES;
 
-    // 1. Store the original ZIP.
-    await advance("ARCHIVE_STORED");
+  try {
+    // deps/input are ready.
+    await markCompleted("ACCEPTED");
+
+    // 1. Store the original ZIP (size-guarded before it is read into memory).
+    stage = "ARCHIVE_STORED";
+    const zipSize = deps.getFileSize(input.inputZipPath);
+    if (zipSize > maxSourceZipUploadBytes) {
+      throw new WorkerZipPipelineFailure({
+        code: "WORKER_ZIP_FILE_TOO_LARGE",
+        message: `source ZIP is ${zipSize} bytes, exceeds limit ${maxSourceZipUploadBytes}`,
+        retryable: false,
+        stage,
+      });
+    }
     const zipBytes = deps.readFileBytes(input.inputZipPath);
     await deps.storage.putSmallObject({
       packId: input.packId,
@@ -291,10 +325,13 @@ export async function runWorkerZipImportPipeline(
       checksumSha256: sha256Hex(zipBytes),
       objectKey: sourceZipObjectKey,
     });
+    await markCompleted("ARCHIVE_STORED");
 
     // 2. Temp working dir + 3. run the Python Worker.
     outputDir = deps.makeTempDir();
-    await advance("WORKER_RUNNING");
+    stage = "WORKER_RUNNING";
+    // In-progress stage: recorded right before the worker runs (see note above).
+    await markCompleted("WORKER_RUNNING");
     const run = await deps.runWorker({
       inputZipPath: input.inputZipPath,
       outputDir,
@@ -317,9 +354,10 @@ export async function runWorkerZipImportPipeline(
     }
     base.workerStdoutTail = run.stdout.slice(-4000);
     base.workerStderrTail = run.stderr.slice(-4000);
-    await advance("WORKER_OUTPUT_CREATED");
+    await markCompleted("WORKER_OUTPUT_CREATED");
 
     // 4. Validate worker output (no chunk regen).
+    stage = "WORKER_OUTPUT_VALIDATED";
     const prepared = deps.prepareImport({
       outputDir,
       packId: input.packId,
@@ -350,9 +388,10 @@ export async function runWorkerZipImportPipeline(
         stage,
       });
     }
-    await advance("WORKER_OUTPUT_VALIDATED");
+    await markCompleted("WORKER_OUTPUT_VALIDATED");
 
     // 5. Store worker output files (keys must match payload.storedFiles).
+    stage = "WORKER_OUTPUT_STORED";
     for (const file of payload.storedFiles) {
       if (!file.present) {
         if (file.required) {
@@ -370,7 +409,17 @@ export async function runWorkerZipImportPipeline(
         });
         continue;
       }
-      const bytes = deps.readFileBytes(path.join(outputDir, file.relativePath));
+      const absPath = path.join(outputDir, file.relativePath);
+      const fileSize = deps.getFileSize(absPath);
+      if (fileSize > maxWorkerOutputUploadBytes) {
+        throw new WorkerZipPipelineFailure({
+          code: "WORKER_OUTPUT_FILE_TOO_LARGE",
+          message: `worker output ${file.relativePath} is ${fileSize} bytes, exceeds limit ${maxWorkerOutputUploadBytes}`,
+          retryable: false,
+          stage,
+        });
+      }
+      const bytes = deps.readFileBytes(absPath);
       await deps.storage.putSmallObject({
         packId: input.packId,
         versionId: input.packVersionId,
@@ -383,16 +432,11 @@ export async function runWorkerZipImportPipeline(
       });
       storedObjectKeys.push(file.objectKey);
     }
-    await advance("WORKER_OUTPUT_STORED");
+    await markCompleted("WORKER_OUTPUT_STORED");
 
-    // 6. SourceDocument mapping.
-    const sourceDocumentIdByPath = await deps.ensureSourceDocuments({
-      payload,
-      productVersion: input.productVersion,
-      prismaClient: input.prismaClient,
-    });
-
-    // 7. Bind to a SearchIndexGeneration (creation deferred to P5.x).
+    // 6. Bind to a SearchIndexGeneration BEFORE any DB side-effect (creation
+    // deferred to P5.x). Done before ensureSourceDocuments so a missing binding
+    // fails without persisting SourceDocument rows.
     const searchIndexGenerationId =
       input.searchIndexGenerationId ??
       (deps.resolveSearchIndexGenerationId
@@ -413,8 +457,15 @@ export async function runWorkerZipImportPipeline(
       });
     }
 
+    // 7. SourceDocument mapping (only after the generation is bound).
+    const sourceDocumentIdByPath = await deps.ensureSourceDocuments({
+      payload,
+      productVersion: input.productVersion,
+      prismaClient: input.prismaClient,
+    });
+
     // 8. Import into Store DB + vector index.
-    await advance("IMPORTED");
+    stage = "IMPORTED";
     const importResult = await deps.importToDb({
       payload,
       searchIndexGenerationId,
@@ -423,12 +474,13 @@ export async function runWorkerZipImportPipeline(
       prismaClient: input.prismaClient,
       requirePgvector: input.requirePgvector,
     });
+    await markCompleted("IMPORTED");
     if (importResult.vectorSyncWarning) {
       warnings.push({ code: "PGVECTOR_FALLBACK", message: importResult.vectorSyncWarning });
     }
 
     // 9. Vectors reflected → INDEXING (generation status transitions handled by caller).
-    const pipelineStatus = await advance("INDEXING");
+    const pipelineStatus = await markCompleted("INDEXING");
 
     return {
       ...base,

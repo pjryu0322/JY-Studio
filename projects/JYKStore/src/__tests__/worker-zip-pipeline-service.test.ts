@@ -96,6 +96,7 @@ function makeDeps(overrides?: Partial<WorkerZipPipelineDeps>) {
   const storageCalls: StorageCall[] = [];
   const importCalls: Array<Record<string, unknown>> = [];
   let cleanupCalls = 0;
+  let ensureSourceDocsCalls = 0;
   const stages: string[] = [];
   const deps: WorkerZipPipelineDeps = {
     runWorker: async () => ({
@@ -132,17 +133,28 @@ function makeDeps(overrides?: Partial<WorkerZipPipelineDeps>) {
       },
     },
     readFileBytes: () => new Uint8Array([1, 2, 3]),
+    getFileSize: () => 100,
     makeTempDir: () => "/tmp/fake",
     cleanupDir: () => {
       cleanupCalls += 1;
     },
-    ensureSourceDocuments: async () => ({ "Docs/a.html": "srcdoc-1" }),
+    ensureSourceDocuments: async () => {
+      ensureSourceDocsCalls += 1;
+      return { "Docs/a.html": "srcdoc-1" };
+    },
     markStage: (stage) => {
       stages.push(stage);
     },
     ...overrides,
   };
-  return { deps, storageCalls, importCalls, stages, getCleanupCalls: () => cleanupCalls };
+  return {
+    deps,
+    storageCalls,
+    importCalls,
+    stages,
+    getCleanupCalls: () => cleanupCalls,
+    getEnsureSourceDocsCalls: () => ensureSourceDocsCalls,
+  };
 }
 
 function baseInput(overrides?: Partial<WorkerZipPipelineInput>): WorkerZipPipelineInput {
@@ -160,11 +172,22 @@ function baseInput(overrides?: Partial<WorkerZipPipelineInput>): WorkerZipPipeli
 
 describe("worker-zip-pipeline-service (P5)", () => {
   it("runs the full happy path: store zip → worker → validate → store output → import", async () => {
-    const { deps, storageCalls, importCalls, getCleanupCalls } = makeDeps();
+    const { deps, storageCalls, importCalls, stages, getCleanupCalls } = makeDeps();
     const result = await runWorkerZipImportPipeline(baseInput({ deps }));
 
     assert.equal(result.ok, true);
     assert.equal(result.logicalStage, "INDEXING");
+    // completion-stage order preserved
+    assert.deepEqual(stages, [
+      "ACCEPTED",
+      "ARCHIVE_STORED",
+      "WORKER_RUNNING",
+      "WORKER_OUTPUT_CREATED",
+      "WORKER_OUTPUT_VALIDATED",
+      "WORKER_OUTPUT_STORED",
+      "IMPORTED",
+      "INDEXING",
+    ]);
     assert.equal(result.importedChunkCount, 1);
     assert.equal(result.importedEmbeddingCount, 1);
     assert.equal(result.pgvectorReflected, true);
@@ -293,14 +316,16 @@ describe("worker-zip-pipeline-service (P5)", () => {
     assert.ok(result.warnings.some((w) => w.code === "PGVECTOR_FALLBACK"));
   });
 
-  it("rejects when no searchIndexGenerationId is provided and no resolver exists", async () => {
-    const { deps, importCalls } = makeDeps();
+  it("rejects when no searchIndexGenerationId is provided and no resolver exists (no SourceDocument side-effect)", async () => {
+    const { deps, importCalls, getEnsureSourceDocsCalls } = makeDeps();
     const result = await runWorkerZipImportPipeline(
       baseInput({ deps, searchIndexGenerationId: undefined }),
     );
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, "SEARCH_GENERATION_REQUIRED");
     assert.equal(result.error?.retryable, false);
+    // generation binding is checked BEFORE ensureSourceDocuments / importToDb
+    assert.equal(getEnsureSourceDocsCalls(), 0);
     assert.equal(importCalls.length, 0);
   });
 
@@ -314,6 +339,82 @@ describe("worker-zip-pipeline-service (P5)", () => {
     assert.equal(result.ok, true);
     assert.equal(result.searchIndexGenerationId, "resolved-sig");
     assert.equal(importCalls[0]?.searchIndexGenerationId, "resolved-sig");
+  });
+
+  it("does not mark ARCHIVE_STORED complete when the source ZIP upload fails", async () => {
+    const { deps, stages } = makeDeps({
+      storage: {
+        putSmallObject: async (input) => {
+          if (input.mimeType === "application/zip") {
+            throw Object.assign(new Error("s3 down"), { code: "PAYLOAD_STORAGE_UNAVAILABLE" });
+          }
+          return { objectKey: input.objectKey ?? "k" };
+        },
+      },
+    });
+    const result = await runWorkerZipImportPipeline(baseInput({ deps }));
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.stage, "ARCHIVE_STORED");
+    assert.ok(!stages.includes("ARCHIVE_STORED"));
+    assert.deepEqual(stages, ["ACCEPTED"]);
+  });
+
+  it("does not mark IMPORTED complete when the DB import fails", async () => {
+    const { deps, stages } = makeDeps({
+      importToDb: async () => {
+        throw new WorkerOutputDbImportError("SEARCH_GENERATION_MISMATCH", "boom");
+      },
+    });
+    const result = await runWorkerZipImportPipeline(baseInput({ deps }));
+    assert.equal(result.ok, false);
+    assert.ok(!stages.includes("IMPORTED"));
+    assert.ok(stages.includes("WORKER_OUTPUT_STORED"));
+  });
+
+  it("rejects an oversized source ZIP before running the worker (non-retryable)", async () => {
+    let workerCalled = false;
+    const { deps, importCalls, getEnsureSourceDocsCalls } = makeDeps({
+      getFileSize: () => 999,
+      runWorker: async () => {
+        workerCalled = true;
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          durationMs: 1,
+          outputDir: "/tmp/fake",
+        };
+      },
+    });
+    const result = await runWorkerZipImportPipeline(
+      baseInput({ deps, maxSourceZipUploadBytes: 500 }),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, "WORKER_ZIP_FILE_TOO_LARGE");
+    assert.equal(result.error?.retryable, false);
+    assert.equal(workerCalled, false);
+    assert.equal(getEnsureSourceDocsCalls(), 0);
+    assert.equal(importCalls.length, 0);
+  });
+
+  it("rejects an oversized worker output file before importing (non-retryable)", async () => {
+    // source ZIP is small, but a worker output file exceeds the per-file limit.
+    let calls = 0;
+    const { deps, importCalls } = makeDeps({
+      getFileSize: () => {
+        calls += 1;
+        // first call = source ZIP (small), later = worker output (large)
+        return calls === 1 ? 10 : 999;
+      },
+    });
+    const result = await runWorkerZipImportPipeline(
+      baseInput({ deps, maxWorkerOutputUploadBytes: 500 }),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, "WORKER_OUTPUT_FILE_TOO_LARGE");
+    assert.equal(result.error?.retryable, false);
+    assert.equal(importCalls.length, 0);
   });
 });
 
