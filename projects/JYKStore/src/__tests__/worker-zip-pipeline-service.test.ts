@@ -316,17 +316,37 @@ describe("worker-zip-pipeline-service (P5)", () => {
     assert.ok(result.warnings.some((w) => w.code === "PGVECTOR_FALLBACK"));
   });
 
-  it("rejects when no searchIndexGenerationId is provided and no resolver exists (no SourceDocument side-effect)", async () => {
-    const { deps, importCalls, getEnsureSourceDocsCalls } = makeDeps();
+  it("early-fails before any side-effect when no searchIndexGenerationId and no resolver (P6 §3)", async () => {
+    let workerCalled = false;
+    const { deps, storageCalls, importCalls, stages, getEnsureSourceDocsCalls, getCleanupCalls } =
+      makeDeps({
+        runWorker: async () => {
+          workerCalled = true;
+          return {
+            ok: true,
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            durationMs: 1,
+            outputDir: "/tmp/fake",
+          };
+        },
+      });
     const result = await runWorkerZipImportPipeline(
       baseInput({ deps, searchIndexGenerationId: undefined }),
     );
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, "SEARCH_GENERATION_REQUIRED");
     assert.equal(result.error?.retryable, false);
-    // generation binding is checked BEFORE ensureSourceDocuments / importToDb
+    assert.equal(result.error?.stage, "ACCEPTED");
+    // No archive storage / worker run / output storage / SourceDocument / import.
+    assert.equal(storageCalls.length, 0);
+    assert.equal(workerCalled, false);
     assert.equal(getEnsureSourceDocsCalls(), 0);
     assert.equal(importCalls.length, 0);
+    // Nothing was marked complete, and no temp dir was created to clean up.
+    assert.deepEqual(stages, []);
+    assert.equal(getCleanupCalls(), 0);
   });
 
   it("uses the injected resolver to bind a generation when id is omitted", async () => {

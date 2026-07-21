@@ -181,6 +181,13 @@ Design notes:
 - **Ordering (P5.1).** The `SearchIndexGeneration` binding is checked *before*
   `ensureSourceDocuments`, so a missing/unresolved generation fails with
   `SEARCH_GENERATION_REQUIRED` without persisting any `SourceDocument` rows.
+- **Early fail (P6 §3).** When neither `input.searchIndexGenerationId` nor
+  `deps.resolveSearchIndexGenerationId` is present, the pipeline cannot possibly
+  obtain a generation, so it fails immediately at `ACCEPTED` — before storing the
+  ZIP, running the worker, storing output, creating SourceDocuments, or importing
+  (`SEARCH_GENERATION_REQUIRED`, non-retryable, no temp dir created). When a
+  resolver *is* present the normal flow runs, because the resolver may need the
+  worker output payload before it can resolve.
 - **Stage tracking = completion (P5.1).** `markStage` records a stage only after
   its work succeeds (so a failed step never appears as a completed stage in job/run
   metadata). `WORKER_RUNNING` is the single in-progress exception, recorded right
@@ -222,6 +229,38 @@ non-retryable: WorkerOutputDbImportError.*, WORKER_RUN_FAILED,
 
 Deferred to a later slice: the HTTP ZIP-upload route and the async job model that
 drives this service, plus generation/ND creation (see Remaining above).
+
+## P6 UX terminology ↔ internal stages
+
+The Provider/Admin screens use business-language step names and never expose
+"Python Worker", "SearchIndexGeneration", or "pgvector". These screens already
+exist; the mapping below is the source of truth for wording. User-facing state is
+derived by the existing pure helpers (do **not** re-derive state in components):
+
+| Provider step (UI) | tab id | internal source of truth |
+| --- | --- | --- |
+| 기본정보 | `basic` | Pack / PackVersion basic fields |
+| 자료 등록 | `payload` | Object Storage upload / SourceDocument exists |
+| 데이터 구조화 | `knowledge` | worker run + output validated/imported (`WORKER_RUNNING` → `WORKER_OUTPUT_STORED`) |
+| 검색데이터 생성·검증 | `serviceValidation` | `SearchIndexGeneration` / `SearchIndexVector` + retrieval validation |
+| 유통정보·검수요청 | `distributionReview` | distribution metadata + review readiness |
+
+Reused helpers (no new parallel abstractions):
+
+```text
+resolveProviderRegistrationReadiness  → tab locks / step status / submit blockers
+buildProviderSubmitReadinessPlan      → review-request checklist (quality gates)
+buildProviderInspectionReadiness      → user-facing titles / CTAs / next action
+mapSearchDataFailureCode              → safe user-facing error copy (no stack traces)
+admin-review-tabs.ts / admin-review-decision.ts → admin 접수/근거 tabs + 판단 actions
+worker-zip-pipeline-stages.ts         → logical stage → PipelineStatus (no schema change)
+```
+
+Error copy policy: internal codes such as `SEARCH_GENERATION_REQUIRED` surface to
+providers as a "검색데이터 준비 정보 없음 → 다시 시도 / 관리자 문의" message via
+`mapSearchDataFailureCode`; raw errors/stack traces stay in the collapsed
+operator log. "RAG Export" (search/RAG package) and original-document download are
+labeled distinctly (`PackDownloadInfoSection` / `PackPrimaryActions`).
 
 ## Phase 1 audit (overlap)
 

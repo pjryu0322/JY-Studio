@@ -277,6 +277,25 @@ export async function runWorkerZipImportPipeline(
     };
   }
 
+  // P6 §3: fail fast when there is no way to obtain a SearchIndexGeneration.
+  // A resolver may need the worker output payload before it can resolve, so we
+  // only early-fail when neither a bound id nor a resolver exists — before any
+  // ZIP storage / worker run / output storage / SourceDocument / importToDb.
+  if (!input.searchIndexGenerationId && !deps.resolveSearchIndexGenerationId) {
+    return {
+      ...base,
+      logicalStage: "ACCEPTED",
+      pipelineStatus: "FAILED",
+      error: {
+        code: "SEARCH_GENERATION_REQUIRED",
+        message:
+          "no searchIndexGenerationId provided and no resolver configured (generation creation is deferred to P5.x)",
+        retryable: false,
+        stage: "ACCEPTED",
+      },
+    };
+  }
+
   // `stage` = the stage currently being attempted (used for error.stage /
   // logicalStage). `markCompleted` records a stage as DONE via markStage; it is
   // only called after the stage's work succeeds (WORKER_RUNNING is the one
