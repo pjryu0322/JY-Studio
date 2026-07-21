@@ -1,32 +1,28 @@
 /**
- * P7: ZIP Worker import route (synchronous minimal connection).
+ * P7.3: Provider ZIP "지식데이터 생성 요청" route (store-only — NOT execution).
  *
- * POST multipart/form-data with a single `.zip` file field (`file`). The route
- * spills the upload to a temp file and awaits `runProviderWorkerZipImport`
- * (Python Worker → validate → Object Storage → DB/pgvector reflection).
+ * The Provider only ATTACHES a ZIP and requests generation:
+ * - POST multipart/form-data with a single `.zip` file field (`file`) → stores the
+ *   requested ZIP to Object Storage (keeps the pack DRAFT). The Worker is NOT run.
+ * - GET → returns the current request state (attached file, request status, last
+ *   processing result, admin 보완요청 memo) for the Provider screen.
  *
- * This is intentionally SYNCHRONOUS for this round — the route awaits the service
- * directly. Async job handoff (enqueue + poll worker) is deferred to P7.1; see
- * docs/python-worker-zip-import.md.
+ * Worker EXECUTION authority lives on the Admin side only (see
+ * app/api/v1/admin/packs/[packId]/worker-zip/route.ts). This separation prevents
+ * Providers from mistaking themselves for the operator of the generation.
  *
- * Role separation: this is the ZIP Worker path, NOT the legacy Docling import.
- *
- * P7.1: reject oversized bodies by `Content-Length` BEFORE `formData()` parses
- * them; validation/response mapping live in `worker-zip-route-helpers` (unit
- * tested there).
+ * Legacy Docling JSON/MD manual upload is intentionally NOT part of this path.
  */
 import { NextRequest } from "next/server";
-import { Readable } from "node:stream";
 import { jsonWithClientIdCookie } from "@/lib/client-identity";
-import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import {
-  runProviderWorkerZipImport,
+  getProviderWorkerZipRequestState,
+  submitProviderWorkerZipRequest,
   WorkerZipImportServiceError,
 } from "@/lib/python-worker/worker-zip-import-provider-service";
 import {
   checkWorkerZipContentLength,
-  mapWorkerZipImportHttpResponse,
   validateWorkerZipFile,
 } from "@/lib/python-worker/worker-zip-route-helpers";
 import { logSafeRouteError } from "@/lib/safe-logging";
@@ -74,20 +70,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const nodeStream = Readable.fromWeb(file!.stream() as Parameters<typeof Readable.fromWeb>[0]);
-    const result = await withTempFileFromStream(nodeStream, (inputZipPath) =>
-      runProviderWorkerZipImport({
-        userId,
-        clientId,
-        packId: packId?.trim() ?? "",
-        inputZipPath,
-      }),
-    );
-
-    const mapped = mapWorkerZipImportHttpResponse(result);
-    return jsonWithClientIdCookie({ clientId, ...mapped.body }, clientId, {
-      status: mapped.status,
+    const bytes = new Uint8Array(await file!.arrayBuffer());
+    const result = await submitProviderWorkerZipRequest({
+      userId,
+      clientId,
+      packId: packId?.trim() ?? "",
+      bytes,
+      originalFileName: file!.name,
     });
+    return jsonWithClientIdCookie({ clientId, ...result }, clientId, { status: 200 });
   } catch (error) {
     if (error instanceof WorkerZipImportServiceError) {
       return jsonWithClientIdCookie(
@@ -99,6 +90,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
     logSafeRouteError({
       scope: "provider/worker-zip",
       method: "POST",
+      path: "/api/v1/provider/packs/[packId]/worker-zip",
+      error,
+    });
+    return jsonWithClientIdCookie(
+      { error: "서버 오류가 발생했습니다.", code: "INTERNAL_ERROR" },
+      clientId,
+      { status: 500 },
+    );
+  }
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
+  const { packId } = await context.params;
+
+  try {
+    const state = await getProviderWorkerZipRequestState({
+      userId,
+      clientId,
+      packId: packId?.trim() ?? "",
+    });
+    return jsonWithClientIdCookie({ clientId, ...state }, clientId, { status: 200 });
+  } catch (error) {
+    if (error instanceof WorkerZipImportServiceError) {
+      return jsonWithClientIdCookie(
+        { error: error.message, code: error.code },
+        clientId,
+        { status: error.httpStatus },
+      );
+    }
+    logSafeRouteError({
+      scope: "provider/worker-zip",
+      method: "GET",
       path: "/api/v1/provider/packs/[packId]/worker-zip",
       error,
     });

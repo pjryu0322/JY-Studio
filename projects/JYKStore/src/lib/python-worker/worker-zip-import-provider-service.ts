@@ -26,7 +26,15 @@ import {
   runWorkerZipImportPipeline,
   type WorkerZipPipelineResult,
 } from "@/lib/python-worker/worker-zip-pipeline-service";
+import { Readable } from "node:stream";
+import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { synthesizeWorkerZipSearchGeneration } from "@/lib/python-worker/worker-zip-generation-bridge";
+import {
+  getWorkerZipRequestBytes,
+  getWorkerZipRequestMetadata,
+  storeWorkerZipRequest,
+  type WorkerZipRequestMetadata,
+} from "@/lib/python-worker/worker-zip-request-storage";
 import type { WorkerZipLogicalStage } from "@/lib/python-worker/worker-zip-pipeline-stages";
 import {
   markSearchGenerationEmbedding,
@@ -94,7 +102,24 @@ export type RunProviderWorkerZipImportInput = {
   synthesizeGeneration?: typeof synthesizeWorkerZipSearchGeneration;
   transitions?: WorkerZipGenerationTransitions;
   findProfile?: (userId: string, clientId: string) => Promise<{ id: string } | null>;
+  /**
+   * P7.3: how the caller's authority over the pack is resolved. Defaults to the
+   * provider-profile ownership check. The Admin execute path injects
+   * {@link resolveAdminDraftPack} so an operator can run the Worker on a DRAFT
+   * request without owning the provider profile.
+   */
+  resolvePack?: WorkerZipPackResolver;
 };
+
+export type ResolvedWorkerZipPack = {
+  pack: { packId: string; name: string; status: PackStatus };
+  version: { id: string; version: string; language: string | null };
+};
+
+export type WorkerZipPackResolver = (
+  client: typeof prisma,
+  input: { userId: string; clientId: string; packId: string },
+) => Promise<ResolvedWorkerZipPack>;
 
 function defaultTransitions(client: typeof prisma): WorkerZipGenerationTransitions {
   return {
@@ -175,6 +200,173 @@ async function requireOwnedDraftPack(
 }
 
 /**
+ * P7.3: Admin pack resolver — finds a DRAFT pack by packId regardless of which
+ * provider owns it. Used by the Admin execute route (which is already gated by
+ * `requireAdminSession`); the operator does not need the provider's profile.
+ */
+export const resolveAdminDraftPack: WorkerZipPackResolver = async (client, input) => {
+  const pack = await client.knowledgePack.findFirst({
+    where: { packId: input.packId },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
+  });
+  if (!pack) {
+    throw new WorkerZipImportServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+  }
+  if (pack.status !== PackStatus.DRAFT) {
+    throw new WorkerZipImportServiceError(
+      "PACK_NOT_EDITABLE",
+      "초안(DRAFT) 상태의 요청만 지식데이터 생성을 실행할 수 있습니다.",
+      409,
+    );
+  }
+  const version = pack.versions[0];
+  if (!version) {
+    throw new WorkerZipImportServiceError("INCOMPLETE", "버전이 없습니다.", 400);
+  }
+  return { pack, version };
+};
+
+/* ------------------------------------------------------------------ *
+ * P7.3: Provider "생성 요청" (store-only — the Provider never runs the Worker).
+ * ------------------------------------------------------------------ */
+
+export type ProviderWorkerZipRequestStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "FAILED";
+
+export type ProviderWorkerZipRequestState = {
+  packId: string;
+  versionId: string;
+  requestStatus: ProviderWorkerZipRequestStatus;
+  request: WorkerZipRequestMetadata | null;
+  lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
+  reviewMemo: string | null;
+};
+
+export type SubmitProviderWorkerZipRequestInput = {
+  userId: string;
+  clientId: string;
+  packId: string;
+  bytes: Uint8Array;
+  originalFileName: string;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  findProfile?: (userId: string, clientId: string) => Promise<{ id: string } | null>;
+  storeRequest?: typeof storeWorkerZipRequest;
+};
+
+/**
+ * Store a Provider-submitted ZIP as a knowledge-data generation request. This
+ * does NOT run the Worker (execution is Admin-only) and keeps the pack in DRAFT.
+ */
+export async function submitProviderWorkerZipRequest(
+  input: SubmitProviderWorkerZipRequestInput,
+): Promise<{ ok: true; packId: string; versionId: string; request: WorkerZipRequestMetadata }> {
+  const client = input.prismaClient ?? prisma;
+  const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
+  const storeRequest = input.storeRequest ?? storeWorkerZipRequest;
+
+  const { pack, version } = await requireOwnedDraftPack(client, findProfile, {
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const stored = await storeRequest({
+    packId: pack.packId,
+    packVersionId: version.id,
+    bytes: input.bytes,
+    originalFileName: input.originalFileName,
+    uploadedByUserId: input.userId,
+    env: input.env,
+  });
+
+  return {
+    ok: true,
+    packId: pack.packId,
+    versionId: version.id,
+    request: {
+      originalFileName: stored.originalFileName,
+      fileSize: stored.fileSize,
+      checksumSha256: stored.checksumSha256,
+      uploadedAt: stored.uploadedAt,
+      uploadedByUserId: stored.uploadedByUserId,
+    },
+  };
+}
+
+function deriveRequestStatus(
+  request: WorkerZipRequestMetadata | null,
+  lastRunStatus: string | null,
+): ProviderWorkerZipRequestStatus {
+  if (lastRunStatus === "RUNNING") return "PROCESSING";
+  if (lastRunStatus === "PASS") return "COMPLETED";
+  if (lastRunStatus === "FAIL") return "FAILED";
+  if (request) return "REQUESTED";
+  return "NONE";
+}
+
+/**
+ * Read the current request state for the Provider/Admin screens (no execution).
+ * Status is approximated from the stored request + latest WORKER_ZIP PipelineRun.
+ */
+export async function getProviderWorkerZipRequestState(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  resolvePack?: WorkerZipPackResolver;
+  findProfile?: (userId: string, clientId: string) => Promise<{ id: string } | null>;
+  getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+}): Promise<ProviderWorkerZipRequestState> {
+  const client = input.prismaClient ?? prisma;
+  const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
+  const resolvePack = input.resolvePack ?? ((c, i) => requireOwnedDraftPack(c, findProfile, i));
+  const getRequestMetadata = input.getRequestMetadata ?? getWorkerZipRequestMetadata;
+
+  const { pack, version } = await resolvePack(client, {
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const [request, lastRun, latestReview] = await Promise.all([
+    getRequestMetadata({ packId: pack.packId, packVersionId: version.id, env: input.env }),
+    client.pipelineRun.findFirst({
+      where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT" },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, finishedAt: true, summary: true },
+    }),
+    client.packReview
+      .findFirst({
+        where: { packId: pack.packId, decision: "REJECT" },
+        orderBy: { decidedAt: "desc" },
+        select: { rejectionReason: true },
+      })
+      .catch(() => null),
+  ]);
+
+  return {
+    packId: pack.packId,
+    versionId: version.id,
+    requestStatus: deriveRequestStatus(request, lastRun?.status ?? null),
+    request,
+    lastRun: lastRun
+      ? {
+          status: lastRun.status,
+          finishedAt: lastRun.finishedAt ? lastRun.finishedAt.toISOString() : null,
+          summary: lastRun.summary ?? null,
+        }
+      : null,
+    reviewMemo: latestReview?.rejectionReason?.trim() || null,
+  };
+}
+
+/**
  * Run the ZIP Worker import end-to-end for a provider (synchronous).
  * Throws `WorkerZipImportServiceError` for pre-run failures (auth/ownership);
  * pipeline failures are returned in the result's `error` (never thrown).
@@ -187,8 +379,11 @@ export async function runProviderWorkerZipImport(
   const synthesizeGeneration = input.synthesizeGeneration ?? synthesizeWorkerZipSearchGeneration;
   const transitions = input.transitions ?? defaultTransitions(client);
   const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
+  const resolvePack =
+    input.resolvePack ??
+    ((c, i) => requireOwnedDraftPack(c, findProfile, i));
 
-  const { pack, version } = await requireOwnedDraftPack(client, findProfile, {
+  const { pack, version } = await resolvePack(client, {
     userId: input.userId,
     clientId: input.clientId,
     packId: input.packId,
@@ -339,4 +534,81 @@ export async function runProviderWorkerZipImport(
     nextStep: "SEARCH_DATA_VALIDATION",
     generationReady: true,
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * P7.3: Admin "지식데이터 생성 실행" — execution authority lives here only.
+ * ------------------------------------------------------------------ */
+
+export type RunAdminWorkerZipGenerationInput = {
+  adminUserId: string;
+  clientId: string;
+  packId: string;
+  requirePgvector?: boolean;
+  env?: NodeJS.ProcessEnv;
+  prismaClient?: typeof prisma;
+  /** Injectable for tests. */
+  getRequestBytes?: typeof getWorkerZipRequestBytes;
+  runImport?: typeof runProviderWorkerZipImport;
+  resolvePack?: WorkerZipPackResolver;
+};
+
+/**
+ * Execute the ZIP Worker for an Admin-received request. The Admin route is gated
+ * by `requireAdminSession`; this function is the only place Worker execution is
+ * driven for the ZIP path. It downloads the Provider-submitted ZIP, guards
+ * against a concurrent run, and runs the pipeline against the DRAFT pack.
+ */
+export async function runAdminWorkerZipGeneration(
+  input: RunAdminWorkerZipGenerationInput,
+): Promise<ProviderWorkerZipImportResult> {
+  const client = input.prismaClient ?? prisma;
+  const getRequestBytes = input.getRequestBytes ?? getWorkerZipRequestBytes;
+  const runImport = input.runImport ?? runProviderWorkerZipImport;
+  const resolvePack = input.resolvePack ?? resolveAdminDraftPack;
+
+  const { pack, version } = await resolvePack(client, {
+    userId: input.adminUserId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  // Prevent duplicate execution while a run is already in progress.
+  const running = await client.pipelineRun.findFirst({
+    where: { packId: pack.packId, triggerType: "WORKER_ZIP_IMPORT", status: "RUNNING" },
+    select: { id: true },
+  });
+  if (running) {
+    throw new WorkerZipImportServiceError(
+      "ALREADY_RUNNING",
+      "이미 지식데이터 생성이 진행 중입니다. 완료 후 다시 시도하세요.",
+      409,
+    );
+  }
+
+  const bytes = await getRequestBytes({
+    packId: pack.packId,
+    packVersionId: version.id,
+    env: input.env,
+  });
+  if (!bytes) {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_NOT_FOUND",
+      "생성 요청된 ZIP 자료가 없습니다. 제공자에게 자료 등록을 요청하세요.",
+      404,
+    );
+  }
+
+  return withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
+    runImport({
+      userId: input.adminUserId,
+      clientId: input.clientId,
+      packId: pack.packId,
+      inputZipPath,
+      requirePgvector: input.requirePgvector,
+      env: input.env,
+      prismaClient: input.prismaClient,
+      resolvePack: resolveAdminDraftPack,
+    }),
+  );
 }

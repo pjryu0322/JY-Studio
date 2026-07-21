@@ -1,0 +1,183 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  fetchAdminWorkerZipRequestState,
+  runAdminWorkerZipGeneration,
+  type AdminWorkerZipGenerationResult,
+  type AdminWorkerZipRequestState,
+} from "@/lib/admin-review-api";
+
+/**
+ * P7.3: Admin "지식데이터 생성 실행" area — the execution authority for the ZIP path.
+ *
+ * The Provider only submits a ZIP request; the Admin 접수(확인) → 실행 here. The pack
+ * stays DRAFT during execution; promotion to review is a separate admin step after
+ * verification. Raw internal detail is collapsed under a debug section.
+ */
+export function AdminWorkerZipGenerationCard({ packId }: { readonly packId: string }) {
+  const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<AdminWorkerZipGenerationResult | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+
+  const loadState = useCallback(async () => {
+    try {
+      setState(await fetchAdminWorkerZipRequestState(packId));
+    } catch {
+      // Non-fatal: the pack may not have a request yet.
+      setState(null);
+    }
+  }, [packId]);
+
+  useEffect(() => {
+    void loadState();
+  }, [loadState]);
+
+  const onExecute = async () => {
+    if (running) return;
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await runAdminWorkerZipGeneration(packId);
+      setResult(res);
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "지식데이터 생성 실행에 실패했습니다.");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const request = state?.request ?? null;
+  const hasRequest = Boolean(request);
+  const inProgress = state?.requestStatus === "PROCESSING";
+  const completed = result?.ok === true && result.generationReady === true;
+  const failed = result != null && result.ok === false;
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+      <div className="space-y-1">
+        <h2 className="text-sm font-bold text-slate-900">지식데이터 생성 실행</h2>
+        <p className="text-xs text-slate-600">
+          제공자가 등록한 자료(ZIP)를 확인한 뒤 지식데이터 생성을 실행합니다. 생성·검증이 끝나면
+          검수 단계로 승격하세요.
+        </p>
+      </div>
+
+      {hasRequest ? (
+        <dl className="space-y-1 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">첨부 자료</dt>
+            <dd className="font-medium text-slate-900">{request!.originalFileName}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">파일 크기</dt>
+            <dd>{formatBytes(request!.fileSize)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">요청 일시</dt>
+            <dd>{formatDateTime(request!.uploadedAt)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">요청 상태</dt>
+            <dd className="font-semibold text-slate-900">{statusLabel(state!.requestStatus)}</dd>
+          </div>
+        </dl>
+      ) : (
+        <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          아직 접수된 생성 요청(ZIP 자료)이 없습니다. 제공자에게 자료 등록을 요청하세요.
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void onExecute()}
+        disabled={running || !hasRequest || inProgress}
+        className="min-h-[44px] w-full rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-60"
+      >
+        {running ? "생성 실행 중…" : "지식데이터 생성 실행"}
+      </button>
+
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </div>
+      ) : null}
+
+      {completed ? (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <p className="font-semibold">지식데이터 생성이 완료되었습니다.</p>
+          <p className="text-xs">
+            지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
+          </p>
+        </div>
+      ) : null}
+
+      {failed ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p>{result!.error?.message ?? "지식데이터 생성에 실패했습니다."}</p>
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className="text-xs">
+          <button
+            type="button"
+            onClick={() => setShowDebug((v) => !v)}
+            className="text-slate-500 underline"
+          >
+            {showDebug ? "디버그 정보 숨기기" : "디버그 정보 보기"}
+          </button>
+          {showDebug ? (
+            <pre className="mt-1 overflow-x-auto rounded-lg bg-slate-900 p-2 text-[11px] text-slate-100">
+{JSON.stringify(
+  {
+    pipelineRunId: result.pipelineRunId,
+    generationReady: result.generationReady,
+    nextStep: result.nextStep,
+    pgvectorReflected: result.pgvectorReflected,
+    warnings: result.warnings,
+    error: result.error,
+  },
+  null,
+  2,
+)}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function statusLabel(status: AdminWorkerZipRequestState["requestStatus"]): string {
+  switch (status) {
+    case "REQUESTED":
+      return "접수 대기";
+    case "PROCESSING":
+      return "처리 중";
+    case "COMPLETED":
+      return "생성 완료";
+    case "FAILED":
+      return "처리 실패";
+    default:
+      return "대기";
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / 1024 ** idx;
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+}

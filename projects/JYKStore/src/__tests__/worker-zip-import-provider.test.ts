@@ -15,8 +15,11 @@ import {
   WorkerZipGenerationBridgeError,
 } from "../lib/python-worker/worker-zip-generation-bridge.ts";
 import {
+  getProviderWorkerZipRequestState,
   mapWorkerZipFailureCode,
+  runAdminWorkerZipGeneration,
   runProviderWorkerZipImport,
+  submitProviderWorkerZipRequest,
   WorkerZipImportServiceError,
   type WorkerZipGenerationTransitions,
 } from "../lib/python-worker/worker-zip-import-provider-service.ts";
@@ -479,17 +482,25 @@ function readSrc(relFromSrc: string): string {
   return readFileSync(path.join(process.cwd(), "src", relFromSrc), "utf8");
 }
 
-describe("worker-zip route + UI wiring (P7 source contracts)", () => {
-  it("route authenticates, guards content-length before formData, and awaits the service", () => {
+describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
+  it("provider route is store-only (request, not execution)", () => {
     const src = readSrc("app/api/v1/provider/packs/[packId]/worker-zip/route.ts");
     assert.match(src, /requireProviderApiAuth/);
-    assert.match(src, /runProviderWorkerZipImport/);
-    assert.match(src, /withTempFileFromStream/);
-    assert.match(src, /mapWorkerZipImportHttpResponse/);
-    // P7.1: content-length guard must run before request.formData().
+    assert.match(src, /submitProviderWorkerZipRequest/);
+    assert.match(src, /getProviderWorkerZipRequestState/);
+    // The Provider route must NOT execute the Worker (execution is Admin-only).
+    assert.ok(!/runProviderWorkerZipImport|runAdminWorkerZipGeneration/.test(src));
+    // P7.1: content-length guard must still run before request.formData().
     const clIdx = src.indexOf("checkWorkerZipContentLength");
     const fdIdx = src.indexOf("request.formData()");
     assert.ok(clIdx >= 0 && fdIdx >= 0 && clIdx < fdIdx);
+  });
+
+  it("admin route gates execution to admins and runs the worker", () => {
+    const src = readSrc("app/api/v1/admin/packs/[packId]/worker-zip/route.ts");
+    assert.match(src, /requireAdminSession/);
+    assert.match(src, /runAdminWorkerZipGeneration/);
+    assert.match(src, /resolveAdminDraftPack/);
   });
 
   it("bridge does not import the Docling ND knowledge builder (role separation)", () => {
@@ -505,21 +516,201 @@ describe("worker-zip route + UI wiring (P7 source contracts)", () => {
 
   it("ProviderDoclingImportTab does not call the worker-zip API", () => {
     const src = readSrc("components/provider-distribution/ProviderDoclingImportTab.tsx");
-    assert.ok(!/startProviderWorkerZipImportApi/.test(src));
+    assert.ok(!/requestProviderWorkerZipGenerationApi/.test(src));
     assert.ok(!/worker-zip/.test(src));
   });
 
-  it("UI card is ZIP-only and calls the dedicated worker-zip API", () => {
+  it("provider ZIP card is request-only (no worker execution)", () => {
     const src = readSrc("components/provider-distribution/ProviderWorkerZipImportCard.tsx");
     assert.match(src, /accept="\.zip"/);
-    assert.match(src, /startProviderWorkerZipImportApi/);
-    assert.match(src, /데이터 구조화 시작/);
+    assert.match(src, /requestProviderWorkerZipGenerationApi/);
+    assert.match(src, /지식데이터 생성 요청/);
+    // No execution affordance / legacy execute API on the Provider card.
+    assert.ok(!/데이터 구조화 시작/.test(src));
+    assert.ok(!/startProviderWorkerZipImportApi/.test(src));
   });
 
-  it("material-registration tab mounts the ZIP card separately from Docling import", () => {
+  it("material-registration tab hides legacy Docling behind a flag, keeps ZIP card", () => {
     const src = readSrc("components/provider-distribution/ProviderPayloadTab.tsx");
     assert.match(src, /ProviderWorkerZipImportCard/);
-    assert.match(src, /ProviderDoclingImportTab/);
+    assert.match(src, /isProviderLegacyDoclingUiEnabled/);
+    // Docling manual upload is only rendered when the legacy flag is enabled.
+    assert.match(src, /showLegacyDoclingImport \?/);
+  });
+
+  it("admin generation card executes via the admin API", () => {
+    const src = readSrc("components/AdminWorkerZipGenerationCard.tsx");
+    assert.match(src, /runAdminWorkerZipGeneration/);
+    assert.match(src, /지식데이터 생성 실행/);
+  });
+});
+
+describe("P7.3 request/execute split (Provider requests, Admin executes)", () => {
+  it("submitProviderWorkerZipRequest stores the ZIP without running the Worker", async () => {
+    const stored: Record<string, unknown>[] = [];
+    const result = await submitProviderWorkerZipRequest({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      bytes: new Uint8Array([1, 2, 3]),
+      originalFileName: "docs.zip",
+      prismaClient: {
+        knowledgePack: {
+          findFirst: async () => ({
+            packId: "packA",
+            name: "Pack A",
+            status: "DRAFT",
+            versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+          }),
+        },
+      } as never,
+      findProfile: async () => ({ id: "prof-1" }),
+      storeRequest: (async (input: Record<string, unknown>) => {
+        stored.push(input);
+        return {
+          objectKey: "k",
+          originalFileName: input.originalFileName as string,
+          fileSize: 3,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: input.uploadedByUserId as string,
+        };
+      }) as never,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.request.originalFileName, "docs.zip");
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0]!.uploadedByUserId, "u1");
+  });
+
+  it("submitProviderWorkerZipRequest rejects a non-DRAFT pack", async () => {
+    await assert.rejects(
+      () =>
+        submitProviderWorkerZipRequest({
+          userId: "u1",
+          clientId: "cl1",
+          packId: "packA",
+          bytes: new Uint8Array([1]),
+          originalFileName: "a.zip",
+          prismaClient: {
+            knowledgePack: {
+              findFirst: async () => ({
+                packId: "packA",
+                name: "A",
+                status: "IN_REVIEW",
+                versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
+              }),
+            },
+          } as never,
+          findProfile: async () => ({ id: "prof-1" }),
+          storeRequest: (async () => {
+            throw new Error("should not store");
+          }) as never,
+        }),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "PACK_NOT_EDITABLE",
+    );
+  });
+
+  it("getProviderWorkerZipRequestState derives COMPLETED from the last PASS run", async () => {
+    const state = await getProviderWorkerZipRequestState({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: {
+          findFirst: async () => ({ status: "PASS", finishedAt: new Date(0), summary: null }),
+        },
+        packReview: { findFirst: async () => null },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 10,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(state.requestStatus, "COMPLETED");
+    assert.equal(state.request?.originalFileName, "a.zip");
+  });
+
+  it("runAdminWorkerZipGeneration blocks a duplicate run when one is RUNNING", async () => {
+    await assert.rejects(
+      () =>
+        runAdminWorkerZipGeneration({
+          adminUserId: "admin-1",
+          clientId: "cl1",
+          packId: "packA",
+          prismaClient: {
+            pipelineRun: { findFirst: async () => ({ id: "running-1" }) },
+          } as never,
+          resolvePack: async () => ({
+            pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+            version: { id: "verA", version: "1.0.0", language: "KO" },
+          }),
+          getRequestBytes: (async () => new Uint8Array([1])) as never,
+          runImport: (async () => {
+            throw new Error("should not run");
+          }) as never,
+        }),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "ALREADY_RUNNING",
+    );
+  });
+
+  it("runAdminWorkerZipGeneration fails when no request ZIP is present", async () => {
+    await assert.rejects(
+      () =>
+        runAdminWorkerZipGeneration({
+          adminUserId: "admin-1",
+          clientId: "cl1",
+          packId: "packA",
+          prismaClient: {
+            pipelineRun: { findFirst: async () => null },
+          } as never,
+          resolvePack: async () => ({
+            pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+            version: { id: "verA", version: "1.0.0", language: "KO" },
+          }),
+          getRequestBytes: (async () => null) as never,
+          runImport: (async () => {
+            throw new Error("should not run");
+          }) as never,
+        }),
+      (err: unknown) =>
+        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_NOT_FOUND",
+    );
+  });
+
+  it("runAdminWorkerZipGeneration runs the import for a received request", async () => {
+    let importInput: Record<string, unknown> | null = null;
+    const result = await runAdminWorkerZipGeneration({
+      adminUserId: "admin-1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: { findFirst: async () => null },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestBytes: (async () => new Uint8Array([1, 2, 3])) as never,
+      runImport: (async (input: Record<string, unknown>) => {
+        importInput = input;
+        return { ok: true, importedChunkCount: 3, generationReady: true } as never;
+      }) as never,
+    });
+    assert.equal((result as { ok: boolean }).ok, true);
+    assert.equal(importInput!.packId, "packA");
+    assert.equal(importInput!.userId, "admin-1");
+    // Admin execution must resolve the pack via the admin resolver, not by profile.
+    assert.equal(typeof importInput!.resolvePack, "function");
   });
 });
 

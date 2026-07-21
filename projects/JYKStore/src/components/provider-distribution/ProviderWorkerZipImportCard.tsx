@@ -1,88 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  startProviderWorkerZipImportApi,
-  type ProviderWorkerZipImportResponse,
+  fetchProviderWorkerZipRequestStateApi,
+  requestProviderWorkerZipGenerationApi,
+  type ProviderWorkerZipRequestState,
 } from "@/lib/provider-center-api";
 
 /**
- * P7: ZIP 업로드 기반 데이터 구조화 카드 (동기 최소 연결).
+ * P7.3: 문서 ZIP 등록 + 지식데이터 생성 요청 카드.
  *
- * 역할 분리: 이 카드는 ZIP Worker 경로 전용이며, 상단의 Docling 자료 등록/변환
- * 흐름과는 별개의 파이프라인이다. 업로드한 ZIP은 Python Worker가 구조화하고,
- * 결과(chunks/embeddings/vector)를 그대로 Store DB/pgvector에 반영한다.
- *
- * P7.1 상태 분리: import 성공만으로 "완료"로 표시하지 않는다. 검색데이터 세대가
- * READY(`generationReady=true`)일 때만 완료로 표시하고, import는 됐으나 준비가
- * 지연된 경우/실패한 경우를 구분한다. 내부 용어(Python Worker / pgvector /
- * SearchIndexGeneration)는 화면에 노출하지 않는다.
+ * 역할 분리: 제공자는 자료(.zip)를 첨부하고 "생성 요청"까지만 수행한다. 실제 지식데이터
+ * 생성(Worker 실행)은 관리자가 접수 후 실행한다. 이 화면에는 실행 버튼이 없고, 내부
+ * 용어(Python Worker / pgvector / 구조화 엔진)는 노출하지 않는다.
  */
 export function ProviderWorkerZipImportCard({
   packId,
   editable,
-  onGoToKnowledge,
 }: {
   readonly packId: string;
   readonly editable: boolean;
-  readonly onGoToKnowledge?: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
-  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ProviderWorkerZipImportResponse | null>(null);
+  const [state, setState] = useState<ProviderWorkerZipRequestState | null>(null);
 
-  const onStart = async () => {
-    if (!editable || running || !file) return;
-    setRunning(true);
-    setError(null);
-    setResult(null);
+  const loadState = useCallback(async () => {
     try {
-      const res = await startProviderWorkerZipImportApi(packId, file);
-      setResult(res);
+      const next = await fetchProviderWorkerZipRequestStateApi(packId);
+      setState(next);
+    } catch {
+      // Non-fatal: the card still allows a new request.
+    }
+  }, [packId]);
+
+  useEffect(() => {
+    void loadState();
+  }, [loadState]);
+
+  const onRequest = async () => {
+    if (!editable || submitting || !file) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await requestProviderWorkerZipGenerationApi(packId, file);
+      setFile(null);
+      await loadState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "데이터 구조화에 실패했습니다.");
+      setError(err instanceof Error ? err.message : "생성 요청에 실패했습니다.");
     } finally {
-      setRunning(false);
+      setSubmitting(false);
     }
   };
 
-  const completed = result?.ok === true && result.generationReady === true;
-  const deferred =
-    result != null && result.ok === false && result.error?.code === "GENERATION_READY_DEFERRED";
-  const failed = result != null && result.ok === false && !deferred;
-  const supportRequired = result?.error?.supportRequired === true;
-  const retryable = result?.error?.retryable === true;
+  const request = state?.request ?? null;
+  const status = state?.requestStatus ?? "NONE";
 
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
       <div className="space-y-1">
-        <h3 className="text-sm font-bold text-indigo-950">ZIP 업로드로 데이터 구조화 (베타)</h3>
+        <h3 className="text-sm font-bold text-indigo-950">문서 ZIP 등록</h3>
         <p className="text-xs text-indigo-900/80">
-          자료 묶음(.zip)을 업로드하면 구조화·검색데이터까지 한 번에 생성합니다. 위의 Docling 자료
-          등록과는 별개 경로입니다.
+          자료 묶음(.zip)을 첨부해 지식데이터 생성을 요청하세요. 생성 작업은 관리자가 접수 후
+          진행하며, 완료되면 이 화면에서 처리 결과를 확인할 수 있습니다.
         </p>
       </div>
 
       <input
         type="file"
         accept=".zip"
-        disabled={!editable || running}
+        disabled={!editable || submitting}
         onChange={(e) => {
           setFile(e.target.files?.[0] ?? null);
           setError(null);
-          setResult(null);
         }}
         className="block w-full text-xs text-slate-700 file:mr-3 file:min-h-[40px] file:rounded-xl file:border-0 file:bg-indigo-600 file:px-3 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
       />
 
       <button
         type="button"
-        onClick={() => void onStart()}
-        disabled={!editable || running || !file}
+        onClick={() => void onRequest()}
+        disabled={!editable || submitting || !file}
         className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
       >
-        {running ? "데이터 구조화 중…" : "데이터 구조화 시작"}
+        {submitting ? "요청 전송 중…" : "지식데이터 생성 요청"}
       </button>
 
       {error ? (
@@ -91,62 +93,97 @@ export function ProviderWorkerZipImportCard({
         </div>
       ) : null}
 
-      {completed ? (
-        <div className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          <p className="font-semibold">데이터 구조화가 완료되었습니다.</p>
-          <p className="text-xs">
-            지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
-          </p>
-          {onGoToKnowledge ? (
-            <button
-              type="button"
-              onClick={onGoToKnowledge}
-              className="min-h-[40px] rounded-xl border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-950"
-            >
-              다음: 지식데이터 확인
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {deferred ? (
-        <div className="space-y-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <p className="font-semibold">데이터는 생성됐지만 검색데이터 준비가 지연되었습니다.</p>
-          <p className="text-xs">
-            지식 청크 {result!.importedChunkCount}개는 생성됐습니다. 잠시 후 다시 실행하거나 관리자에게
-            문의하세요.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void onStart()}
-              disabled={running}
-              className="min-h-[40px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
-            >
-              다시 실행
-            </button>
+      {request ? (
+        <dl className="space-y-1 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs text-slate-700">
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">첨부 파일</dt>
+            <dd className="font-medium text-slate-900">{request.originalFileName}</dd>
           </div>
-        </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">파일 크기</dt>
+            <dd>{formatBytes(request.fileSize)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">요청 일시</dt>
+            <dd>{formatDateTime(request.uploadedAt)}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">요청 상태</dt>
+            <dd className={`font-semibold ${statusToneClass(status)}`}>{statusLabel(status)}</dd>
+          </div>
+        </dl>
+      ) : (
+        <p className="text-xs text-slate-500">아직 등록된 자료가 없습니다. ZIP을 첨부해 요청하세요.</p>
+      )}
+
+      {state?.lastRun ? (
+        <p className="text-xs text-slate-500">
+          마지막 처리 결과: {lastRunLabel(state.lastRun.status)}
+          {state.lastRun.finishedAt ? ` · ${formatDateTime(state.lastRun.finishedAt)}` : ""}
+        </p>
       ) : null}
 
-      {failed ? (
-        <div className="space-y-1 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
-          <p>{result!.error?.message ?? "데이터 구조화에 실패했습니다."}</p>
-          {supportRequired ? (
-            <p className="text-xs text-red-700">문제가 계속되면 관리자에게 문의하세요.</p>
-          ) : null}
-          {retryable ? (
-            <button
-              type="button"
-              onClick={() => void onStart()}
-              disabled={running}
-              className="min-h-[40px] rounded-xl border border-red-300 bg-white px-3 text-xs font-semibold text-red-900 disabled:opacity-60"
-            >
-              다시 실행
-            </button>
-          ) : null}
+      {state?.reviewMemo ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="font-semibold">관리자 보완요청</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{state.reviewMemo}</p>
         </div>
       ) : null}
     </section>
   );
+}
+
+function statusLabel(status: ProviderWorkerZipRequestState["requestStatus"]): string {
+  switch (status) {
+    case "REQUESTED":
+      return "생성 요청됨 (접수 대기)";
+    case "PROCESSING":
+      return "처리 중";
+    case "COMPLETED":
+      return "생성 완료";
+    case "FAILED":
+      return "처리 실패";
+    default:
+      return "대기";
+  }
+}
+
+function statusToneClass(status: ProviderWorkerZipRequestState["requestStatus"]): string {
+  switch (status) {
+    case "COMPLETED":
+      return "text-emerald-700";
+    case "FAILED":
+      return "text-red-700";
+    case "PROCESSING":
+      return "text-indigo-700";
+    default:
+      return "text-slate-700";
+  }
+}
+
+function lastRunLabel(status: string): string {
+  switch (status) {
+    case "PASS":
+      return "완료";
+    case "FAIL":
+      return "실패";
+    case "RUNNING":
+      return "진행 중";
+    default:
+      return status;
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / 1024 ** idx;
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }

@@ -10,6 +10,7 @@ import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoC
 import { AdminReviewSourceDocumentsTab } from "@/components/AdminReviewSourceDocumentsTab";
 import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
 import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
+import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminDoclingImportApi,
@@ -77,6 +78,8 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       <AdminReviewPageHeader detail={detail} />
 
       <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={setDetail} />
+
+      <AdminWorkerZipGenerationCard packId={packId} />
 
       {isReviewAccepted(detail) ? (
         <AdminReviewReceiptInfoCard

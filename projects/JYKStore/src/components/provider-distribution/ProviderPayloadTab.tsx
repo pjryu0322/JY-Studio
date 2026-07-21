@@ -6,6 +6,7 @@ import { ProviderWorkerZipImportCard } from "@/components/provider-distribution/
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { createProviderPackVersionApi } from "@/lib/provider-center-api";
+import { isProviderLegacyDoclingUiEnabled } from "@/lib/provider-legacy-flags";
 
 /** Material registration tab (legacy tab id: `payload`). */
 export function ProviderMaterialRegistrationTab({
@@ -71,23 +72,28 @@ export function ProviderMaterialRegistrationTab({
     (cachedDoclingBundle?.immutableAfterSubmission === true ||
       latestReviewStatus === "REJECTED");
 
+  // P7.3: Providers only attach a ZIP and request generation. The legacy Docling
+  // manual-upload UI is hidden by default (kept for admin/debug via a flag).
+  const showLegacyDoclingImport = isProviderLegacyDoclingUiEnabled();
+
   return (
     <div id="pack-payload" className="space-y-4">
-      <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <ProviderDoclingImportTab
-          packId={packId}
-          editable={editable}
-          cachedBundle={cachedDoclingBundle}
-          onDoclingChanged={onDoclingChanged}
-          onGoToKnowledge={onGoToKnowledge}
-        />
-      </section>
+      <ProviderWorkerZipImportCard packId={packId} editable={editable} />
 
-      <ProviderWorkerZipImportCard
-        packId={packId}
-        editable={editable}
-        onGoToKnowledge={onGoToKnowledge}
-      />
+      {showLegacyDoclingImport ? (
+        <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+          <p className="text-xs font-semibold text-amber-700">
+            레거시(관리자/디버그) · Docling 수동 업로드
+          </p>
+          <ProviderDoclingImportTab
+            packId={packId}
+            editable={editable}
+            cachedBundle={cachedDoclingBundle}
+            onDoclingChanged={onDoclingChanged}
+            onGoToKnowledge={onGoToKnowledge}
+          />
+        </section>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">

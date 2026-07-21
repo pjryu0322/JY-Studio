@@ -36,6 +36,28 @@ export function buildWorkerRunSourceZipObjectKey(ctx: WorkerRunObjectKeyContext)
   return `${runRoot(ctx)}/source/original.zip`;
 }
 
+export type WorkerRequestObjectKeyContext = {
+  prefix: string;
+  packId: string;
+  packVersionId: string;
+};
+
+/**
+ * P7.3: stable per-version key for the Provider-submitted "생성 요청" ZIP.
+ *
+ * Unlike the per-run source key, this is NOT tied to a pipelineRunId: the Provider
+ * stores (and may replace) one requested ZIP per version, and the Admin later runs
+ * the Worker against it. Re-uploading overwrites the same object.
+ */
+export function buildWorkerRequestSourceZipObjectKey(
+  ctx: WorkerRequestObjectKeyContext,
+): string {
+  assertSafeId("packId", ctx.packId);
+  assertSafeId("packVersionId", ctx.packVersionId);
+  const prefix = sanitizePrefix(ctx.prefix || "payloads");
+  return `${prefix}/packs/${ctx.packId}/versions/${ctx.packVersionId}/worker-request/source.zip`;
+}
+
 /**
  * Relative path under worker-output/ (posix, no leading slash).
  * e.g. "chunks.json", "parser_artifacts/foo.json"

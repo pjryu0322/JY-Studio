@@ -33,13 +33,23 @@ export {
 } from "@/lib/python-worker/worker-output-validator";
 
 export {
+  buildWorkerRequestSourceZipObjectKey,
   buildWorkerRunOutputObjectKey,
   buildWorkerRunRagExportObjectKey,
   buildWorkerRunSourceZipObjectKey,
   planWorkerOutputObjectKeys,
   type WorkerOutputStoredFilePlan,
+  type WorkerRequestObjectKeyContext,
   type WorkerRunObjectKeyContext,
 } from "@/lib/python-worker/worker-output-object-keys";
+
+export {
+  getWorkerZipRequestBytes,
+  getWorkerZipRequestMetadata,
+  storeWorkerZipRequest,
+  type StoredWorkerZipRequest,
+  type WorkerZipRequestMetadata,
+} from "@/lib/python-worker/worker-zip-request-storage";
 
 export {
   prepareWorkerOutputImport,
@@ -108,10 +118,19 @@ export {
 } from "@/lib/python-worker/worker-zip-generation-bridge";
 
 export {
+  getProviderWorkerZipRequestState,
   mapWorkerZipFailureCode,
+  resolveAdminDraftPack,
+  runAdminWorkerZipGeneration,
   runProviderWorkerZipImport,
+  submitProviderWorkerZipRequest,
   WorkerZipImportServiceError,
   type ProviderWorkerZipImportResult,
+  type ProviderWorkerZipRequestState,
+  type ProviderWorkerZipRequestStatus,
+  type RunAdminWorkerZipGenerationInput,
   type RunProviderWorkerZipImportInput,
+  type SubmitProviderWorkerZipRequestInput,
   type WorkerZipImportUserError,
+  type WorkerZipPackResolver,
 } from "@/lib/python-worker/worker-zip-import-provider-service";

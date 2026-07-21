@@ -19,6 +19,74 @@ async function parseErrorMessage(response: Response): Promise<string> {
   }
 }
 
+/**
+ * P7.3: Admin ZIP Worker generation — request state + execution. Execution is
+ * Admin-only (route gated by requireAdminSession).
+ */
+export type AdminWorkerZipRequestState = {
+  clientId: string;
+  packId: string;
+  versionId: string;
+  requestStatus: "NONE" | "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  request: {
+    originalFileName: string;
+    fileSize: number;
+    uploadedAt: string;
+    uploadedByUserId: string;
+  } | null;
+  lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
+  reviewMemo: string | null;
+};
+
+export type AdminWorkerZipGenerationResult = {
+  clientId: string;
+  ok: boolean;
+  pipelineRunId: string;
+  importedChunkCount: number;
+  importedEmbeddingCount: number;
+  pgvectorReflected: boolean;
+  generationReady: boolean;
+  nextStep: "SEARCH_DATA_VALIDATION" | "RETRY";
+  warnings: { code: string; message: string }[];
+  error?: { code: string; message: string; retryable: boolean; supportRequired: boolean };
+};
+
+export async function fetchAdminWorkerZipRequestState(
+  packId: string,
+): Promise<AdminWorkerZipRequestState> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminWorkerZipRequestState;
+}
+
+/**
+ * Execute the ZIP Worker for a received request. A processed-but-failed pipeline
+ * (HTTP 422 `ok:false`) is returned as data; auth/ownership/precondition failures
+ * throw with a mapped message.
+ */
+export async function runAdminWorkerZipGeneration(
+  packId: string,
+): Promise<AdminWorkerZipGenerationResult> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | AdminWorkerZipGenerationResult
+    | { error?: string; message?: string; code?: string }
+    | null;
+  if (data && typeof (data as AdminWorkerZipGenerationResult).ok === "boolean") {
+    return data as AdminWorkerZipGenerationResult;
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
 export async function fetchAdminReviewItems(): Promise<AdminReviewListResponse> {
   const response = await fetch("/api/v1/admin/reviews", {
     method: "GET",

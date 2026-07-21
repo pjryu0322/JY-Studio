@@ -443,6 +443,69 @@ service directly. Deferred:
 - Schema change to make `SearchIndexGeneration.normalizedDocumentId` nullable so
   the synthesized bundle/ND bridge can be removed.
 
+## P7.3: Provider requests / Admin executes (UX ownership split)
+
+To prevent Providers from mistaking themselves for the operator of generation, the
+ZIP path is split so that **Providers only request** and **Admins execute**. No
+schema/migration change; no Worker output contract change.
+
+### Execution authority (role gating)
+
+- **Provider route** `POST/GET /api/v1/provider/packs/[packId]/worker-zip` is now
+  **store-only**:
+  - `POST` → `submitProviderWorkerZipRequest` stores the attached ZIP (+ a small
+    sidecar `request.json`) to Object Storage under a stable per-version key
+    (`buildWorkerRequestSourceZipObjectKey`). The Worker is **not** run; the pack
+    stays `DRAFT`.
+  - `GET` → `getProviderWorkerZipRequestState` returns the request state (attached
+    file, request status, last processing result, admin 보완요청 memo).
+  - The route no longer references `runProviderWorkerZipImport` (asserted by a
+    source-contract test).
+- **Admin route** `POST/GET /api/v1/admin/packs/[packId]/worker-zip` is gated by
+  `requireAdminSession` and is the **only** place Worker execution is driven:
+  - `POST` → `runAdminWorkerZipGeneration` downloads the requested ZIP, guards
+    against a concurrent run (`ALREADY_RUNNING`), fails fast when no ZIP was
+    requested (`REQUEST_NOT_FOUND`), then runs the pipeline against the DRAFT pack
+    using `resolveAdminDraftPack` (finds the DRAFT pack by `packId`, no
+    provider-profile ownership needed).
+  - Execution keeps the pack `DRAFT`; promotion to review is a separate admin step
+    after verification.
+
+### Request status (approximated, no schema)
+
+`ProviderWorkerZipRequestStatus` is derived from the stored request + the latest
+`WORKER_ZIP_IMPORT` `PipelineRun`:
+
+- no request + no run → `NONE`
+- last run `RUNNING` → `PROCESSING`; `PASS` → `COMPLETED`; `FAIL` → `FAILED`
+- request present, no terminal run → `REQUESTED`
+
+`reviewMemo` surfaces the latest rejected `PackReview.rejectionReason` (보완요청).
+
+### UI
+
+- Provider `ProviderWorkerZipImportCard` → **문서 ZIP 등록** + **지식데이터 생성 요청**
+  (no execute button, no internal terms). Shows filename / size / 요청 일시 / 요청 상태 /
+  마지막 처리 결과 / 관리자 보완요청.
+- Provider `ProviderMaterialRegistrationTab` hides the legacy Docling manual-upload
+  card by default (`isProviderLegacyDoclingUiEnabled`,
+  `NEXT_PUBLIC_PROVIDER_LEGACY_DOCLING=1` to re-enable for admin/debug). The bridge,
+  DTOs, and fixtures are **not** removed.
+- Admin `AdminWorkerZipGenerationCard` (mounted in the review detail) → 요청 요약 +
+  ZIP 확인 + **지식데이터 생성 실행** + 결과 + 디버그(접기) 영역.
+
+### Follow-ups (P8)
+
+- **4-tab Provider restructure** (기본정보 / 자료등록 / 처리상태 / 유통정보): merging the
+  `knowledge` + `serviceValidation` tabs into a read-only 처리상태 tab is a large,
+  independent refactor coupled to `provider-registration-readiness` and ~8 test
+  suites. Sequenced as a separate change to keep each step reviewable + green.
+- **Admin DRAFT-request queue**: the admin review list currently surfaces submitted
+  packs; a dedicated queue listing DRAFT packs with pending ZIP requests (접수함) is a
+  follow-up. The execution capability + card already exist.
+- **Formal request state column**: replace the object-presence + PipelineRun
+  approximation with a first-class `requestStatus` field.
+
 ## Remaining work (out of this slice)
 
 - P7.2: async job model + `202 Accepted` + status polling (see above)

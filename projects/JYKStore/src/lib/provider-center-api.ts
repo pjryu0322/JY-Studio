@@ -891,40 +891,50 @@ export function providerDoclingFigurePreviewUrl(
 }
 
 /**
- * P7: ZIP Worker import result (synchronous). This is the ZIP Worker path — NOT
- * the legacy Docling import — so it lives as its own client call.
+ * P7.3: request-state metadata for a ZIP knowledge-data generation request.
+ *
+ * The Provider only ATTACHES a ZIP and requests generation — the Worker is run by
+ * an Admin. Internal terms (Python Worker / pgvector / SearchIndexGeneration) are
+ * never surfaced here.
  */
-export type ProviderWorkerZipImportResponse = {
+export type ProviderWorkerZipRequestState = {
+  clientId: string;
+  packId: string;
+  versionId: string;
+  requestStatus: "NONE" | "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  request: {
+    originalFileName: string;
+    fileSize: number;
+    uploadedAt: string;
+    uploadedByUserId: string;
+  } | null;
+  lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
+  reviewMemo: string | null;
+};
+
+/** Result of submitting a generation request (store-only — no execution). */
+export type ProviderWorkerZipRequestResponse = {
   clientId: string;
   ok: boolean;
-  pipelineRunId: string;
-  searchIndexGenerationId?: string;
-  logicalStage: string;
-  pipelineStatus: string;
-  importedChunkCount: number;
-  importedEmbeddingCount: number;
-  pgvectorReflected: boolean;
-  warnings: { code: string; message: string }[];
-  nextStep: "SEARCH_DATA_VALIDATION" | "RETRY";
-  generationReady: boolean;
-  error?: {
-    code: string;
-    message: string;
-    retryable: boolean;
-    supportRequired: boolean;
-    stage: string;
+  packId: string;
+  versionId: string;
+  request: {
+    originalFileName: string;
+    fileSize: number;
+    uploadedAt: string;
+    uploadedByUserId: string;
   };
 };
 
 /**
- * Upload a ZIP and run the Worker import synchronously. A processed-but-failed
- * pipeline (HTTP 422 with `ok:false`) is returned as data so the caller can show
- * the mapped error / next step; auth/ownership failures throw.
+ * Attach a ZIP and submit a knowledge-data generation REQUEST (store-only). The
+ * Worker is NOT run here — an Admin executes it after 접수. Auth/ownership/upload
+ * failures throw with a mapped message.
  */
-export async function startProviderWorkerZipImportApi(
+export async function requestProviderWorkerZipGenerationApi(
   packId: string,
   file: File,
-): Promise<ProviderWorkerZipImportResponse> {
+): Promise<ProviderWorkerZipRequestResponse> {
   const form = new FormData();
   form.append("file", file);
   const response = await fetch(
@@ -932,16 +942,31 @@ export async function startProviderWorkerZipImportApi(
     { method: "POST", credentials: "include", body: form },
   );
   const data = (await response.json().catch(() => null)) as
-    | (ProviderWorkerZipImportResponse & { error?: { code?: string; message?: string } })
+    | (ProviderWorkerZipRequestResponse & { error?: string; code?: string })
     | { error?: string; message?: string; code?: string }
     | null;
-  if (data && typeof (data as ProviderWorkerZipImportResponse).ok === "boolean") {
-    return data as ProviderWorkerZipImportResponse;
+  if (response.ok && data && typeof (data as ProviderWorkerZipRequestResponse).ok === "boolean") {
+    return data as ProviderWorkerZipRequestResponse;
   }
   const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
-  if (failure.code) {
-    const { mapDoclingImportUserError } = await import("@/lib/docling-import/docling-import-ui");
-    throw new Error(mapDoclingImportUserError(failure.code, failure.message ?? failure.error));
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/** Read the current generation-request state for the Provider screen. */
+export async function fetchProviderWorkerZipRequestStateApi(
+  packId: string,
+): Promise<ProviderWorkerZipRequestState> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/worker-zip`,
+    { method: "GET", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | ProviderWorkerZipRequestState
+    | { error?: string; message?: string; code?: string }
+    | null;
+  if (response.ok && data && "requestStatus" in data) {
+    return data as ProviderWorkerZipRequestState;
   }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
 }
