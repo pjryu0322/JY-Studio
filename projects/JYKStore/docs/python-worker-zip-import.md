@@ -106,6 +106,9 @@ Behavior:
   rejected (partial is conservative — deferred to a later policy decision).
 - Inside the transaction it loads the `SearchIndexGeneration` first and validates:
   - the generation exists (`SEARCH_GENERATION_NOT_FOUND`),
+  - it is a current DRAFT still open for import: `scope === "DRAFT"`
+    (`SEARCH_GENERATION_NOT_CURRENT`) and `status ∈ {PENDING, EMBEDDING, INDEXING}`
+    (`SEARCH_GENERATION_NOT_READY`),
   - `generation.versionId === payload.packVersionId` (`SEARCH_GENERATION_MISMATCH`),
   - a provided `chunkGenerationId` equals `generation.chunkGenerationId`, otherwise
     the generation's value is used as the **resolved** `chunkGenerationId`
@@ -131,8 +134,10 @@ Behavior:
   records `vectorSkippedCount` + `vectorSyncWarning`.
 - Runs chunk + embedding + vector writes in **one transaction** — any failure
   rolls back the whole import.
-- Re-run policy: always deletes existing chunks for the **resolved
-  `chunkGenerationId`** first (cascade removes their embeddings); other
+- Re-run policy: first deletes the generation's existing `SearchIndexVector`
+  rows via `deleteSearchIndexVectorsForGeneration()` (KnowledgeChunk deletion
+  does not cascade to pgvector — no chunk FK), then deletes existing chunks for
+  the **resolved `chunkGenerationId`** (cascade removes their embeddings); other
   generations are untouched. Count fields on the `SearchIndexGeneration` are
   refreshed (`chunkCount` / `embeddedCount` / `failedCount = 0`); status
   transitions stay with the search-data state machine.
@@ -152,11 +157,56 @@ KnowledgeChunkEmbedding.vector → SearchIndexVector (pgvector, Store-only)
 Remaining:
 
 ```text
-SearchIndexGeneration creation + full status transition automation
-Stale SearchIndexVector cleanup across re-runs (no by-generation delete helper yet)
-ZIP upload API / job loop end-to-end
+SearchIndexGeneration + NormalizedDocument creation for the ZIP path (needs a
+  schema decision: ND currently requires a DoclingImportBundle FK) — deferred (P5.x)
+ZIP upload API / job loop end-to-end (needs a ZIP job/session model) — deferred
 provider / admin UX
 ```
+
+## Orchestration service (P5)
+
+`src/lib/python-worker/worker-zip-pipeline-service.ts` wires the phases above into
+one library-level flow, `runWorkerZipImportPipeline(input)`:
+
+```text
+store source ZIP → run Python Worker → validate output → store worker output →
+SourceDocument mapping → bind SearchIndexGeneration → importWorkerOutputToStoreDb
+```
+
+Design notes:
+
+- **Never throws.** Failures are captured in `result.error` with a `retryable`
+  hint and the `logicalStage` where they occurred. The temp working dir is always
+  cleaned up (`finally`).
+- **Fully injectable.** `runWorker` / `prepareImport` / `importToDb` / `storage` /
+  `readFileBytes` / `makeTempDir` / `cleanupDir` / `ensureSourceDocuments` /
+  `resolveSearchIndexGenerationId` are all overridable via `input.deps`, so the
+  service is unit-testable without Python / pgvector / Object Storage / a real DB.
+- **Boundaries preserved.** Worker output is imported as-is (no TS re-chunk /
+  re-embed); `docling-nd-knowledge-builder` is never called.
+- **Generation binding, not creation.** The service binds to an existing
+  `searchIndexGenerationId` (or one returned by an injected resolver). It never
+  invents a generation — actual `SearchIndexGeneration` / `NormalizedDocument`
+  creation (and the ND↔bundle schema change) is deferred to P5.x. Missing binding →
+  non-retryable `SEARCH_GENERATION_REQUIRED`.
+- **SourceDocument mapping.** `ensureWorkerSourceDocuments` (in
+  `worker-source-document-service.ts`) creates/reuses one `SourceDocument` per
+  normalized document (`legacySourceType = WORKER_ZIP_SOURCE`, idempotent by
+  checksum→fileName) and returns the `sourcePath → SourceDocument.id` map consumed
+  by `importWorkerOutputToStoreDb`.
+
+Error classification (`classifyWorkerZipError`):
+
+```text
+retryable   : WORKER_RUN_TIMEOUT, PAYLOAD_STORAGE_UNAVAILABLE,
+              SEARCH_RUNTIME_UNAVAILABLE, LOCK_CONFLICT
+non-retryable: WorkerOutputDbImportError.*, WORKER_RUN_FAILED,
+              VALIDATION_REPORT_NOT_OK, WORKER_OUTPUT_INVALID,
+              MISSING_REQUIRED_OUTPUT, SEARCH_GENERATION_REQUIRED
+```
+
+Deferred to a later slice: the HTTP ZIP-upload route and the async job model that
+drives this service, plus generation/ND creation (see Remaining above).
 
 ## Phase 1 audit (overlap)
 
@@ -183,8 +233,12 @@ Logical ZIP stages map onto existing `PipelineStatus` values. See
 
 ## Remaining work (out of this slice)
 
-- `SearchIndexGeneration` creation + full status transition automation on import
-- Stale `SearchIndexVector` cleanup across re-runs (needs a by-generation delete helper)
-- Wire provider ZIP upload API / job table end-to-end
+- `SearchIndexGeneration` + `NormalizedDocument` creation for the ZIP path (P5.x;
+  needs the ND↔`DoclingImportBundle` schema decision) — the orchestration service
+  currently binds to an existing generation / injected resolver
+- Full generation status-transition automation (embedding → indexing → ready) on
+  import; the service reports counts and leaves transitions to the caller
+- HTTP ZIP-upload route (`multipart/form-data`) + async job model that drives
+  `runWorkerZipImportPipeline`
 - Index / provider confirm / admin approve UX
 - Optional: add dedicated `PipelineStatus` enums if product wants 1:1 stage names

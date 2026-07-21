@@ -211,5 +211,6 @@
   "src/__tests__/phase2-public-export-surface.test.ts",
   "src/__tests__/phase2-pre3-small-refactors.test.ts",
   "src/__tests__/context-api-connect-ux-compact.test.ts",
-  "src/__tests__/python-worker-output-import.test.ts"
+  "src/__tests__/python-worker-output-import.test.ts",
+  "src/__tests__/worker-zip-pipeline-service.test.ts"
 ]

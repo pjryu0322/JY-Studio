@@ -23,7 +23,10 @@ import { prisma } from "@/lib/prisma";
 import { IMPORT_CHANNELS } from "@/lib/python-worker/import-channel";
 import { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-constants";
 import type { WorkerOutputImportPayload } from "@/lib/python-worker/worker-output-import-service";
-import { upsertSearchIndexVector } from "@/lib/search-vector/search-vector-store";
+import {
+  deleteSearchIndexVectorsForGeneration,
+  upsertSearchIndexVector,
+} from "@/lib/search-vector/search-vector-store";
 
 export { WORKER_RETRIEVAL_CHUNK_TYPE } from "@/lib/python-worker/worker-chunk-constants";
 
@@ -38,6 +41,9 @@ export class WorkerOutputDbImportError extends Error {
 
 type PrismaClientLike = typeof prisma;
 type UpsertSearchIndexVectorFn = typeof upsertSearchIndexVector;
+type DeleteVectorsForGenerationFn = typeof deleteSearchIndexVectorsForGeneration;
+
+const IMPORTABLE_GENERATION_STATUSES = new Set(["PENDING", "EMBEDDING", "INDEXING"]);
 
 /** Generation descriptor the import is bound to (subset of SearchIndexGeneration). */
 export type ImportSearchGenerationDescriptor = {
@@ -63,6 +69,8 @@ export type WorkerOutputDbImportInput = {
   requirePgvector?: boolean;
   /** Injectable for tests; defaults to the real pgvector upsert helper. */
   upsertVector?: UpsertSearchIndexVectorFn;
+  /** Injectable for tests; defaults to the real pgvector generation-delete helper. */
+  deleteVectorsForGeneration?: DeleteVectorsForGenerationFn;
 };
 
 export type WorkerOutputDbImportResult = {
@@ -201,6 +209,26 @@ export function resolveWorkerImportChunkGenerationId(
     );
   }
   return generation.chunkGenerationId;
+}
+
+/**
+ * Ensure the bound generation is a current DRAFT still open for import.
+ */
+export function assertGenerationImportable(
+  generation: ImportSearchGenerationDescriptor,
+): void {
+  if (generation.scope !== "DRAFT") {
+    throw new WorkerOutputDbImportError(
+      "SEARCH_GENERATION_NOT_CURRENT",
+      `generation scope must be DRAFT for import (got "${generation.scope ?? "unknown"}")`,
+    );
+  }
+  if (!generation.status || !IMPORTABLE_GENERATION_STATUSES.has(generation.status)) {
+    throw new WorkerOutputDbImportError(
+      "SEARCH_GENERATION_NOT_READY",
+      `generation status must be PENDING/EMBEDDING/INDEXING for import (got "${generation.status ?? "unknown"}")`,
+    );
+  }
 }
 
 /**
@@ -363,6 +391,8 @@ export async function importWorkerOutputToStoreDb(
 
   const client = input.prismaClient ?? prisma;
   const upsertVector = input.upsertVector ?? upsertSearchIndexVector;
+  const deleteVectors =
+    input.deleteVectorsForGeneration ?? deleteSearchIndexVectorsForGeneration;
   const vectorEnv: NodeJS.ProcessEnv = input.requirePgvector
     ? { ...process.env, JYKSTORE_REQUIRE_PGVECTOR: "true" }
     : process.env;
@@ -390,6 +420,7 @@ export async function importWorkerOutputToStoreDb(
     }
     const generation = generationRow as unknown as ImportSearchGenerationDescriptor;
 
+    assertGenerationImportable(generation);
     const resolvedChunkGenerationId = resolveWorkerImportChunkGenerationId(
       input.chunkGenerationId,
       generation,
@@ -403,8 +434,10 @@ export async function importWorkerOutputToStoreDb(
       sourceDocumentIdByPath: input.sourceDocumentIdByPath,
     });
 
-    // Re-run policy: always clear the resolved generation's chunks first; the
-    // cascade removes their embeddings. Other generations are untouched.
+    // Re-run policy: clear this generation's existing vectors first (no chunk FK
+    // cascade reaches SearchIndexVector), then delete the resolved generation's
+    // chunks (cascade removes their embeddings). Other generations are untouched.
+    await deleteVectors(searchIndexGenerationId, tx, vectorEnv);
     await tx.knowledgeChunk.deleteMany({
       where: {
         versionId: plan.packVersionId,

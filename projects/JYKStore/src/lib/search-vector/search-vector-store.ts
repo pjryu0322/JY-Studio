@@ -135,3 +135,27 @@ export async function deleteSearchIndexVectorsForChunk(
     throw error;
   }
 }
+
+/**
+ * Deletes all SearchIndexVector rows for a search index generation.
+ *
+ * KnowledgeChunk deletion cascades to KnowledgeChunkEmbedding but NOT to
+ * SearchIndexVector (no chunk FK), so a generation re-import must clear the
+ * generation's vectors up front to avoid orphaned/stale rows. Silently no-ops
+ * when pgvector is unavailable outside production.
+ */
+export async function deleteSearchIndexVectorsForGeneration(
+  searchIndexGenerationId: string,
+  client: WriteClient = prisma,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  try {
+    await client.$executeRaw`DELETE FROM "SearchIndexVector" WHERE "searchIndexGenerationId" = ${searchIndexGenerationId}`;
+  } catch (error) {
+    if (isPgvectorUnavailableError(error)) {
+      handlePgvectorUnavailable("deleteSearchIndexVectorsForGeneration", env);
+      return;
+    }
+    throw error;
+  }
+}

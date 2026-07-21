@@ -50,6 +50,7 @@ export {
 
 export {
   assertGenerationDescriptorMatches,
+  assertGenerationImportable,
   assertWorkerOutputImportable,
   buildWorkerOutputImportPlan,
   importWorkerOutputToStoreDb,
@@ -69,6 +70,24 @@ export {
   type PythonWorkerRunInput,
   type PythonWorkerRunResult,
 } from "@/lib/python-worker/python-worker-runner";
+
+export {
+  ensureWorkerSourceDocuments,
+  WORKER_ZIP_SOURCE_LEGACY_TYPE,
+  type EnsureWorkerSourceDocumentsInput,
+} from "@/lib/python-worker/worker-source-document-service";
+
+export {
+  classifyWorkerZipError,
+  runWorkerZipImportPipeline,
+  WorkerZipPipelineFailure,
+  type WorkerZipPipelineDeps,
+  type WorkerZipPipelineError,
+  type WorkerZipPipelineInput,
+  type WorkerZipPipelineResult,
+  type WorkerZipPipelineWarning,
+  type WorkerZipStorage,
+} from "@/lib/python-worker/worker-zip-pipeline-service";
 
 export {
   describeWorkerZipStage,
