@@ -92,8 +92,14 @@ Two modes (via options JSON `options.embedding` or environment):
 
 | Mode | Use | Notes |
 |------|-----|-------|
-| `local_e5` | production / **default** | Local CPU E5 via `sentence-transformers`, offline model files |
+| `local_e5` | production / **default** | Local CPU E5 via `sentence-transformers`. **Requires a local model path** and never auto-downloads |
 | `deterministic_stub` | **test only** | Reproducible hash-based vectors, no model download |
+
+`local_e5` requires `options.embedding.modelPath` (or
+`JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH`). If the path is missing or does not
+exist, the Worker fails with a clear `EmbeddingError` instead of downloading
+from the network (`local_files_only=True`). The model name is retained as
+descriptor metadata only.
 
 Environment variables:
 
@@ -120,8 +126,10 @@ Example `options.json` embedding block:
 ```
 
 The embedding input text follows the Store E5 passage policy (`passage: ` prefix
-over title / section / keywords / content). `contentHash` is over the chunk's own
-content fields; `embeddingTextHash` is over the actual embedding input text.
+over title / section / tags(keywords) / content). `contentHash` is byte-compatible
+with Store `computeChunkContentHash` (`title / content / section / sorted(tags)`;
+`keywords` / `symbols` are **not** hashed directly), so Store stale detection
+stays aligned. `embeddingTextHash` is over the actual embedding input text.
 
 DB persistence (`KnowledgeChunkEmbedding`) and pgvector upsert are **later**
 steps and are not implemented here.

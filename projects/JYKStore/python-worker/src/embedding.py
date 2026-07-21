@@ -110,21 +110,43 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _stable_stringify_content(
+    *, title: str, content: str, section: str, tags: list[str]
+) -> str:
+    """Replicate Store ``stableStringify`` for {title, content, section, tags}.
+
+    Store (src/lib/chunk-embedding-service.ts) sorts object keys and renders
+    scalars raw (no quotes): ``{content:..,section:..,tags:[..],title:..}``.
+    Byte-identical output keeps ``contentHash`` compatible with Store stale
+    detection.
+    """
+    tags_str = "[" + ",".join(tags) + "]"
+    return f"{{content:{content},section:{section},tags:{tags_str},title:{title}}}"
+
+
 def build_content_hash(chunk: dict[str, Any]) -> str:
-    """Stable hash of the chunk's own content fields (not the embedding text)."""
-    canonical = json.dumps(
-        {
-            "title": chunk.get("title") or "",
-            "section": chunk.get("section") or "",
-            "content": chunk.get("content") or "",
-            "keywords": chunk.get("keywords") or [],
-            "symbols": chunk.get("symbols") or [],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    """Hash of the chunk's content fields, aligned with Store computeChunkContentHash.
+
+    Only ``title / content / section / tags`` participate — ``keywords`` and
+    ``symbols`` are never hashed directly. ``tags`` is the value that maps to the
+    Store chunk ``tags`` at DB import (worker chunks expose ``keywords`` as the
+    tag source when no explicit ``tags`` field is present).
+    """
+    if chunk.get("tags") is not None:
+        raw_tags = chunk.get("tags") or []
+    elif chunk.get("keywords") is not None:
+        raw_tags = chunk.get("keywords") or []
+    else:
+        raw_tags = []
+    tags = sorted(str(t) for t in raw_tags)
+    return _sha256(
+        _stable_stringify_content(
+            title=chunk.get("title") or "",
+            content=chunk.get("content") or "",
+            section=chunk.get("section") or "",
+            tags=tags,
+        )
     )
-    return _sha256(canonical)
 
 
 def _stub_vector(text: str, dimension: int) -> list[float]:
@@ -144,6 +166,17 @@ def _stub_vector(text: str, dimension: int) -> list[float]:
 
 
 def _load_e5_model(config: dict[str, Any]):
+    # local_e5 must never trigger a network download. A local model path is
+    # required and validated before importing / loading the model.
+    model_path = config.get("modelPath")
+    if not model_path:
+        raise EmbeddingError(
+            "local_e5 requires a local modelPath; set options.embedding.modelPath "
+            "or JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH"
+        )
+    if not Path(model_path).exists():
+        raise EmbeddingError(f"local_e5 modelPath does not exist: {model_path}")
+
     try:
         from sentence_transformers import SentenceTransformer
     except Exception as exc:  # noqa: BLE001
@@ -152,11 +185,17 @@ def _load_e5_model(config: dict[str, Any]):
             "deterministic_stub mode for tests"
         ) from exc
 
-    source = config.get("modelPath") or config.get("model")
     try:
-        return SentenceTransformer(source, device="cpu")
+        return SentenceTransformer(
+            str(model_path), device="cpu", local_files_only=True
+        )
+    except TypeError:
+        # Older sentence-transformers may not accept local_files_only.
+        return SentenceTransformer(str(model_path), device="cpu")
     except Exception as exc:  # noqa: BLE001
-        raise EmbeddingError(f"failed to load E5 model '{source}': {exc}") from exc
+        raise EmbeddingError(
+            f"failed to load local E5 model at '{model_path}': {exc}"
+        ) from exc
 
 
 def _encode_local_e5(

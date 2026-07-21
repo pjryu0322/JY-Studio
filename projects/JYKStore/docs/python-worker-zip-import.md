@@ -36,8 +36,16 @@ after `chunks.json`. It is always written — empty array `[]` when there are no
 chunks or on a failure branch — so the required output contract holds.
 
 Modes: `local_e5` (production / default, local CPU E5 via `sentence-transformers`)
-and `deterministic_stub` (test-only, no model download). The Worker never calls
-an external API and never writes Store DB or Object Storage.
+and `deterministic_stub` (test-only, no model download). `local_e5` **requires a
+local model path** (`options.embedding.modelPath` or
+`JYKSTORE_PYTHON_WORKER_E5_MODEL_PATH`) and never auto-downloads — a missing or
+non-existent path fails with a clear `EmbeddingError`. The Worker never calls an
+external API and never writes Store DB or Object Storage.
+
+`contentHash` is byte-compatible with Store `computeChunkContentHash`
+(`title / content / section / sorted(tags)`; `keywords` / `symbols` excluded),
+so Store stale detection stays aligned. `embeddingTextHash` covers the actual
+E5 passage input text.
 
 Validator enforces chunk ↔ embedding integrity:
 
@@ -75,7 +83,6 @@ Logical ZIP stages map onto existing `PipelineStatus` values. See
 
 ## Remaining work (out of this slice)
 
-- Generate real embedding vectors in the Python Worker (`embeddings.json`)
 - Persist imported chunks/embeddings into Store DB / vector-index tables
 - Wire provider ZIP upload API / job table end-to-end
 - Index / provider confirm / admin approve UX

@@ -17,7 +17,9 @@ from parse_archive import is_safe_zip_member, safe_extract_zip
 from src.chunker import build_chunks_and_traces
 from src.embedding import (
     EmbeddingError,
+    build_content_hash,
     build_embeddings,
+    build_passage_text,
     resolve_embedding_config,
     write_embeddings,
 )
@@ -580,6 +582,80 @@ class EmbeddingTests(unittest.TestCase):
             {}, {"JYKSTORE_PYTHON_WORKER_EMBEDDING_MODE": "deterministic_stub"}
         )
         self.assertEqual(cfg["mode"], "deterministic_stub")
+
+    def test_content_hash_ignores_keywords_and_symbols(self):
+        base = {
+            "title": "Grid",
+            "content": "Grid API overview",
+            "section": "Overview",
+            "tags": ["grid", "column"],
+            "keywords": ["grid", "column"],
+            "symbols": ["DataGrid"],
+        }
+        changed = {
+            **base,
+            "keywords": ["totally", "different"],
+            "symbols": ["OtherSymbol", "More"],
+        }
+        self.assertEqual(build_content_hash(base), build_content_hash(changed))
+
+    def test_content_hash_is_tag_order_independent(self):
+        a = {"title": "T", "content": "C", "section": "S", "tags": ["b", "a"]}
+        b = {"title": "T", "content": "C", "section": "S", "tags": ["a", "b"]}
+        self.assertEqual(build_content_hash(a), build_content_hash(b))
+
+    def test_content_hash_changes_with_content_fields(self):
+        base = {"title": "T", "content": "C", "section": "S", "tags": ["a"]}
+        for field, value in (
+            ("title", "T2"),
+            ("content", "C2"),
+            ("section", "S2"),
+            ("tags", ["a", "z"]),
+        ):
+            changed = {**base, field: value}
+            self.assertNotEqual(
+                build_content_hash(base), build_content_hash(changed), field
+            )
+
+    def test_content_hash_uses_keywords_as_tags_when_no_tags_field(self):
+        # When no explicit tags field, keywords are the tag source (import mapping).
+        with_keywords = {
+            "title": "T",
+            "content": "C",
+            "section": "S",
+            "keywords": ["a", "b"],
+        }
+        with_tags = {"title": "T", "content": "C", "section": "S", "tags": ["a", "b"]}
+        self.assertEqual(
+            build_content_hash(with_keywords), build_content_hash(with_tags)
+        )
+
+    def test_passage_text_matches_store_order(self):
+        chunk = {
+            "title": "Grid",
+            "section": "Overview",
+            "keywords": ["grid", "column"],
+            "content": "Body",
+        }
+        text = build_passage_text(chunk)
+        self.assertTrue(text.startswith("passage: "))
+        self.assertEqual(text, "passage: Grid\nOverview\ngrid\ncolumn\nBody")
+
+    def test_local_e5_requires_model_path(self):
+        cfg = resolve_embedding_config({"mode": "local_e5"}, {})
+        chunks = self._chunks(1)
+        with self.assertRaises(EmbeddingError) as ctx:
+            build_embeddings(chunks, cfg)
+        self.assertIn("modelPath", str(ctx.exception))
+
+    def test_local_e5_nonexistent_model_path_fails(self):
+        cfg = resolve_embedding_config(
+            {"mode": "local_e5", "modelPath": "C:/definitely/not/here/model"}, {}
+        )
+        chunks = self._chunks(1)
+        with self.assertRaises(EmbeddingError) as ctx:
+            build_embeddings(chunks, cfg)
+        self.assertIn("does not exist", str(ctx.exception))
 
 
 if __name__ == "__main__":
