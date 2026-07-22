@@ -242,8 +242,11 @@ describe("getProviderPackRailState", () => {
       "자료등록",
       "데이터 구조화",
       "검색데이터 생성·검증",
-      "유통정보·검수요청",
+      "유통정보",
+      "검수요청",
       "검수결과",
+      "공개 관리",
+      "성과/사용량",
     ]);
     assert.equal(items.find((i) => i.id === "basic")?.status, "current");
     assert.equal(items.find((i) => i.id === "payload")?.status, "next");
@@ -261,7 +264,7 @@ describe("getProviderPackRailState", () => {
         },
       },
     });
-    const dist = items.find((i) => i.id === "distributionReview");
+    const dist = items.find((i) => i.id === "distribution");
     assert.equal(dist?.status, "blocked");
     assert.equal(dist?.blockedReason, "검색데이터 검증을 완료하면 열립니다.");
     assert.ok(dist?.href);

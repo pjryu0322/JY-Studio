@@ -10,20 +10,6 @@ import { ROUTES } from "@/lib/routes";
 export default function SdkDocsPage() {
   return (
     <div className="space-y-5">
-      <Link
-        href={ROUTES.docs}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← 문서
-      </Link>
-
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">TypeScript SDK 샘플</h1>
-        <p className="mt-1 text-sm text-store-muted">
-          fetch 기반 Context API client 샘플 코드입니다.
-        </p>
-      </div>
-
       <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
         <p className="text-sm leading-relaxed text-slate-800">
           현재 SDK는 npm package가 아니라 프로젝트에 복사해 사용할 수 있는 TypeScript 샘플입니다. 샘플 파일은{" "}

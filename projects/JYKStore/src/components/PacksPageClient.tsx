@@ -56,11 +56,6 @@ export function PacksPageClient({ initialPacks }: { readonly initialPacks: reado
 
   return (
     <div className="space-y-6">
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">지식팩 둘러보기</h1>
-        <p className="mt-1 text-sm text-store-muted">필요한 제품·솔루션 지식을 지식팩으로 찾아보세요.</p>
-      </div>
-
       <form onSubmit={onSearchSubmit}>
         <input
           name="q"

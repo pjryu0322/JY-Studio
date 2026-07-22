@@ -18,20 +18,6 @@ import { ROUTES } from "@/lib/routes";
 export default function ContextApiDocsPage() {
   return (
     <div className="space-y-5">
-      <Link
-        href={ROUTES.apiDocs}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← API 개요
-      </Link>
-
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">Context API</h1>
-        <p className="mt-1 text-sm text-store-muted">
-          지식팩 context 조회 및 query 검색 API 상세 문서입니다.
-        </p>
-      </div>
-
       <section className="space-y-2 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">인증</h2>
         <DocsCodeBlock code={authHeaderExample} language="http" />

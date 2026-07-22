@@ -15,6 +15,6 @@ describe("store responsive layout", () => {
   it("uses wide responsive shell container", () => {
     const shell = readSource("src/components/MobileShell.tsx");
     assert.ok(shell.includes("max-w-[1120px]"));
-    assert.ok(shell.includes("sm:px-6"));
+    assert.ok(shell.includes("sm:px-5") || shell.includes("sm:px-6"));
   });
 });

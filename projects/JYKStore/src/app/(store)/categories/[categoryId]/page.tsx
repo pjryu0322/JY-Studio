@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PackList } from "@/components/PackList";
 import { NotFoundState } from "@/components/NotFoundState";
 import {
@@ -32,15 +31,12 @@ export default async function CategoryDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <Link href={ROUTES.categories} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent">
-        ← 카테고리
-      </Link>
       <div className="flex gap-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <span className="text-3xl" aria-hidden>
           {category.icon}
         </span>
         <div>
-          <h1 className="text-lg font-bold text-slate-900">{category.name}</h1>
+          <h2 className="text-lg font-bold text-slate-900">{category.name}</h2>
           <p className="mt-1 text-sm text-store-muted">{category.description}</p>
           <p className="mt-2 text-xs text-store-muted">등록된 공개 지식팩 {packs.length}개</p>
         </div>

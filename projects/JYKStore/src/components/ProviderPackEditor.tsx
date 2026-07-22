@@ -12,7 +12,7 @@ import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderP
 import { ProviderKnowledgeGenerationTab } from "@/components/provider-distribution/ProviderKnowledgeGenerationTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
-import { ProviderPackTabs } from "@/components/ProviderPackTabs";
+import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
@@ -25,8 +25,6 @@ import type { SearchDataUiState } from "@/lib/search-data/search-data-state";
 import {
   resolveDistributionStepLockMessage,
   resolveSearchValidationStepDisplayState,
-  searchValidationStepRegistrationStatus,
-  searchValidationStepStatusLabel,
 } from "@/lib/search-data/search-validation-ux-state";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { PackLanguageCode } from "@/lib/pack-language";
@@ -49,6 +47,7 @@ import {
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
   type DoclingKnowledgePipelineStatusDto,
+  type ProviderWorkerZipRequestState,
   type ServiceValidationStatusDto,
 } from "@/lib/provider-center-api";
 import {
@@ -59,8 +58,8 @@ import {
 import {
   resolveProviderRegistrationReadiness,
   tabLocksFromRegistrationReadiness,
-  tabStepStatusesFromRegistrationReadiness,
 } from "@/lib/provider-registration-readiness";
+import { getProviderPackRailState } from "@/lib/role-workspace/provider-pack-rail";
 import { providerPackDetailPath } from "@/lib/routes";
 import {
   PROVIDER_PACK_ID_LABEL,
@@ -68,8 +67,6 @@ import {
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
   PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
-import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
-import { getProviderPackRailState } from "@/lib/role-workspace/provider-pack-rail";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const router = useRouter();
@@ -79,6 +76,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
   const [doclingBundle, setDoclingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
+  const [workerZipStatus, setWorkerZipStatus] = useState<
+    ProviderWorkerZipRequestState["requestStatus"] | null
+  >(null);
   const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
   const [knowledgeStatus, setKnowledgeStatus] =
     useState<DoclingKnowledgePipelineStatusDto | null>(null);
@@ -202,9 +202,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const structurePassed = Boolean(knowledgeStatus?.structurePassed);
   const searchFoundationPassed = Boolean(knowledgeStatus?.searchFoundationPassed);
   const pipelineCurrent = Boolean(knowledgeStatus?.pipelineCurrent);
-  const sourceMaterialsReady = isDoclingSourceMaterialsReady(
-    doclingBundlePublicToMaterialContext(doclingBundle),
-  );
+  const sourceMaterialsReady =
+    isDoclingSourceMaterialsReady(doclingBundlePublicToMaterialContext(doclingBundle)) ||
+    workerZipStatus === "COMPLETED";
   const distributionReady = Boolean(
     distribution &&
       isDistributionReadyForServiceValidation({
@@ -315,7 +315,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         created: showCreatedBanner,
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
-        hasPayload: isDoclingPayloadPresent(doclingBundle?.status),
+        hasPayload:
+          isDoclingPayloadPresent(doclingBundle?.status) || workerZipStatus === "COMPLETED",
         hasDistribution: distributionReady,
         providerConfirmed,
         structurePassed,
@@ -328,6 +329,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       sourceDocumentCount,
       distributionReady,
       doclingBundle,
+      workerZipStatus,
       providerConfirmed,
       structurePassed,
       serviceValidationPassed,
@@ -400,41 +402,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     serviceValidationPassed,
   ]);
 
-  const tabStepStatuses = useMemo(() => {
-    if (registrationReadiness) {
-      const base = tabStepStatusesFromRegistrationReadiness(registrationReadiness);
-      if (searchDataUiState) {
-        const channel = (name: "API" | "MCP" | "DOWNLOAD") => {
-          const c = serviceValidation?.channels.find((x) => x.channel === name);
-          return c
-            ? {
-                systemStatus: c.systemStatus,
-                currentValidity: c.currentValidity,
-                providerConfirmationStatus: c.providerConfirmationStatus,
-              }
-            : null;
-        };
-        const displayState = resolveSearchValidationStepDisplayState({
-          searchDataState: searchDataUiState,
-          rankingPolicyStale,
-          api: channel("API"),
-          mcp: channel("MCP"),
-          download: channel("DOWNLOAD"),
-        });
-        return {
-          ...base,
-          serviceValidation: {
-            status: searchValidationStepRegistrationStatus(displayState),
-            statusLabel: searchValidationStepStatusLabel(displayState),
-          },
-        };
-      }
-      return base;
-    }
-    return {} as Partial<
-      Record<ProviderPackTabId, { status: string; statusLabel: string }>
-    >;
-  }, [registrationReadiness, searchDataUiState, rankingPolicyStale, serviceValidation]);
+  const railItems = useMemo(
+    () =>
+      getProviderPackRailState({
+        packId,
+        activeTab,
+        pack,
+        tabLocks,
+      }),
+    [packId, activeTab, pack, tabLocks],
+  );
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
@@ -556,25 +533,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     }
   };
 
-  const railItems = useMemo(
-    () =>
-      getProviderPackRailState({
-        packId,
-        activeTab,
-        pack,
-        tabLocks: Object.fromEntries(
-          (Object.keys(tabLocks) as ProviderPackTabId[]).map((id) => [
-            id,
-            {
-              locked: tabLocks[id].locked,
-              reason: tabLocks[id].reason ?? undefined,
-            },
-          ]),
-        ),
-      }),
-    [packId, activeTab, pack, tabLocks],
-  );
-
   if (loading) {
     return <p className="text-sm text-store-muted">불러오는 중…</p>;
   }
@@ -586,65 +544,60 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const latestVersion = pack.versions[0];
 
   return (
-    <RoleWorkspaceShell role="provider" title="제공자 작업 흐름" items={railItems}>
-    <div className="space-y-4 pb-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-2xl shrink-0">{pack.icon}</span>
-        <div className="min-w-0 flex-1">
-          <h1 className="break-words text-lg font-bold text-slate-900 sm:truncate">
-            {name.trim() || pack.name}
-          </h1>
-          <p className="break-all text-xs text-store-muted sm:truncate sm:break-normal">
-            <span className="font-semibold text-slate-700">{PROVIDER_PACK_ID_LABEL}</span>{" "}
-            <span className="font-mono">{pack.packId}</span>
-          </p>
-        </div>
-        <ProviderPackStatusBadge status={pack.status} />
-      </div>
-
-      {packProgress ? (
-        <div className="space-y-2">
-          {packProgress.publishedVersion &&
-          packProgress.workingVersion &&
-          packProgress.publishedVersion.id !== packProgress.workingVersion.id ? (
-            <p className="px-1 text-xs text-store-muted">
-              공개 Version{" "}
-              <span className="font-semibold text-slate-800">
-                {packProgress.publishedVersion.version}
-              </span>
-              {" · "}
-              작업 Version{" "}
-              <span className="font-semibold text-slate-800">
-                {packProgress.workingVersion.version}
-              </span>
-              {packProgress.currentStepLabel
-                ? ` — ${packProgress.currentStepLabel}`
-                : null}
+    <RoleWorkspaceShell role="provider" items={railItems} title="제공자 작업 흐름">
+      <div className="space-y-4 pb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-2xl shrink-0">{pack.icon}</span>
+          <div className="min-w-0 flex-1">
+            <h1 className="break-words text-lg font-bold text-slate-900 sm:truncate">
+              {name.trim() || pack.name}
+            </h1>
+            <p className="break-all text-xs text-store-muted sm:truncate sm:break-normal">
+              <span className="font-semibold text-slate-700">{PROVIDER_PACK_ID_LABEL}</span>{" "}
+              <span className="font-mono">{pack.packId}</span>
             </p>
-          ) : null}
+          </div>
+          <ProviderPackStatusBadge status={pack.status} />
         </div>
-      ) : null}
 
-      <ProviderPackTabs
-        activeTab={activeTab}
-        onSelectTab={selectTab}
-        locks={tabLocks}
-        stepStatuses={tabStepStatuses}
-      />
+        {packProgress ? (
+          <div className="space-y-2">
+            {packProgress.publishedVersion &&
+            packProgress.workingVersion &&
+            packProgress.publishedVersion.id !== packProgress.workingVersion.id ? (
+              <p className="px-1 text-xs text-store-muted">
+                공개 Version{" "}
+                <span className="font-semibold text-slate-800">
+                  {packProgress.publishedVersion.version}
+                </span>
+                {" · "}
+                작업 Version{" "}
+                <span className="font-semibold text-slate-800">
+                  {packProgress.workingVersion.version}
+                </span>
+                {packProgress.currentStepLabel
+                  ? ` — ${packProgress.currentStepLabel}`
+                  : null}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
-      {error ? (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
-      ) : null}
+        {error ? (
+          <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {error}
+          </div>
+        ) : null}
 
-      <div id="pack-wizard-main" className="scroll-mt-24">
-        {/* Keep tabs mounted (hidden) so Docling file selection / upload result survives tab switches. */}
-        <div
-          id="provider-pack-panel-basic"
-          role="tabpanel"
-          aria-labelledby="provider-pack-tab-basic"
-          className={activeTab === "basic" ? undefined : "hidden"}
-          aria-hidden={activeTab !== "basic"}
-        >
+        <div id="pack-wizard-main" className="scroll-mt-24">
+          {/* Keep steps mounted (hidden) so Docling file selection / upload result survives switches. */}
+          <div
+            id="provider-pack-panel-basic"
+            role="region"
+            aria-label="기본정보"
+            className={activeTab === "basic" ? undefined : "hidden"}
+            aria-hidden={activeTab !== "basic"}
+          >
           <ProviderPackBasicInfoTab
             editable={editable}
             name={name}
@@ -686,8 +639,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
         <div
           id="provider-pack-panel-payload"
-          role="tabpanel"
-          aria-labelledby="provider-pack-tab-payload"
+          role="region"
+          aria-label="자료등록"
           className={activeTab === "payload" ? undefined : "hidden"}
           aria-hidden={activeTab !== "payload"}
         >
@@ -699,6 +652,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             cachedDoclingBundle={doclingBundle}
             onDoclingChanged={setDoclingBundle}
             onGoToKnowledge={() => selectTab("knowledge")}
+            onWorkerZipStatusChange={setWorkerZipStatus}
             onPackUpdated={(next) => {
               setPack(next);
               setVersionOverview(next.versions[0]?.overview ?? "");
@@ -710,8 +664,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
         <div
           id="provider-pack-panel-knowledge"
-          role="tabpanel"
-          aria-labelledby="provider-pack-tab-knowledge"
+          role="region"
+          aria-label="데이터 구조화"
           className={activeTab === "knowledge" ? undefined : "hidden"}
           aria-hidden={activeTab !== "knowledge"}
         >
@@ -725,8 +679,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
         <div
           id="provider-pack-panel-serviceValidation"
-          role="tabpanel"
-          aria-labelledby="provider-pack-tab-serviceValidation"
+          role="region"
+          aria-label="검색데이터 생성·검증"
           className={activeTab === "serviceValidation" ? undefined : "hidden"}
           aria-hidden={activeTab !== "serviceValidation"}
         >
@@ -752,8 +706,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
         <div
           id="provider-pack-panel-distributionReview"
-          role="tabpanel"
-          aria-labelledby="provider-pack-tab-distributionReview"
+          role="region"
+          aria-label="유통정보·검수"
           className={activeTab === "distributionReview" ? undefined : "hidden"}
           aria-hidden={activeTab !== "distributionReview"}
         >
@@ -796,7 +750,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           )}
         </div>
       </div>
-    </div>
+      </div>
     </RoleWorkspaceShell>
   );
 }

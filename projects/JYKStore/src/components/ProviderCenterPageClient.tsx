@@ -67,28 +67,26 @@ function ProviderStatusDashboard({
   ];
 
   return (
-    <section aria-label="지식팩 현황" className="space-y-2">
-      <h2 className="px-1 text-sm font-bold text-slate-900">현황</h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {cards.map((card) => {
-          const active = filter === card.key;
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => onFilter(card.key)}
-              className={`min-h-[64px] rounded-2xl border px-3 py-3 text-left shadow-card ${
-                active
-                  ? "border-store-accent bg-store-accent/10"
-                  : "border-store-border bg-white"
-              }`}
-            >
-              <p className="text-[11px] font-semibold text-store-muted">{card.label}</p>
-              <p className="mt-1 text-xl font-black tabular-nums text-slate-900">{card.value}</p>
-            </button>
-          );
-        })}
-      </div>
+    <section aria-label="지식팩 현황" className="flex flex-wrap items-center gap-1.5">
+      <h2 className="mr-1 shrink-0 text-xs font-bold text-slate-900">현황</h2>
+      {cards.map((card) => {
+        const active = filter === card.key;
+        return (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => onFilter(card.key)}
+            className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-left ${
+              active
+                ? "border-store-accent bg-store-accent/10"
+                : "border-store-border bg-white"
+            }`}
+          >
+            <span className="text-[11px] font-semibold text-store-muted">{card.label}</span>
+            <span className="text-sm font-bold tabular-nums text-slate-900">{card.value}</span>
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -97,57 +95,50 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
   const detail = providerPackDetailPath(pack.packId);
   const progress = pack.progress;
   const actions = progress?.actions?.slice(0, 2) ?? [
-    { label: "상세 보기", href: detail },
+    { label: "계속 작성", href: detail },
   ];
 
+  const versionLabel =
+    progress?.workingVersion &&
+    progress.workingVersion !== progress.publishedVersion
+      ? `작업 ${progress.workingVersion}`
+      : progress?.publishedVersion
+        ? `공개 ${progress.publishedVersion}`
+        : progress?.workingVersion
+          ? `v${progress.workingVersion}`
+          : null;
+
+  const metaParts = [
+    versionLabel,
+    progress?.currentStepLabel ? `단계 ${progress.currentStepLabel}` : null,
+    progress?.nextActionLabel ? `다음 ${progress.nextActionLabel}` : null,
+  ].filter(Boolean);
+
   return (
-    <li className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      <Link href={detail} className="block min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="break-words text-sm font-semibold text-slate-900">{pack.name}</p>
-            <p className="mt-0.5 font-mono text-[11px] text-store-muted">{pack.packId}</p>
+    <li className="rounded-xl border border-store-border bg-white px-3 py-2 shadow-sm">
+      <div className="flex items-start gap-2">
+        <Link href={detail} className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 truncate text-sm font-semibold text-slate-900">{pack.name}</p>
+            <ProviderPackStatusBadge status={pack.status} />
           </div>
-          <ProviderPackStatusBadge status={pack.status} />
+          {metaParts.length > 0 ? (
+            <p className="mt-0.5 truncate text-[11px] text-store-muted">{metaParts.join(" · ")}</p>
+          ) : (
+            <p className="mt-0.5 truncate font-mono text-[11px] text-store-muted">{pack.packId}</p>
+          )}
+        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+          {actions.map((action) => (
+            <Link
+              key={`${action.label}:${action.href}`}
+              href={action.href}
+              className="inline-flex min-h-[32px] items-center rounded-lg px-2 text-[11px] font-bold text-store-accent hover:bg-slate-50"
+            >
+              {action.label}
+            </Link>
+          ))}
         </div>
-        <div className="mt-3 space-y-1 text-xs text-store-muted">
-          {progress?.publishedVersion ? (
-            <p>
-              공개 Version:{" "}
-              <span className="font-semibold text-slate-800">{progress.publishedVersion}</span>
-            </p>
-          ) : null}
-          {progress?.workingVersion &&
-          progress.workingVersion !== progress.publishedVersion ? (
-            <p>
-              작업 Version:{" "}
-              <span className="font-semibold text-slate-800">{progress.workingVersion}</span>
-            </p>
-          ) : null}
-          {progress?.currentStepLabel ? (
-            <p>
-              현재 단계:{" "}
-              <span className="font-semibold text-slate-800">{progress.currentStepLabel}</span>
-            </p>
-          ) : null}
-          {progress?.nextActionLabel ? (
-            <p>
-              다음 작업:{" "}
-              <span className="font-semibold text-slate-800">{progress.nextActionLabel}</span>
-            </p>
-          ) : null}
-        </div>
-      </Link>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {actions.map((action) => (
-          <Link
-            key={`${action.label}:${action.href}`}
-            href={action.href}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-store-border bg-slate-50 px-3 text-xs font-bold text-store-accent"
-          >
-            {action.label}
-          </Link>
-        ))}
       </div>
     </li>
   );
@@ -264,13 +255,30 @@ export function ProviderCenterPageClient() {
         <ProviderStatusDashboard summary={summary} filter={filter} onFilter={setFilter} />
       ) : null}
 
+      {summary.changesRequested > 0 || summary.reviewing > 0 ? (
+        <section
+          aria-label="검수/보완 알림"
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <p className="font-bold">검수/보완 알림</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs">
+            {summary.changesRequested > 0 ? (
+              <li>보완 요청 {summary.changesRequested}건 — 의견을 확인하고 수정 후 재요청하세요.</li>
+            ) : null}
+            {summary.reviewing > 0 ? (
+              <li>검수 중 {summary.reviewing}건 — 관리자 검수 결과를 기다려 주세요.</li>
+            ) : null}
+          </ul>
+        </section>
+      ) : null}
+
       <section
         id="provider-packs"
         className="scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-900">내 지식팩</h2>
+            <h2 className="text-sm font-bold text-slate-900">내가 등록한 지식팩</h2>
             {profile ? (
               <p className="mt-0.5 text-[11px] text-store-muted">
                 {PROVIDER_PACK_REGISTER_HINT}
@@ -299,7 +307,7 @@ export function ProviderCenterPageClient() {
         ) : filteredPacks.length === 0 ? (
           <p className="mt-4 text-sm text-store-muted">선택한 상태의 지식팩이 없습니다.</p>
         ) : (
-          <ul className="mt-3 space-y-3">
+          <ul className="mt-2 space-y-1.5">
             {filteredPacks.map((pack) => (
               <ProviderPackCard key={pack.packId} pack={pack} />
             ))}

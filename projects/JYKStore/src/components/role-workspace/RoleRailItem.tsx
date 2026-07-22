@@ -2,7 +2,24 @@
 
 import Link from "next/link";
 import type { RoleRailItem } from "@/lib/role-workspace/types";
-import { StepStatusBadge } from "@/components/role-workspace/StepStatusBadge";
+import { RoleRailIcon } from "@/components/role-workspace/RoleRailIcon";
+
+function statusDotClass(status: RoleRailItem["status"]): string | null {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-500";
+    case "current":
+      return "bg-white ring-2 ring-indigo-300";
+    case "next":
+      return "bg-sky-500";
+    case "warning":
+      return "bg-amber-400";
+    case "blocked":
+      return "bg-slate-400";
+    default:
+      return null;
+  }
+}
 
 export function RoleRailItemView({
   item,
@@ -13,39 +30,54 @@ export function RoleRailItemView({
 }) {
   const disabled = item.status === "blocked" || !item.href;
   const active = item.status === "current" || item.status === "next";
+  const tip = [item.label, item.blockedReason, item.badge].filter(Boolean).join(" — ");
+  const dot = statusDotClass(item.status);
 
-  const className = `flex w-full flex-col gap-0.5 rounded-xl px-3 py-2 text-left text-sm transition ${
+  const className = `relative flex h-[3.025rem] w-[3.025rem] items-center justify-center rounded-xl transition ${
     item.status === "current"
-      ? "bg-indigo-600 text-white"
+      ? "bg-indigo-600 text-white shadow-sm"
       : item.status === "next"
-        ? "bg-sky-50 text-sky-950 ring-1 ring-sky-200"
+        ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200"
         : item.status === "blocked"
-          ? "cursor-not-allowed text-slate-400"
-          : "text-slate-700 hover:bg-slate-50"
+          ? "cursor-not-allowed bg-slate-50 text-slate-300"
+          : item.status === "completed"
+            ? "bg-emerald-50 text-emerald-700"
+            : item.status === "warning"
+              ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+              : "bg-white text-slate-600 hover:bg-slate-50"
   }`;
 
   const body = (
     <>
-      <span className="flex items-center justify-between gap-2">
-        <span className={`font-semibold ${item.status === "current" ? "text-white" : ""}`}>
-          {item.label}
-        </span>
-        {item.status !== "current" ? <StepStatusBadge status={item.status} /> : null}
-        {item.badge ? (
-          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-            {item.badge}
-          </span>
-        ) : null}
-      </span>
-      {item.blockedReason ? (
-        <span className="text-[11px] text-slate-500">{item.blockedReason}</span>
+      <RoleRailIcon id={item.id} className="h-[22px] w-[22px]" />
+      {dot ? (
+        <span
+          className={`absolute right-1 top-1 h-2 w-2 rounded-full ${dot}`}
+          aria-hidden
+        />
       ) : null}
+      {item.status === "completed" ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold leading-none text-white"
+          aria-hidden
+        >
+          ✓
+        </span>
+      ) : null}
+      <span className="sr-only">
+        {item.label}
+        {item.status === "completed" ? " (완료)" : ""}
+        {item.status === "current" ? " (진행 중)" : ""}
+        {item.status === "next" ? " (다음)" : ""}
+        {item.status === "blocked" ? ` (대기${item.blockedReason ? `: ${item.blockedReason}` : ""})` : ""}
+        {item.status === "warning" ? " (주의)" : ""}
+      </span>
     </>
   );
 
   if (disabled || !item.href) {
     return (
-      <div className={className} title={item.blockedReason}>
+      <div className={className} title={tip} aria-disabled="true">
         {body}
       </div>
     );
@@ -56,6 +88,8 @@ export function RoleRailItemView({
       href={item.href}
       className={className}
       onClick={onNavigate}
+      title={tip}
+      aria-label={item.label}
       aria-current={active ? "step" : undefined}
     >
       {body}

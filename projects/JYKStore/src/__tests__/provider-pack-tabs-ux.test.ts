@@ -39,7 +39,9 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(tabIds.indexOf('"payload"') < tabIds.indexOf('"knowledge"'));
     assert.ok(tabIds.indexOf('"knowledge"') < tabIds.indexOf('"serviceValidation"'));
     assert.ok(tabIds.indexOf('"serviceValidation"') < tabIds.indexOf('"distributionReview"'));
-    assert.ok(editor.includes("ProviderPackTabs"));
+    assert.ok(!editor.includes("ProviderPackTabs"));
+    assert.ok(editor.includes("RoleWorkspaceShell"));
+    assert.ok(editor.includes("getProviderPackRailState"));
     assert.ok(editor.includes("ProviderPayloadTab"));
     assert.ok(editor.includes("ProviderKnowledgeGenerationTab"));
     assert.ok(editor.includes("ProviderDistributionTab"));
@@ -91,6 +93,21 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(editor.includes('params.set("tab"'));
     assert.ok(editor.includes("resolveProviderPackTabFromLocation"));
   });
+
+  it("moves main workflow steps to the left rail (no body step tabs)", () => {
+    const editor = readSource("src/components/ProviderPackEditor.tsx");
+    const zipCard = readSource(
+      "src/components/provider-distribution/ProviderWorkerZipImportCard.tsx",
+    );
+    assert.ok(!editor.includes("<ProviderPackTabs"));
+    assert.ok(editor.includes("RoleWorkspaceShell"));
+    assert.ok(editor.includes("getProviderPackRailState"));
+    assert.ok(zipCard.includes("자료 완료"));
+    assert.ok(zipCard.includes("자료 미등록"));
+    assert.ok(zipCard.includes("데이터 구조화 결과 확인"));
+    assert.ok(zipCard.includes("자료 교체 업로드"));
+    assert.ok(!zipCard.includes("자료 미완료"));
+  });
 });
 
 describe("store responsive layout UX sources", () => {
@@ -98,7 +115,8 @@ describe("store responsive layout UX sources", () => {
     const shell = readSource("src/components/MobileShell.tsx");
     const nav = readSource("src/components/BottomTabNav.tsx");
     assert.ok(shell.includes("max-w-[1120px]"));
-    assert.ok(nav.includes("max-w-[1120px]"));
+    assert.ok(shell.includes("flex"));
+    assert.ok(nav.includes("주요 메뉴"));
     assert.ok(!shell.includes("max-w-[430px]"));
     assert.ok(!nav.includes("max-w-[430px]"));
   });

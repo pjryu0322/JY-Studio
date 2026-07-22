@@ -18,6 +18,7 @@ export function ProviderMaterialRegistrationTab({
   onDoclingChanged,
   onPackUpdated,
   onGoToKnowledge,
+  onWorkerZipStatusChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
@@ -27,6 +28,16 @@ export function ProviderMaterialRegistrationTab({
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
   readonly onPackUpdated?: (pack: ProviderPackDetailDto) => void;
   readonly onGoToKnowledge?: () => void;
+  readonly onWorkerZipStatusChange?: (
+    status:
+      | "NONE"
+      | "REQUESTED"
+      | "ACCEPTED"
+      | "REJECTED"
+      | "PROCESSING"
+      | "COMPLETED"
+      | "FAILED",
+  ) => void;
 }) {
   const [creatingVersion, setCreatingVersion] = useState(false);
   const [showVersionForm, setShowVersionForm] = useState(false);
@@ -78,7 +89,12 @@ export function ProviderMaterialRegistrationTab({
 
   return (
     <div id="pack-payload" className="space-y-4">
-      <ProviderWorkerZipImportCard packId={packId} editable={editable} />
+      <ProviderWorkerZipImportCard
+        packId={packId}
+        editable={editable}
+        onGoToKnowledge={onGoToKnowledge}
+        onStatusChange={onWorkerZipStatusChange}
+      />
 
       {showLegacyDoclingImport ? (
         <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">

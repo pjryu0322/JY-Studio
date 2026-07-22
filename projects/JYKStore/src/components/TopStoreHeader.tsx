@@ -1,21 +1,19 @@
-import { HeaderProfileButton } from "@/components/HeaderProfileButton";
+"use client";
+
+import { usePathname } from "next/navigation";
+import { resolveStorePageChrome } from "@/lib/store-page-chrome";
+
+/**
+ * Content-top chrome shared by all store pages: title + description only.
+ */
 export function TopStoreHeader() {
+  const pathname = usePathname();
+  const chrome = resolveStorePageChrome(pathname);
+
   return (
-    <div className="mb-3 flex items-center justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-store-accent text-sm font-black text-white">
-            JK
-          </div>
-          <div className="min-w-0">
-            <p className="text-lg font-black tracking-tight text-slate-900">JYKStore</p>
-            <p className="truncate text-[11px] text-store-muted">AI가 참고할 제품 지식을 지식팩으로</p>
-          </div>
-        </div>
-      </div>
-      <div className="shrink-0">
-        <HeaderProfileButton />
-      </div>
+    <div className="mb-1 min-w-0">
+      <h1 className="text-lg font-bold tracking-tight text-slate-900">{chrome.title}</h1>
+      <p className="mt-1 truncate text-sm text-store-muted">{chrome.description}</p>
     </div>
   );
 }

@@ -111,6 +111,8 @@
   "src/__tests__/auth-session.test.ts",
   "src/__tests__/provider-auth-gate-ux.test.ts",
   "src/__tests__/header-profile-ux.test.ts",
+  "src/__tests__/store-page-chrome.test.ts",
+  "src/__tests__/provider-workspace-role-separation.test.ts",
   "src/__tests__/store-entry-login-ux.test.ts",
   "src/__tests__/distribution-checksum.test.ts",
   "src/__tests__/s3-payload-storage.mock.test.ts",

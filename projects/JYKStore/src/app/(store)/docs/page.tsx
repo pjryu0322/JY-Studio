@@ -42,20 +42,6 @@ export default function DocsHubPage() {
   return (
     <ConsumerWorkspaceShell activeId="docs" hasApiKey>
       <div className="space-y-4">
-        <Link
-          href={ROUTES.account}
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          ← 계정
-        </Link>
-
-        <div className="px-1">
-          <h1 className="text-lg font-bold text-slate-900">JYKStore 문서</h1>
-          <p className="mt-1 text-sm text-store-muted">
-            지식팩을 서비스에 연동하기 위한 API/SDK 문서입니다.
-          </p>
-        </div>
-
         <ul className="grid gap-2 sm:grid-cols-2">
           {DOC_LINKS.map((item) => (
             <li key={item.title}>

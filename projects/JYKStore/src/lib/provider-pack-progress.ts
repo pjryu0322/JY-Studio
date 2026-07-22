@@ -250,31 +250,33 @@ export function buildProviderPackProgress(
     for (const step of steps) step.status = "BLOCKED";
   } else if (rejected) {
     currentStep = "CHANGES_REQUESTED";
-    currentStepLabel = "보완";
-    nextActionLabel = "운영자 의견을 확인하고 새 자료 또는 새 Version을 제출하세요.";
+    currentStepLabel = "보완 요청";
+    nextActionLabel = "보완사항을 확인하고 수정 후 재요청하세요.";
     nextActionHref = detailHref(packId, "distributionReview");
     actions = [
-      { label: "보완 내용 보기", href: detailHref(packId, "distributionReview") },
-      { label: "자료 등록", href: detailHref(packId, "payload") },
+      { label: "보완사항 보기", href: detailHref(packId, "distributionReview") },
+      { label: "수정 후 재요청", href: detailHref(packId, "payload") },
     ];
   } else if (input.packStatus === "REVIEWING") {
     currentStep = "REVIEWING";
-    currentStepLabel = "운영자 검수";
+    currentStepLabel = "검수 요청됨";
     nextActionLabel = "검수 결과를 기다리세요.";
     nextActionHref = detailHref(packId, "distributionReview");
-    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "distributionReview") }];
+    actions = [
+      { label: "검수 상태 보기", href: detailHref(packId, "distributionReview") },
+      { label: "제출 내용 확인", href: detailHref(packId, "distributionReview") },
+    ];
     for (const step of steps) {
-      if (step.key !== "DISTRIBUTION_REVIEW") step.status = "COMPLETED";
-      else step.status = "COMPLETED";
+      step.status = "COMPLETED";
     }
   } else if (isPublishedStatus(input.packStatus) && !workingDraft) {
     currentStep = "PUBLISHED";
     currentStepLabel = "공개됨";
-    nextActionLabel = "상세 보기 또는 새 버전 등록";
-    nextActionHref = detailHref(packId);
+    nextActionLabel = "공개 정보와 사용 통계를 확인하세요.";
+    nextActionHref = detailHref(packId, "distributionReview");
     actions = [
-      { label: "상세 보기", href: detailHref(packId) },
-      { label: "새 버전 만들기", href: ROUTES.providerPackNew },
+      { label: "공개 정보 관리", href: detailHref(packId, "distributionReview") },
+      { label: "사용 통계 보기", href: ROUTES.accountPlan },
     ];
     for (const step of steps) step.status = "COMPLETED";
   } else {
@@ -287,29 +289,38 @@ export function buildProviderPackProgress(
       if (current.id === "BASIC_INFO") {
         nextActionLabel = "지식팩 기본정보를 입력하세요.";
         actions = [
-          { label: "편집", href: detailHref(packId, "basic") },
-          { label: "자료 등록", href: detailHref(packId, "payload") },
+          { label: "계속 작성", href: detailHref(packId, "basic") },
+          { label: "자료등록", href: detailHref(packId, "payload") },
         ];
       } else if (current.id === "SOURCE_MATERIALS") {
         nextActionLabel = "원본문서와 생성 도구 산출물을 등록하세요.";
-        actions = [{ label: "자료 등록", href: detailHref(packId, "payload") }];
+        actions = [
+          { label: "자료등록", href: detailHref(packId, "payload") },
+          { label: "기본정보 수정", href: detailHref(packId, "basic") },
+        ];
       } else if (current.id === "DATA_STRUCTURE") {
         nextActionLabel = "데이터 구조화를 실행·확인하세요.";
-        actions = [{ label: "데이터 구조화", href: detailHref(packId, "knowledge") }];
+        actions = [
+          { label: "데이터 구조화 진행", href: detailHref(packId, "knowledge") },
+          { label: "첨부자료 확인", href: detailHref(packId, "payload") },
+        ];
       } else if (current.id === "SEARCH_DATA_VALIDATION") {
         nextActionLabel = "검색데이터 생성·검증을 완료하세요.";
         actions = [
-          { label: "검색 검증", href: detailHref(packId, "serviceValidation") },
+          { label: "검색데이터 생성·검증", href: detailHref(packId, "serviceValidation") },
+          { label: "구조화 결과 보기", href: detailHref(packId, "knowledge") },
+        ];
+      } else if (!distributionIsReady) {
+        nextActionLabel = "출처·라이선스·공개 범위를 입력하세요.";
+        actions = [
+          { label: "유통정보 입력", href: detailHref(packId, "distributionReview") },
+          { label: "검증 결과 보기", href: detailHref(packId, "serviceValidation") },
         ];
       } else {
-        nextActionLabel = distributionIsReady
-          ? "검수 요청을 제출하세요."
-          : "출처·라이선스·공개 범위를 입력하세요.";
+        nextActionLabel = "검수 요청을 제출하세요.";
         actions = [
-          {
-            label: distributionIsReady ? "검수 요청" : "유통정보 입력",
-            href: detailHref(packId, "distributionReview"),
-          },
+          { label: "검수 요청", href: detailHref(packId, "distributionReview") },
+          { label: "제출 전 확인", href: detailHref(packId, "distributionReview") },
         ];
       }
     }

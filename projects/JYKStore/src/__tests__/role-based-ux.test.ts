@@ -57,10 +57,13 @@ describe("role-based account UX", () => {
 describe("role-based provider UX", () => {
   it("shows status dashboard and pack registration CTA", () => {
     const providerPage = readSource("src/app/(store)/provider/page.tsx");
+    const chrome = readSource("src/lib/store-page-chrome.ts");
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
 
-    assert.ok(providerPage.includes("PROVIDER_CENTER_TAGLINE"));
+    assert.ok(providerPage.includes("ProviderCenterPageClient"));
+    assert.ok(chrome.includes("PROVIDER_CENTER_TAGLINE"));
+    assert.ok(chrome.includes("지식팩 제공자 센터"));
     assert.ok(!center.includes("ProviderOnboardingStepper"));
     assert.ok(center.includes("현황") || center.includes("ProviderStatusDashboard"));
     assert.ok(!center.includes("새 지식팩 만들기"));

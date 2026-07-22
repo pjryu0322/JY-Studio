@@ -54,7 +54,8 @@ describe("provider pack progress", () => {
     });
 
     assert.equal(published.currentStep, "PUBLISHED");
-    assert.ok(published.actions.some((a) => a.label === "새 버전 만들기"));
+    assert.ok(published.actions.some((a) => a.label === "공개 정보 관리"));
+    assert.ok(published.actions.some((a) => a.label === "사용 통계 보기"));
     assert.equal(reviewing.currentStep, "REVIEWING");
     assert.ok(reviewing.actions.some((a) => a.label === "검수 상태 보기"));
 

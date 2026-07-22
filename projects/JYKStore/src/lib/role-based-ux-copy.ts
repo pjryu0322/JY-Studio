@@ -379,5 +379,5 @@ export const PROVIDER_PACK_STATUS_UX: Record<string, string> = {
   DRAFT: "초안",
   REVIEWING: "검토 요청됨",
   PUBLISHED: "공개됨",
-  VERIFIED: "검증됨",
+  VERIFIED: "검수 승인됨",
 };

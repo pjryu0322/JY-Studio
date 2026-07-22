@@ -46,8 +46,7 @@ export default async function ProviderPackNewPage() {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <h1 className="text-lg font-bold text-slate-900">외부 Payload로 지식팩 등록</h1>
-        <p className="mt-2 text-sm leading-relaxed text-store-muted">
+        <p className="text-sm leading-relaxed text-store-muted">
           외부 도구에서 생성한 Payload를 등록해 지식팩을 제출할 수 있습니다.
         </p>
         <p className="mt-2 text-xs text-store-muted">{PROVIDER_PAYLOAD_IMPORT_PREP_HINT}</p>

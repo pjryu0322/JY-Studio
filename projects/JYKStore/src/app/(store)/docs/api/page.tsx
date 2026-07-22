@@ -13,20 +13,6 @@ import { ROUTES } from "@/lib/routes";
 export default function ApiDocsPage() {
   return (
     <div className="space-y-5">
-      <Link
-        href={ROUTES.docs}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← 문서
-      </Link>
-
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">JYKStore API 개요</h1>
-        <p className="mt-1 text-sm text-store-muted">
-          Context API 인증 방식과 공통 정책을 설명합니다.
-        </p>
-      </div>
-
       <section className="space-y-2 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">API Base URL</h2>
         <dl className="space-y-1 text-sm text-slate-700">

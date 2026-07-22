@@ -5,7 +5,7 @@ import type { RoleRailItem, RoleWorkspaceRole } from "@/lib/role-workspace/types
 import { RoleSideRail } from "@/components/role-workspace/RoleSideRail";
 
 /**
- * Shared workspace chrome: left workflow rail (desktop) / drawer (mobile) + main column.
+ * Shared workspace chrome: always-visible left icon rail + main column.
  */
 export function RoleWorkspaceShell({
   role,
@@ -19,7 +19,7 @@ export function RoleWorkspaceShell({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+    <div className="flex items-start gap-3 sm:gap-4">
       <RoleSideRail role={role} items={items} title={title} />
       <div className="min-w-0 flex-1 space-y-4">{children}</div>
     </div>

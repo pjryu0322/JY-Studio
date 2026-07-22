@@ -16,21 +16,6 @@ import { ROUTES } from "@/lib/routes";
 export default function RetrievalApiDocsPage() {
   return (
     <div className="space-y-5">
-      <Link
-        href={ROUTES.apiDocs}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← API 개요
-      </Link>
-
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">Metadata Retrieval API</h1>
-        <p className="mt-1 text-sm text-store-muted">
-          Metadata Filter 기반 Context 검색 API입니다. Metadata AND Filter → Keyword Ranking을 기본으로 하며,
-          P14부터 local-hash embedding 기반 hybrid ranking을 선택할 수 있습니다.
-        </p>
-      </div>
-
       <section className="space-y-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-700">
         <h2 className="text-sm font-bold text-slate-900">Context API와 Retrieval API</h2>
         <ul className="list-disc space-y-1 pl-5">
