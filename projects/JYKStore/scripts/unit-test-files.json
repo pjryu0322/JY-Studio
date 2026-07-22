@@ -37,6 +37,7 @@
   "src/__tests__/admin-review-package-mode-blockers.test.ts",
   "src/__tests__/admin-review-processing-evidence.test.ts",
   "src/__tests__/admin-review-refresh-pipeline.test.ts",
+  "src/__tests__/role-workspace-rail.test.ts",
   "src/__tests__/quota-policy.test.ts",
   "src/__tests__/quota-service.test.ts",
   "src/__tests__/public-api-quota.test.ts",

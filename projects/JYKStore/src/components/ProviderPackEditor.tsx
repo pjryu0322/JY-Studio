@@ -68,6 +68,8 @@ import {
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
   PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
+import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
+import { getProviderPackRailState } from "@/lib/role-workspace/provider-pack-rail";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const router = useRouter();
@@ -554,6 +556,25 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     }
   };
 
+  const railItems = useMemo(
+    () =>
+      getProviderPackRailState({
+        packId,
+        activeTab,
+        pack,
+        tabLocks: Object.fromEntries(
+          (Object.keys(tabLocks) as ProviderPackTabId[]).map((id) => [
+            id,
+            {
+              locked: tabLocks[id].locked,
+              reason: tabLocks[id].reason ?? undefined,
+            },
+          ]),
+        ),
+      }),
+    [packId, activeTab, pack, tabLocks],
+  );
+
   if (loading) {
     return <p className="text-sm text-store-muted">불러오는 중…</p>;
   }
@@ -565,6 +586,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const latestVersion = pack.versions[0];
 
   return (
+    <RoleWorkspaceShell role="provider" title="제공자 작업 흐름" items={railItems}>
     <div className="space-y-4 pb-6">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl shrink-0">{pack.icon}</span>
@@ -775,5 +797,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
       </div>
     </div>
+    </RoleWorkspaceShell>
   );
 }

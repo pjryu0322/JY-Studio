@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConsumerWorkspaceShell } from "@/components/role-workspace/ConsumerWorkspaceShell";
 import { ROUTES } from "@/lib/routes";
 
 const DOC_LINKS = [
@@ -39,48 +40,50 @@ const FLOW_STEPS = [
 
 export default function DocsHubPage() {
   return (
-    <div className="space-y-4">
-      <Link
-        href={ROUTES.account}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← 계정
-      </Link>
+    <ConsumerWorkspaceShell activeId="docs" hasApiKey>
+      <div className="space-y-4">
+        <Link
+          href={ROUTES.account}
+          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
+        >
+          ← 계정
+        </Link>
 
-      <div className="px-1">
-        <h1 className="text-lg font-bold text-slate-900">JYKStore 문서</h1>
-        <p className="mt-1 text-sm text-store-muted">
-          지식팩을 서비스에 연동하기 위한 API/SDK 문서입니다.
-        </p>
-      </div>
+        <div className="px-1">
+          <h1 className="text-lg font-bold text-slate-900">JYKStore 문서</h1>
+          <p className="mt-1 text-sm text-store-muted">
+            지식팩을 서비스에 연동하기 위한 API/SDK 문서입니다.
+          </p>
+        </div>
 
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {DOC_LINKS.map((item) => (
-          <li key={item.title}>
-            <Link
-              href={item.href}
-              className="flex min-h-[44px] flex-col justify-center rounded-2xl border border-store-border bg-white px-4 py-3 active:bg-slate-50"
-            >
-              <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-              <p className="mt-1 text-xs text-store-muted">{item.description}</p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <h2 className="text-sm font-bold text-slate-900">추천 연동 흐름</h2>
-        <ol className="mt-3 space-y-2">
-          {FLOW_STEPS.map((step, index) => (
-            <li key={step} className="flex items-center gap-3 text-sm text-slate-700">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">
-                {index + 1}
-              </span>
-              {step}
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {DOC_LINKS.map((item) => (
+            <li key={item.title}>
+              <Link
+                href={item.href}
+                className="flex min-h-[44px] flex-col justify-center rounded-2xl border border-store-border bg-white px-4 py-3 active:bg-slate-50"
+              >
+                <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                <p className="mt-1 text-xs text-store-muted">{item.description}</p>
+              </Link>
             </li>
           ))}
-        </ol>
+        </ul>
+
+        <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+          <h2 className="text-sm font-bold text-slate-900">추천 연동 흐름</h2>
+          <ol className="mt-3 space-y-2">
+            {FLOW_STEPS.map((step, index) => (
+              <li key={step} className="flex items-center gap-3 text-sm text-slate-700">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">
+                  {index + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
-    </div>
+    </ConsumerWorkspaceShell>
   );
 }

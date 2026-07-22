@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AdminReviewDetailPageClient } from "@/components/AdminReviewDetailPageClient";
 
 type PageProps = {
@@ -9,7 +10,9 @@ export default async function AdminReviewDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <AdminReviewDetailPageClient packId={packId} />
+      <Suspense fallback={<p className="text-sm text-store-muted">불러오는 중…</p>}>
+        <AdminReviewDetailPageClient packId={packId} />
+      </Suspense>
     </div>
   );
 }

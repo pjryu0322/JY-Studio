@@ -50,9 +50,25 @@ const QUALITY_PIPELINE_STEPS = [
 export function AdminWorkerZipGenerationCard({
   packId,
   onReviewDetailRefresh,
+  onPhaseChange,
+  qualityRefreshRequestKey = 0,
+  preferQualitySection = false,
 }: {
   readonly packId: string;
   readonly onReviewDetailRefresh?: () => void | Promise<void>;
+  readonly onPhaseChange?: (
+    phase:
+      | "NONE"
+      | "REQUESTED"
+      | "ACCEPTED"
+      | "REJECTED"
+      | "PROCESSING"
+      | "COMPLETED"
+      | "FAILED",
+  ) => void;
+  /** Bump to trigger a quality refresh from a parent next-action CTA. */
+  readonly qualityRefreshRequestKey?: number;
+  readonly preferQualitySection?: boolean;
 }) {
   const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
   const [running, setRunning] = useState(false);
@@ -98,15 +114,28 @@ export function AdminWorkerZipGenerationCard({
 
   const loadState = useCallback(async () => {
     try {
-      setState(await fetchAdminWorkerZipRequestState(packId));
+      const next = await fetchAdminWorkerZipRequestState(packId);
+      setState(next);
+      onPhaseChange?.(next.requestStatus);
     } catch {
       setState(null);
+      onPhaseChange?.("NONE");
     }
-  }, [packId]);
+  }, [packId, onPhaseChange]);
 
   useEffect(() => {
     void loadState();
   }, [loadState]);
+
+  useEffect(() => {
+    if (state?.requestStatus) onPhaseChange?.(state.requestStatus);
+  }, [state?.requestStatus, onPhaseChange]);
+
+  useEffect(() => {
+    if (!preferQualitySection) return;
+    const el = document.getElementById("admin-quality-section");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [preferQualitySection]);
 
   const onAccept = async () => {
     if (accepting || running || rejecting) return;
@@ -214,18 +243,29 @@ export function AdminWorkerZipGenerationCard({
         const data = await fetchAdminReviewDetail(packId);
         setEvidenceDetail(data.detail);
       } catch (err) {
-        setEvidenceError(err instanceof Error ? err.message : "판단 근거를 불러오지 못했습니다.");
+        setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
       } finally {
         setEvidenceLoading(false);
       }
       void onReviewDetailRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "판단 근거 품질 점검에 실패했습니다.");
+      setError(err instanceof Error ? err.message : "품질 점검에 실패했습니다.");
     } finally {
       setQualityRefreshing(false);
       setQualityStartedAt(null);
     }
   };
+
+  const qualityRefreshKeyRef = useRef(0);
+  useEffect(() => {
+    if (!qualityRefreshRequestKey || qualityRefreshRequestKey === qualityRefreshKeyRef.current) {
+      return;
+    }
+    qualityRefreshKeyRef.current = qualityRefreshRequestKey;
+    void onQualityRefresh();
+    // Intentionally only react to the parent request key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onQualityRefresh closes over latest state
+  }, [qualityRefreshRequestKey]);
 
   const reloadEvidenceDetail = async () => {
     setEvidenceLoading(true);
@@ -236,7 +276,7 @@ export function AdminWorkerZipGenerationCard({
       setQualityResult((prev) => prev ?? buildQualitySnapshotFromDetail(data.detail, packId));
       void onReviewDetailRefresh?.();
     } catch (err) {
-      setEvidenceError(err instanceof Error ? err.message : "판단 근거를 불러오지 못했습니다.");
+      setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
       setEvidenceDetail(null);
     } finally {
       setEvidenceLoading(false);
@@ -291,7 +331,7 @@ export function AdminWorkerZipGenerationCard({
         setQualityResult((prev) => prev ?? buildQualitySnapshotFromDetail(data.detail, packId));
       } catch (err) {
         if (cancelled) return;
-        setEvidenceError(err instanceof Error ? err.message : "판단 근거를 불러오지 못했습니다.");
+        setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
       } finally {
         if (!cancelled) setEvidenceLoading(false);
       }
@@ -463,7 +503,7 @@ export function AdminWorkerZipGenerationCard({
               지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
             </p>
             <p className="mt-1 text-[11px] text-emerald-800">
-              Worker 작업 내역을 확인한 뒤, 아래 판단 근거 품질 점검을 실행해 주세요.
+              Worker 작업 내역을 확인한 뒤, 아래 품질 점검을 실행해 주세요.
             </p>
           </div>
         ) : null}
@@ -525,11 +565,14 @@ export function AdminWorkerZipGenerationCard({
       <AdminWorkerZipRunsPanel packId={packId} refreshKey={runsRefreshKey} />
 
       {generationDone ? (
-        <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-          <p className="text-sm font-bold text-slate-900">판단 근거 품질 점검</p>
+        <section
+          id="admin-quality-section"
+          className="scroll-mt-24 space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+        >
+          <p className="text-sm font-bold text-slate-900">품질 점검</p>
           <p className="text-xs text-slate-600">
             원천 문서 검증 → 구조/품질 → 청킹 품질 → 검색 품질 평가를 실제 데이터로 실행합니다.
-            결과는 아래 품질점검 내역에 반영됩니다.
+            결과는 아래 품질 점검 결과에 반영됩니다.
             자료가 크면 수 분이 걸릴 수 있습니다.
           </p>
           <button
@@ -538,7 +581,7 @@ export function AdminWorkerZipGenerationCard({
             disabled={!canQualityRefresh}
             className="min-h-[40px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
           >
-            {qualityRefreshing ? "품질 점검 실행 중…" : "판단 근거 품질 점검 실행"}
+            {qualityRefreshing ? "품질 점검 실행 중…" : "품질 점검 실행"}
           </button>
 
           {qualityRefreshing ? (
@@ -763,7 +806,7 @@ function QualityCheckHistoryCard({
               >
                 ▸
               </span>
-              품질점검 내역
+              품질 점검 결과
             </button>
             <button
               type="button"
@@ -856,7 +899,7 @@ function QualityCheckHistoryCard({
           </div>
 
           {loading ? (
-            <p className="text-sm text-store-muted">판단 근거를 불러오는 중…</p>
+            <p className="text-sm text-store-muted">품질 점검 결과를 불러오는 중…</p>
           ) : error ? (
             <div className="space-y-2">
               <p className="text-sm text-red-700">{error}</p>
@@ -871,7 +914,7 @@ function QualityCheckHistoryCard({
           ) : detail ? (
             <AdminReviewWarningIssuesTab detail={detail} />
           ) : (
-            <p className="text-sm text-store-muted">표시할 판단 근거가 없습니다.</p>
+            <p className="text-sm text-store-muted">표시할 품질 점검 결과가 없습니다.</p>
           )}
         </>
       )}
