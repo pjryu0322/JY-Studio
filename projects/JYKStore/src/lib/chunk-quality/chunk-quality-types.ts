@@ -14,6 +14,8 @@ export type ChunkQualitySourceDocumentInput = {
   id: string;
   sourceType: string;
   validationStatus: string;
+  /** Optional; used to skip coverage blockers for title-only / non-chunkable stubs. */
+  content?: string | null;
 };
 
 export type ChunkQualityChunkInput = {

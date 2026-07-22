@@ -119,9 +119,13 @@ describe("docling import UX sources", () => {
     assert.equal(ADMIN_REVIEW_TAB_DOCLING, "처리·검증");
 
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(page.includes("AdminReviewProcessingEvidenceTab"));
-    assert.ok(page.includes("includeProcessing"));
-    assert.ok(page.includes("fetchAdminDoclingImportApi"));
+    assert.ok(!page.includes("AdminReviewProcessingEvidenceTab"));
+    assert.ok(!page.includes("includeProcessing"));
+    assert.ok(!page.includes("fetchAdminDoclingImportApi"));
+    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
+
+    const processing = readSource("src/components/AdminReviewProcessingEvidenceTab.tsx");
+    assert.ok(processing.includes("AdminReview"));
 
     const facade = readSource("src/components/AdminReviewDoclingImportTab.tsx");
     assert.ok(facade.includes("AdminReviewProcessingEvidenceTab"));

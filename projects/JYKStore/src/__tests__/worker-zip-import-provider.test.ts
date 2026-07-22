@@ -16,6 +16,8 @@ import {
 } from "../lib/python-worker/worker-zip-generation-bridge.ts";
 import {
   acceptAdminWorkerZipRequest,
+  acknowledgeProviderWorkerZipRejection,
+  cancelAdminWorkerZipRejection,
   getProviderWorkerZipRequestState,
   listAdminWorkerZipRequests,
   mapWorkerZipFailureCode,
@@ -578,6 +580,8 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");
     assert.match(queue, /fetchAdminWorkerZipRequests/);
     assert.match(queue, /접수하고 생성 실행/);
+    assert.match(queue, /품질 점검·계속하기/);
+    assert.match(queue, /생성 완료/);
   });
 });
 
@@ -764,6 +768,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
             {
               packId: "packA",
               createdAt: new Date(2),
+              status: "PENDING",
               pack: {
                 name: "A",
                 providerProfile: { displayName: "Prov A" },
@@ -773,6 +778,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
             {
               packId: "packA",
               createdAt: new Date(1),
+              status: "PENDING",
               pack: {
                 name: "A",
                 providerProfile: { displayName: "Prov A" },
@@ -782,6 +788,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
             {
               packId: "packB",
               createdAt: new Date(0),
+              status: "PASS",
               pack: { name: "B", providerProfile: null, versions: [] },
             },
           ],
@@ -799,8 +806,11 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal(items[0]!.packId, "packA");
     assert.equal(items[0]!.originalFileName, "a.zip");
     assert.equal(items[0]!.providerName, "Prov A");
+    assert.equal(items[0]!.phase, "REQUESTED");
     assert.equal(items[1]!.packId, "packB");
     assert.equal(items[1]!.originalFileName, null);
+    assert.equal(items[1]!.phase, "COMPLETED");
+    assert.equal(items[1]!.accepted, true);
   });
 
   it("withdrawProviderWorkerZipRequest removes a pending request and retires the marker", async () => {
@@ -1153,16 +1163,23 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
   function fakeReject(overrides?: {
     findFirstRun?: () => Promise<{ status: string } | null>;
     markerStatus?: string;
-    rejection?: { reason: string; rejectedAt: string; rejectedByUserId: string };
+    rejection?: {
+      reason: string;
+      rejectedAt: string;
+      rejectedByUserId: string;
+      acknowledgedAt?: string;
+      retiredMarkerIds?: string[];
+      previousMarkerStatus?: "PENDING" | "RUNNING" | "PASS";
+    };
   }) {
     const marked: Record<string, unknown>[] = [];
     let rejectedWith: Record<string, unknown> | null = null;
     // A rejected request has its marker retired (SKIPPED) — no open marker coexists.
     const markerRuns = overrides?.markerStatus
-      ? [{ status: overrides.markerStatus }]
+      ? [{ id: "marker-1", status: overrides.markerStatus }]
       : overrides?.rejection
         ? []
-        : [{ status: "PENDING" }];
+        : [{ id: "marker-1", status: "PENDING" }];
     const prismaClient = {
       pipelineRun: {
         findFirst: async ({ where }: { where: { status?: unknown; triggerType?: string } }) => {
@@ -1172,6 +1189,21 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
           }
           // last WORKER_ZIP_IMPORT run
           return overrides?.findFirstRun ? overrides.findFirstRun() : Promise.resolve(null);
+        },
+        findMany: async () => {
+          // Snapshot of markers retired on reject (PENDING | RUNNING | PASS).
+          if (overrides?.rejection) return [];
+          if (overrides?.markerStatus) {
+            return [{ id: "marker-1", status: overrides.markerStatus }];
+          }
+          const last = overrides?.findFirstRun ? await overrides.findFirstRun() : null;
+          if (last?.status === "PASS") {
+            return [{ id: "marker-1", status: "PASS" }];
+          }
+          if (last?.status === "FAIL") {
+            return [{ id: "marker-1", status: "PENDING" }];
+          }
+          return [{ id: "marker-1", status: "PENDING" }];
         },
         updateMany: async ({ data }: { data: Record<string, unknown> }) => {
           marked.push(data);
@@ -1203,7 +1235,7 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
           return { originalFileName: "a.zip" };
         }) as never,
       });
-    return { call, marked, getRejectedWith: () => rejectedWith };
+    return { call, marked, getRejectedWith: () => rejectedWith, prismaClient };
   }
 
   it("rejects a REQUESTED request, records the reason, and retires the marker (SKIPPED)", async () => {
@@ -1229,13 +1261,151 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
     );
   });
 
-  it("blocks rejection after completion (PASS)", async () => {
+  it("allows rejection after generation completion (PASS) while pack stays DRAFT", async () => {
     const h = fakeReject({ findFirstRun: async () => ({ status: "PASS" }) });
+    const res = await h.call("생성 결과 품질이 기준에 미달합니다.");
+    assert.equal(res.requestStatus, "REJECTED");
+    assert.equal(h.getRejectedWith()!.reason, "생성 결과 품질이 기준에 미달합니다.");
+    assert.equal(h.marked[0]!.status, "SKIPPED");
+  });
+
+  it("allows rejection after generation failure (FAIL)", async () => {
+    const h = fakeReject({ findFirstRun: async () => ({ status: "FAIL" }) });
+    const res = await h.call("생성 실패 후 자료 재요청");
+    assert.equal(res.requestStatus, "REJECTED");
+    assert.equal(h.marked[0]!.status, "SKIPPED");
+  });
+
+  it("cancelAdminWorkerZipRejection restores markers until Provider acknowledges", async () => {
+    let cleared = false;
+    const marked: Record<string, unknown>[] = [];
+    const res = await cancelAdminWorkerZipRejection({
+      adminUserId: "admin-1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {
+        pipelineRun: {
+          findFirst: async ({ where }: { where: { status?: unknown; triggerType?: string } }) => {
+            // Open request markers are PENDING|RUNNING only — PASS is not "open".
+            if (where?.status && typeof where.status === "object") return null;
+            return { status: "PASS", createdAt: new Date(1) };
+          },
+          updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+            marked.push(data);
+            return { count: 1 };
+          },
+        },
+      } as never,
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+        rejection: {
+          reason: "품질 미달",
+          rejectedAt: "2026-01-02T00:00:00.000Z",
+          rejectedByUserId: "admin-1",
+          retiredMarkerIds: ["marker-1"],
+          previousMarkerStatus: "PASS",
+        },
+      })) as never,
+      clearRejection: (async () => {
+        cleared = true;
+        return {
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+        };
+      }) as never,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(cleared, true);
+    assert.equal(marked[0]!.status, "PASS");
+    assert.equal(res.requestStatus, "COMPLETED");
+  });
+
+  it("blocks cancel once Provider acknowledged the rejection", async () => {
     await assert.rejects(
-      h.call("too late"),
+      cancelAdminWorkerZipRejection({
+        adminUserId: "admin-1",
+        clientId: "cl1",
+        packId: "packA",
+        prismaClient: { pipelineRun: { findFirst: async () => null, updateMany: async () => ({ count: 0 }) } } as never,
+        resolvePack: async () => ({
+          pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+          version: { id: "verA", version: "1.0.0", language: "KO" },
+        }),
+        getRequestMetadata: (async () => ({
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+          rejection: {
+            reason: "품질 미달",
+            rejectedAt: "2026-01-02T00:00:00.000Z",
+            rejectedByUserId: "admin-1",
+            acknowledgedAt: "2026-01-03T00:00:00.000Z",
+            acknowledgedByUserId: "u1",
+          },
+        })) as never,
+      }),
       (err: unknown) =>
-        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_ALREADY_COMPLETED",
+        err instanceof WorkerZipImportServiceError && err.code === "REJECTION_ALREADY_ACKNOWLEDGED",
     );
+  });
+
+  it("acknowledgeProviderWorkerZipRejection records acknowledgedAt", async () => {
+    let ackInput: Record<string, unknown> | null = null;
+    const res = await acknowledgeProviderWorkerZipRejection({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      prismaClient: {} as never,
+      findProfile: async () => ({ id: "prof-1" }),
+      resolvePack: async () => ({
+        pack: { packId: "packA", name: "A", status: "DRAFT" as never },
+        version: { id: "verA", version: "1.0.0", language: "KO" },
+      }),
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+        rejection: {
+          reason: "품질 미달",
+          rejectedAt: "2026-01-02T00:00:00.000Z",
+          rejectedByUserId: "admin-1",
+        },
+      })) as never,
+      acknowledgeRejection: (async (input: Record<string, unknown>) => {
+        ackInput = input;
+        return {
+          originalFileName: "a.zip",
+          fileSize: 1,
+          checksumSha256: "h",
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          uploadedByUserId: "u1",
+          rejection: {
+            reason: "품질 미달",
+            rejectedAt: "2026-01-02T00:00:00.000Z",
+            rejectedByUserId: "admin-1",
+            acknowledgedAt: "2026-01-03T00:00:00.000Z",
+            acknowledgedByUserId: "u1",
+          },
+        };
+      }) as never,
+    });
+    assert.equal(res.requestStatus, "REJECTED");
+    assert.equal(ackInput!.acknowledgedByUserId, "u1");
   });
 
   it("blocks a duplicate rejection", async () => {
@@ -1424,9 +1594,13 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
     // Admin card wires reject form, live stepper polling, and the runs panel.
     const adminCard = read("src/components/AdminWorkerZipGenerationCard.tsx");
     assert.match(adminCard, /자료 반려/);
+    assert.match(adminCard, /반려 취소/);
+    assert.match(adminCard, /cancelAdminWorkerZipRejection/);
     assert.match(adminCard, /fetchAdminWorkerZipStatus/);
     assert.match(adminCard, /setInterval/);
     assert.match(adminCard, /AdminWorkerZipRunsPanel/);
+    const cancelRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/reject/cancel/route.ts");
+    assert.match(cancelRoute, /cancelAdminWorkerZipRejection/);
 
     // Provider card shows the rejection reason and never leaks internal terms.
     const providerCard = read(
@@ -1434,5 +1608,11 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
     );
     assert.match(providerCard, /생성 요청 반려/);
     assert.match(providerCard, /사유/);
+    assert.match(providerCard, /반려 사유 확인/);
+    assert.match(providerCard, /acknowledgeProviderWorkerZipRejectionApi/);
+    const ackRoute = read(
+      "src/app/api/v1/provider/packs/[packId]/worker-zip/acknowledge-rejection/route.ts",
+    );
+    assert.match(ackRoute, /acknowledgeProviderWorkerZipRejection/);
   });
 });

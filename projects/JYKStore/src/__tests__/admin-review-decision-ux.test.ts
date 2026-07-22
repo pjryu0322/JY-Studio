@@ -587,13 +587,15 @@ describe("admin review decision state", () => {
 });
 
 describe("admin review decision UX wiring", () => {
-  it("puts decision card above evidence tabs without advanced Builder actions", () => {
+  it("puts worker zip card on review detail without decision/evidence Builder actions", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
 
-    assert.ok(page.includes("AdminReviewAcceptTab"));
-    assert.ok(page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(!page.includes("AdminReviewAcceptTab"));
+    assert.ok(!page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
+    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
     assert.ok(page.includes("AdminReviewReceiptInfoCard"));
     assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes("AdminReviewDetailSections"));

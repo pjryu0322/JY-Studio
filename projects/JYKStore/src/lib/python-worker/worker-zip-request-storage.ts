@@ -23,6 +23,16 @@ export type WorkerZipRequestRejection = {
   /** ISO 8601 timestamp of the rejection. */
   rejectedAt: string;
   rejectedByUserId: string;
+  /**
+   * Set when the Provider confirms they have seen the rejection.
+   * Until then, Admin may cancel (undo) the rejection.
+   */
+  acknowledgedAt?: string;
+  acknowledgedByUserId?: string;
+  /** PipelineRun ids retired to SKIPPED at reject time (for cancel restore). */
+  retiredMarkerIds?: string[];
+  /** Marker status before reject — restored on cancel. */
+  previousMarkerStatus?: "PENDING" | "RUNNING" | "PASS";
 };
 
 export type WorkerZipRequestMetadata = {
@@ -131,32 +141,12 @@ export async function getWorkerZipRequestMetadata(
   }
 }
 
-/**
- * P7.5: Admin "자료 반려" — attach a rejection record to the request sidecar while
- * KEEPING the original ZIP (audit/traceability). Returns the updated metadata, or
- * null when there is no request to reject.
- */
-export async function markWorkerZipRequestRejected(
-  input: WorkerZipRequestLocator & {
-    reason: string;
-    rejectedByUserId: string;
-    now?: () => Date;
-  },
-): Promise<WorkerZipRequestMetadata | null> {
+async function writeRequestMetadata(
+  input: WorkerZipRequestLocator & { metadata: WorkerZipRequestMetadata },
+): Promise<WorkerZipRequestMetadata> {
   const storage = resolveStorage(input);
   const objectKey = zipKeyFor(input.packId, input.packVersionId);
-  const existing = await getWorkerZipRequestMetadata(input);
-  if (!existing) return null;
-
-  const updated: WorkerZipRequestMetadata = {
-    ...existing,
-    rejection: {
-      reason: input.reason,
-      rejectedAt: (input.now?.() ?? new Date()).toISOString(),
-      rejectedByUserId: input.rejectedByUserId,
-    },
-  };
-  const metaBytes = new TextEncoder().encode(JSON.stringify(updated));
+  const metaBytes = new TextEncoder().encode(JSON.stringify(input.metadata));
   await storage.putSmallObject({
     packId: input.packId,
     versionId: input.packVersionId,
@@ -167,7 +157,79 @@ export async function markWorkerZipRequestRejected(
     checksumSha256: createHash("sha256").update(metaBytes).digest("hex"),
     objectKey: metaKeyFor(objectKey),
   });
-  return updated;
+  return input.metadata;
+}
+
+/**
+ * P7.5: Admin "자료 반려" — attach a rejection record to the request sidecar while
+ * KEEPING the original ZIP (audit/traceability). Returns the updated metadata, or
+ * null when there is no request to reject.
+ */
+export async function markWorkerZipRequestRejected(
+  input: WorkerZipRequestLocator & {
+    reason: string;
+    rejectedByUserId: string;
+    now?: () => Date;
+    retiredMarkerIds?: string[];
+    previousMarkerStatus?: "PENDING" | "RUNNING" | "PASS";
+  },
+): Promise<WorkerZipRequestMetadata | null> {
+  const existing = await getWorkerZipRequestMetadata(input);
+  if (!existing) return null;
+
+  const updated: WorkerZipRequestMetadata = {
+    ...existing,
+    rejection: {
+      reason: input.reason,
+      rejectedAt: (input.now?.() ?? new Date()).toISOString(),
+      rejectedByUserId: input.rejectedByUserId,
+      ...(input.retiredMarkerIds?.length
+        ? { retiredMarkerIds: [...input.retiredMarkerIds] }
+        : {}),
+      ...(input.previousMarkerStatus
+        ? { previousMarkerStatus: input.previousMarkerStatus }
+        : {}),
+    },
+  };
+  return writeRequestMetadata({ ...input, metadata: updated });
+}
+
+/**
+ * Clear Admin rejection from the sidecar (반려 취소). Keeps the ZIP.
+ * Returns updated metadata, or null when no request / no rejection exists.
+ */
+export async function clearWorkerZipRequestRejection(
+  locator: WorkerZipRequestLocator,
+): Promise<WorkerZipRequestMetadata | null> {
+  const existing = await getWorkerZipRequestMetadata(locator);
+  if (!existing?.rejection) return null;
+  const { rejection: _removed, ...rest } = existing;
+  return writeRequestMetadata({ ...locator, metadata: rest });
+}
+
+/**
+ * Provider confirms they have read the rejection reason. After this, Admin
+ * cannot cancel the rejection.
+ */
+export async function acknowledgeWorkerZipRequestRejection(
+  input: WorkerZipRequestLocator & {
+    acknowledgedByUserId: string;
+    now?: () => Date;
+  },
+): Promise<WorkerZipRequestMetadata | null> {
+  const existing = await getWorkerZipRequestMetadata(input);
+  if (!existing?.rejection) return null;
+  if (existing.rejection.acknowledgedAt) return existing;
+
+  const updated: WorkerZipRequestMetadata = {
+    ...existing,
+    rejection: {
+      ...existing.rejection,
+      acknowledgedAt: (input.now?.() ?? new Date()).toISOString(),
+      acknowledgedByUserId: input.acknowledgedByUserId,
+    },
+  };
+  return writeRequestMetadata({ ...input, metadata: updated });
 }
 
 /** Read the requested ZIP bytes for Admin execution, or null when absent. */

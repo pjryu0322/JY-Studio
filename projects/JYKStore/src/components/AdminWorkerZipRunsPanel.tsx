@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchAdminWorkerZipRuns,
   type AdminWorkerZipRunView,
 } from "@/lib/admin-review-api";
+import { buildWorkerZipRunsMarkdown } from "@/lib/worker-zip-runs-markdown";
 import { describeWorkerZipStepLabel, formatDurationMs } from "@/lib/worker-zip-step-labels";
 
 /**
@@ -12,6 +13,10 @@ import { describeWorkerZipStepLabel, formatDurationMs } from "@/lib/worker-zip-s
  * running/completed/failed history with the current step, timing, result summary,
  * and (for failures) the failing step + error. `refreshKey` lets the parent force
  * a reload after an execution finishes.
+ *
+ * Default view: only the current (latest) run with step logs always visible.
+ * Past runs are not listed in the UI; the title-adjacent download still exports
+ * current + past runs as Markdown.
  */
 export function AdminWorkerZipRunsPanel({
   packId,
@@ -22,7 +27,7 @@ export function AdminWorkerZipRunsPanel({
 }) {
   const [runs, setRuns] = useState<AdminWorkerZipRunView[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,115 +45,162 @@ export function AdminWorkerZipRunsPanel({
     void load();
   }, [load, refreshKey]);
 
+  // Prefer an in-flight run as "current"; otherwise the newest (API returns newest first).
+  const { currentRun, pastRuns } = useMemo(() => {
+    const runningIdx = runs.findIndex((r) => r.status === "RUNNING");
+    const currentIdx = runningIdx >= 0 ? runningIdx : 0;
+    const current = runs[currentIdx] ?? null;
+    const past = runs.filter((_, i) => i !== currentIdx);
+    return { currentRun: current, pastRuns: past };
+  }, [runs]);
+
+  const onDownloadMarkdown = useCallback(() => {
+    if (runs.length === 0) return;
+    const markdown = buildWorkerZipRunsMarkdown({
+      packId,
+      currentRun,
+      pastRuns,
+    });
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadTextFile(`worker-runs-${packId}-${stamp}.md`, markdown);
+  }, [packId, runs.length, currentRun, pastRuns]);
+
   return (
     <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-slate-900">Worker 작업 내역</h3>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="text-xs text-slate-500 underline disabled:opacity-60"
-          disabled={loading}
-        >
-          {loading ? "불러오는 중…" : "새로고침"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+            className="flex items-center gap-1.5 text-sm font-bold text-slate-900"
+          >
+            <span
+              aria-hidden
+              className={`text-slate-400 transition-transform ${collapsed ? "" : "rotate-90"}`}
+            >
+              ▸
+            </span>
+            Worker 작업 내역
+            {collapsed && runs.length > 0 ? (
+              <span className="text-xs font-normal text-slate-400">({runs.length})</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            title="새로고침"
+            aria-label="새로고침"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
+          >
+            <RefreshIcon spinning={loading} />
+          </button>
+          <button
+            type="button"
+            onClick={onDownloadMarkdown}
+            disabled={runs.length === 0}
+            title="작업 내역 MD 다운로드"
+            aria-label="작업 내역 MD 다운로드"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
+          >
+            <DownloadIcon />
+          </button>
+        </div>
       </div>
 
-      {runs.length === 0 ? (
+      {collapsed ? null : runs.length === 0 ? (
         <p className="text-xs text-slate-500">아직 실행된 작업이 없습니다.</p>
       ) : (
-        <ul className="space-y-2">
-          {runs.map((run) => {
-            const failed = run.status === "FAIL";
-            const running = run.status === "RUNNING";
-            return (
-              <li
-                key={run.runId}
-                className={`rounded-xl border px-3 py-2 text-xs ${
-                  failed
-                    ? "border-red-200 bg-red-50"
-                    : running
-                      ? "border-indigo-200 bg-indigo-50"
-                      : "border-slate-200 bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`font-semibold ${
-                      failed ? "text-red-800" : running ? "text-indigo-800" : "text-slate-900"
-                    }`}
-                  >
-                    {runStatusLabel(run.status)}
-                  </span>
-                  <span className="text-slate-500">{formatDateTime(run.startedAt)}</span>
-                </div>
-
-                <dl className="mt-1 space-y-0.5 text-slate-600">
-                  <Row label="현재 단계" value={run.currentStepLabel || describeWorkerZipStepLabel(run.currentStep)} />
-                  <Row
-                    label="경과 시간"
-                    value={
-                      run.durationMs != null
-                        ? formatDurationMs(run.durationMs)
-                        : running
-                          ? "진행 중"
-                          : "-"
-                    }
-                  />
-                  {run.summary ? (
-                    <>
-                      {typeof run.summary.excludedFiles === "number" ? (
-                        <Row label="제외 파일" value={`${run.summary.excludedFiles}개`} />
-                      ) : null}
-                      {typeof run.summary.importedChunkCount === "number" ? (
-                        <Row label="검색 청크" value={`${run.summary.importedChunkCount}개`} />
-                      ) : null}
-                      {typeof run.summary.importedEmbeddingCount === "number" ? (
-                        <Row label="검색데이터" value={`${run.summary.importedEmbeddingCount}개`} />
-                      ) : null}
-                    </>
-                  ) : null}
-                </dl>
-
-                {failed ? (
-                  <div className="mt-1 rounded-lg bg-white/70 px-2 py-1 text-red-900">
-                    <p className="font-semibold">
-                      실패 단계: {run.currentStepLabel || describeWorkerZipStepLabel(run.currentStep) || "-"}
-                    </p>
-                    {run.errorMessage ? <p className="mt-0.5">오류: {run.errorMessage}</p> : null}
-                  </div>
-                ) : null}
-
-                {run.stepLogs.length > 0 ? (
-                  <div className="mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setExpanded((v) => (v === run.runId ? null : run.runId))}
-                      className="text-[11px] text-slate-500 underline"
-                    >
-                      {expanded === run.runId ? "단계 로그 접기" : "단계 로그 펼치기"}
-                    </button>
-                    {expanded === run.runId ? (
-                      <ol className="mt-1 space-y-0.5">
-                        {run.stepLogs.map((log, idx) => (
-                          <li key={`${run.runId}-${idx}`} className="flex justify-between gap-2 text-slate-600">
-                            <span>
-                              {stepStatusMark(log.status)} {describeWorkerZipStepLabel(log.step)}
-                              {log.message ? ` — ${log.message}` : ""}
-                            </span>
-                            <span className="text-slate-400">{formatTime(log.createdAt)}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="space-y-2">
+          {currentRun ? <RunCard run={currentRun} /> : null}
+        </div>
       )}
     </section>
+  );
+}
+
+function RunCard({ run }: { readonly run: AdminWorkerZipRunView }) {
+  const failed = run.status === "FAIL";
+  const running = run.status === "RUNNING";
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2 text-xs ${
+        failed
+          ? "border-red-200 bg-red-50"
+          : running
+            ? "border-indigo-200 bg-indigo-50"
+            : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={`font-semibold ${
+            failed ? "text-red-800" : running ? "text-indigo-800" : "text-slate-900"
+          }`}
+        >
+          {runStatusLabel(run.status)}
+        </span>
+        <span className="text-slate-500">{formatDateTime(run.startedAt)}</span>
+      </div>
+
+      <dl className="mt-1 space-y-0.5 text-slate-600">
+        <Row
+          label="현재 단계"
+          value={run.currentStepLabel || describeWorkerZipStepLabel(run.currentStep)}
+        />
+        <Row
+          label="경과 시간"
+          value={
+            run.durationMs != null
+              ? formatDurationMs(run.durationMs)
+              : running
+                ? "진행 중"
+                : "-"
+          }
+        />
+        {run.summary ? (
+          <>
+            {typeof run.summary.excludedFiles === "number" ? (
+              <Row label="제외 파일" value={`${run.summary.excludedFiles}개`} />
+            ) : null}
+            {typeof run.summary.importedChunkCount === "number" ? (
+              <Row label="검색 청크" value={`${run.summary.importedChunkCount}개`} />
+            ) : null}
+            {typeof run.summary.importedEmbeddingCount === "number" ? (
+              <Row label="검색데이터" value={`${run.summary.importedEmbeddingCount}개`} />
+            ) : null}
+          </>
+        ) : null}
+      </dl>
+
+      {failed ? (
+        <div className="mt-1 rounded-lg bg-white/70 px-2 py-1 text-red-900">
+          <p className="font-semibold">
+            실패 단계:{" "}
+            {run.currentStepLabel || describeWorkerZipStepLabel(run.currentStep) || "-"}
+          </p>
+          {run.errorMessage ? <p className="mt-0.5">오류: {run.errorMessage}</p> : null}
+        </div>
+      ) : null}
+
+      {run.stepLogs.length > 0 ? (
+        <ol className="mt-2 space-y-0.5 border-t border-slate-200/80 pt-2">
+          {run.stepLogs.map((log, idx) => (
+            <li
+              key={`${run.runId}-${idx}`}
+              className="flex justify-between gap-2 text-slate-600"
+            >
+              <span>
+                {stepStatusMark(log.status)} {describeWorkerZipStepLabel(log.step)}
+                {log.message ? ` — ${log.message}` : ""}
+              </span>
+              <span className="text-slate-400">{formatTime(log.createdAt)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
   );
 }
 
@@ -159,6 +211,59 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
       <dd className="font-medium text-slate-900">{value}</dd>
     </div>
   );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      className="h-4 w-4"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RefreshIcon({ spinning = false }: { readonly spinning?: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      className={`h-4 w-4 ${spinning ? "animate-spin" : ""}`}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M16.5 10a6.5 6.5 0 1 1-1.7-4.4M16.5 3.5V7H13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function downloadTextFile(filename: string, contents: string): void {
+  const blob = new Blob([contents], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function runStatusLabel(status: AdminWorkerZipRunView["status"]): string {

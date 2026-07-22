@@ -7,11 +7,18 @@
  * them directly without touching the Docling bundle machinery.
  *
  * Idempotent: re-running for the same version reuses existing rows (matched by
- * checksum, else fileName) instead of creating duplicates.
+ * checksum, else fileName) instead of creating duplicates. When reusing, empty
+ * `content` is backfilled from the Worker normalized document so legacy quality
+ * gates (source validation / structure coverage) can actually run.
  */
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import type { WorkerOutputImportPayload } from "@/lib/python-worker/worker-output-import-service";
+import {
+  buildWorkerSourceDocumentContent,
+  resolveWorkerSourceDocumentFormat,
+  resolveWorkerSourceDocumentType,
+} from "@/lib/python-worker/worker-source-document-content";
 
 /** legacySourceType marker for SourceDocuments created from the ZIP Worker path. */
 export const WORKER_ZIP_SOURCE_LEGACY_TYPE = "WORKER_ZIP_SOURCE";
@@ -59,6 +66,9 @@ export async function ensureWorkerSourceDocuments(
     const checksum = checksumByPath.get(sourcePath) ?? null;
     const fileName = basename(sourcePath);
     const title = doc.title?.trim() || fileName || sourcePath;
+    const content = buildWorkerSourceDocumentContent(doc);
+    const sourceType = resolveWorkerSourceDocumentType(doc);
+    const sourceFormat = resolveWorkerSourceDocumentFormat(doc);
 
     const existing = await client.sourceDocument.findFirst({
       where: {
@@ -66,9 +76,24 @@ export async function ensureWorkerSourceDocuments(
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
         ...(checksum ? { checksum } : { fileName }),
       },
-      select: { id: true },
+      select: { id: true, content: true },
     });
     if (existing) {
+      // Backfill content/typing when an earlier Worker import left the row empty
+      // (pre-quality-wiring). Do not clobber a non-empty content the Admin edited.
+      if (!existing.content?.trim() && content.trim()) {
+        await client.sourceDocument.update({
+          where: { id: existing.id },
+          data: {
+            content,
+            sourceType,
+            sourceFormat,
+            title,
+            ...(productVersion ? { productVersion } : {}),
+            validationStatus: "NOT_CHECKED",
+          },
+        });
+      }
       mapping[sourcePath] = existing.id;
       continue;
     }
@@ -77,11 +102,12 @@ export async function ensureWorkerSourceDocuments(
       data: {
         versionId,
         title,
-        sourceType: "ETC",
+        sourceType,
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
-        sourceFormat: "TEXT",
+        sourceFormat,
         fileName,
         checksum,
+        content,
         productVersion,
         validationStatus: "NOT_CHECKED",
       },

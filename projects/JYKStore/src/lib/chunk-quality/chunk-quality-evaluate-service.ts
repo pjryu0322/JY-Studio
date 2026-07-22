@@ -269,6 +269,7 @@ export async function evaluatePackChunkQuality(input: {
       id: doc.id,
       sourceType: doc.sourceType,
       validationStatus: doc.validationStatus,
+      content: doc.content,
     })),
     chunks: version.chunks.map((chunk) => ({
       id: chunk.id,

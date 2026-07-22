@@ -119,6 +119,8 @@ export {
 
 export {
   acceptAdminWorkerZipRequest,
+  acknowledgeProviderWorkerZipRejection,
+  cancelAdminWorkerZipRejection,
   getProviderWorkerZipRequestState,
   listAdminWorkerZipRequests,
   mapWorkerZipFailureCode,
@@ -131,7 +133,9 @@ export {
   WORKER_ZIP_REQUEST_TRIGGER,
   WorkerZipImportServiceError,
   type AcceptAdminWorkerZipRequestInput,
+  type AcknowledgeProviderWorkerZipRejectionInput,
   type AdminWorkerZipRequestListItem,
+  type CancelAdminWorkerZipRejectionInput,
   type ProviderWorkerZipImportResult,
   type ProviderWorkerZipRequestState,
   type ProviderWorkerZipRequestStatus,

@@ -97,6 +97,26 @@ describe("knowledge quality runner", () => {
     assert.notEqual(result.status, "PASS");
   });
 
+  it("does not FAIL solely from many benign WARNING docs when coverage is PASS", () => {
+    // Large Worker ZIP packs can stamp WARNING on hundreds of docs (e.g. ETC
+    // typing). Unbounded warningCount*10 used to zero source/security scores and
+    // force totalScore FAIL despite 100% structure coverage.
+    const structureCoverage = fakeCoverage("PASS");
+    const documents = Array.from({ length: 80 }, (_, i) => ({
+      id: `d${i}`,
+      sourceType: "PRODUCT_MANUAL" as const,
+      title: `doc ${i} overview product`,
+      content: "product overview 개요 feature 기능 install setup configuration api usage",
+      sourceUrl: null,
+      validationStatus: "WARNING" as const,
+      productVersion: "1.0",
+    }));
+    const result = runKnowledgeQuality({ structureCoverage, documents });
+    assert.notEqual(result.status, "FAIL");
+    assert.ok(result.totalScore >= 70, `expected totalScore>=70, got ${result.totalScore}`);
+    assert.ok(result.sourceQualityScore >= 60);
+  });
+
   it("fails when security blocker count on document", () => {
     const structureCoverage = fakeCoverage("PASS");
     const result = runKnowledgeQuality({

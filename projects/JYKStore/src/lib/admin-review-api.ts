@@ -40,6 +40,13 @@ export type AdminWorkerZipRequestState = {
     fileSize: number;
     uploadedAt: string;
     uploadedByUserId: string;
+    rejection?: {
+      reason: string;
+      rejectedAt: string;
+      rejectedByUserId: string;
+      acknowledgedAt?: string;
+      acknowledgedByUserId?: string;
+    };
   } | null;
   lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
   reviewMemo: string | null;
@@ -73,9 +80,10 @@ export type AdminWorkerZipRequestListItem = {
   requestedAt: string;
   originalFileName: string | null;
   accepted: boolean;
+  phase: "REQUESTED" | "ACCEPTED" | "COMPLETED";
 };
 
-/** List DRAFT packs with a pending ZIP generation request (접수 대기). */
+/** List DRAFT packs with open or completed ZIP generation requests. */
 export async function fetchAdminWorkerZipRequests(): Promise<{
   clientId: string;
   items: AdminWorkerZipRequestListItem[];
@@ -182,6 +190,30 @@ export async function rejectAdminWorkerZipRequest(
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
 }
 
+/** Admin 반려 취소 — Provider가 반려 사유를 확인하기 전에만 가능. */
+export async function cancelAdminWorkerZipRejection(
+  packId: string,
+): Promise<{ ok: boolean; packId: string; versionId: string; requestStatus: string; message: string }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/reject/cancel`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; packId?: string; versionId?: string; requestStatus?: string; message?: string; error?: string; code?: string }
+    | null;
+  if (response.ok && data && data.ok === true) {
+    return {
+      ok: true,
+      packId: data.packId ?? packId,
+      versionId: data.versionId ?? "",
+      requestStatus: data.requestStatus ?? "REQUESTED",
+      message: data.message ?? "반려가 취소되었습니다.",
+    };
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
 /** P7.5: one persisted step log line for the Admin stepper / history. */
 export type AdminWorkerZipStepLog = {
   step: string;
@@ -243,6 +275,56 @@ export async function fetchAdminWorkerZipRuns(
     packId: string;
     runs: AdminWorkerZipRunView[];
   };
+}
+
+export type AdminWorkerZipQualityRefreshResult = {
+  ok: true;
+  clientId: string;
+  packId: string;
+  backfilledSourceDocuments: number;
+  retypedSourceDocuments: number;
+  stepsCompleted: string[];
+  warnings: string[];
+  stoppedAt: string | null;
+  readiness: {
+    sourceValidation: {
+      passCount: number;
+      warningCount: number;
+      failCount: number;
+      notCheckedCount: number;
+    };
+    structureCoverageStatus: string | null;
+    knowledgeQualityStatus: string | null;
+    structureQualityMessage: string | null;
+    chunkQualityStatus: string | null;
+    chunkQualityMessage: string | null;
+    retrievalEvaluationStatus: string | null;
+    retrievalEvaluationMessage: string | null;
+    releaseGateStatus: string | null;
+    releaseGateMessage: string | null;
+  };
+};
+
+/**
+ * Run legacy quality gates (원천검증→구조→청킹→검색평가) against Worker ZIP
+ * Store data so admin "판단 근거" blockers update from real reports.
+ */
+export async function runAdminWorkerZipQualityRefresh(
+  packId: string,
+): Promise<AdminWorkerZipQualityRefreshResult> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/quality-refresh`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | AdminWorkerZipQualityRefreshResult
+    | { ok?: false; error?: string; message?: string; code?: string }
+    | null;
+  if (response.ok && data && (data as AdminWorkerZipQualityRefreshResult).ok === true) {
+    return data as AdminWorkerZipQualityRefreshResult;
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
 }
 
 export async function fetchAdminReviewItems(): Promise<AdminReviewListResponse> {

@@ -632,6 +632,25 @@ per-stage progress is now persisted and pollable.
 - API: `GET /api/v1/admin/packs/[packId]/worker-zip/runs` (`listWorkerZipRuns`) →
   recent `WORKER_ZIP_IMPORT` runs with status, current/failed step, timing, counts,
   and expandable step logs. Rendered by `AdminWorkerZipRunsPanel` under the card.
+  The panel header collapses the whole card.
+
+### 판단 근거 quality refresh (option C)
+
+Worker ZIP knowledge build reaches READY with chunks/embeddings/vectors, but the
+admin review "판단 근거" legacy gates still need **real** reports:
+
+- SourceDocuments are created with content flattened from Worker
+  `normalized_documents.json` sections (and typed via path heuristics). Empty
+  rows from earlier imports are backfilled from linked KnowledgeChunks when
+  quality refresh runs.
+- Admin button **판단 근거 품질 점검 실행** →
+  `POST /api/v1/admin/packs/[packId]/worker-zip/quality-refresh` →
+  `refreshWorkerZipReviewReadiness` → `refreshAdminReviewReadiness`
+  (원천검증 → 구조/품질 → 청킹 → 검색평가 → 릴리스 게이트). Does **not**
+  regenerate chunks. Does **not** invent fake PASS — honest FAIL/WARNING is what
+  the review gate shows.
+- Kept separate from generation execute so a large quality pass cannot time out
+  the already-long Worker HTTP request.
 
 ### Terminology
 

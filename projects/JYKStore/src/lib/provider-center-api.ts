@@ -919,6 +919,8 @@ export type ProviderWorkerZipRequestState = {
       reason: string;
       rejectedAt: string;
       rejectedByUserId: string;
+      acknowledgedAt?: string;
+      acknowledgedByUserId?: string;
     };
   } | null;
   lastRun: { status: string; finishedAt: string | null; summary: string | null } | null;
@@ -981,6 +983,29 @@ export async function withdrawProviderWorkerZipRequestApi(
     | null;
   if (response.ok && data && data.ok === true) {
     return { ok: true, packId: data.packId ?? packId, versionId: data.versionId ?? "" };
+  }
+  const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
+  throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/** Provider confirms they have read the Admin rejection reason. */
+export async function acknowledgeProviderWorkerZipRejectionApi(
+  packId: string,
+): Promise<{ ok: boolean; packId: string; versionId: string; message: string }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/worker-zip/acknowledge-rejection`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; packId?: string; versionId?: string; message?: string; error?: string; code?: string }
+    | null;
+  if (response.ok && data && data.ok === true) {
+    return {
+      ok: true,
+      packId: data.packId ?? packId,
+      versionId: data.versionId ?? "",
+      message: data.message ?? "반려 사유를 확인했습니다.",
+    };
   }
   const failure = (data ?? {}) as { error?: string; message?: string; code?: string };
   throw new Error(failure.message ?? failure.error ?? `요청에 실패했습니다. (${response.status})`);

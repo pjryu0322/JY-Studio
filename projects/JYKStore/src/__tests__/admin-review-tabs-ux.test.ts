@@ -144,11 +144,12 @@ describe("admin review evidence tabs UX", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const evidence = readSource("src/components/AdminReviewEvidenceTabs.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
-    assert.ok(page.includes("AdminReviewAcceptTab"));
-    assert.ok(page.includes("AdminReviewEvidenceTabs"));
-    assert.ok(page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
+    assert.ok(!page.includes("AdminReviewAcceptTab"));
+    assert.ok(!page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(!page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
+    assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
+    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
     assert.ok(page.includes("AdminReviewReceiptInfoCard"));
-    assert.ok(page.includes("AdminReviewProcessingEvidenceTab"));
     assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes('activeTab === "accept"'));
     assert.ok(!page.includes('evidenceTab === "advanced"'));
@@ -183,13 +184,13 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(packageTab.includes("검색 평가 Run"));
   });
 
-  it("Case 4/5: decision card always above evidence; receipt card after accept", () => {
+  it("Case 4/5: review detail keeps worker zip + receipt; decision/evidence cards removed", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    const acceptIdx = page.indexOf("<AdminReviewAcceptTab");
-    const evidenceIdx = page.indexOf("<AdminReviewEvidenceTabs");
-    const receiptIdx = page.indexOf("<AdminReviewReceiptInfoCard");
-    assert.ok(acceptIdx > 0 && evidenceIdx > acceptIdx);
-    assert.ok(receiptIdx > acceptIdx && receiptIdx < evidenceIdx);
+    assert.ok(!page.includes("AdminReviewAcceptTab"));
+    assert.ok(!page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
+    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
+    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
     assert.ok(page.includes("isReviewAccepted(detail)"));
 
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
@@ -202,16 +203,17 @@ describe("admin review evidence tabs UX", () => {
 
     const receipt = readSource("src/components/AdminReviewReceiptInfoCard.tsx");
     assert.ok(receipt.includes("ADMIN_REVIEW_RECEIPT_INFO_TITLE"));
-    assert.ok(receipt.includes("ADMIN_REVIEW_CTA_VIEW_PACKAGE"));
-    assert.ok(receipt.includes("onGoToPackageTab"));
+    assert.ok(!receipt.includes("ADMIN_REVIEW_CTA_VIEW_PACKAGE"));
+    assert.ok(!receipt.includes("onGoToPackageTab"));
     assert.equal(ADMIN_REVIEW_RECEIPT_INFO_TITLE, "접수 정보");
     assert.equal(ADMIN_REVIEW_CTA_VIEW_PACKAGE, "제출 패키지 보기");
   });
 
-  it("Case 5: view package button wires to package evidence tab", () => {
+  it("Case 5: package evidence tab is no longer mounted on review detail", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(page.includes('setEvidenceTab("package")'));
-    assert.ok(page.includes("onGoToPackageTab"));
+    assert.ok(!page.includes('setEvidenceTab("package")'));
+    assert.ok(!page.includes("onGoToPackageTab"));
+    assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
   });
 
   it("Case 6: advanced refresh tab is not mounted after Builder freeze", () => {

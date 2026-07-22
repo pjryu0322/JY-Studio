@@ -246,10 +246,13 @@ function detectDuplicateChunks(
   sourceById: Map<string, ChunkQualitySourceDocumentInput>,
 ): {
   duplicateChunkCount: number;
+  /** Exact-content duplicates only — used for the FAIL ratio gate. */
+  exactDuplicateChunkCount: number;
   issues: ChunkQualityIssueDraft[];
   codesByChunkId: Map<string, string[]>;
 } {
   const duplicateChunkIds = new Set<string>();
+  const exactDuplicateChunkIds = new Set<string>();
   const issues: ChunkQualityIssueDraft[] = [];
   const codesByChunkId = new Map<string, string[]>();
   const seenPairs = new Set<string>();
@@ -261,6 +264,7 @@ function detectDuplicateChunks(
     score: number,
   ) => {
     duplicateChunkIds.add(followerId);
+    if (reason === "EXACT") exactDuplicateChunkIds.add(followerId);
     const code = duplicateIssueCode(reason);
     const repCodes = codesByChunkId.get(repId) ?? [];
     if (!repCodes.includes(code)) repCodes.push(code);
@@ -318,6 +322,7 @@ function detectDuplicateChunks(
 
   return {
     duplicateChunkCount: duplicateChunkIds.size,
+    exactDuplicateChunkCount: exactDuplicateChunkIds.size,
     issues,
     codesByChunkId,
   };
@@ -325,6 +330,17 @@ function detectDuplicateChunks(
 
 function isEligibleSource(doc: ChunkQualitySourceDocumentInput): boolean {
   return doc.validationStatus === "PASS" || doc.validationStatus === "WARNING";
+}
+
+/**
+ * Sources too short to ever produce a MIN_CHUNK_CHARS chunk (e.g. Worker ZIP
+ * license/index stubs with title-only backfill) must not BLOCK coverage.
+ */
+function sourceRequiresChunks(doc: ChunkQualitySourceDocumentInput): boolean {
+  const len = doc.content?.trim().length ?? 0;
+  // When content is omitted (legacy callers), keep previous require-all behavior.
+  if (doc.content === undefined || doc.content === null) return true;
+  return len >= MIN_CHUNK_CHARS;
 }
 
 function chunkRelaxesShortSize(
@@ -379,6 +395,7 @@ export function runChunkQuality(input: {
 
   const sourceById = new Map(input.sources.map((s) => [s.id, s]));
   const eligibleSources = input.sources.filter(isEligibleSource);
+  const chunkableSources = eligibleSources.filter(sourceRequiresChunks);
   const activeChunks = input.chunks.filter((c) => c.isActive);
   const inactiveChunkCount = input.chunks.length - activeChunks.length;
 
@@ -393,7 +410,7 @@ export function runChunkQuality(input: {
 
   let coveredSourceDocumentCount = 0;
   let missingSourceChunkCount = 0;
-  for (const source of eligibleSources) {
+  for (const source of chunkableSources) {
     if ((activeBySource.get(source.id) ?? 0) > 0) {
       coveredSourceDocumentCount += 1;
     } else {
@@ -574,14 +591,21 @@ export function runChunkQuality(input: {
   }
   issues.push(...duplicateResult.issues);
   const duplicateChunkCount = duplicateResult.duplicateChunkCount;
+  const exactDuplicateChunkCount = duplicateResult.exactDuplicateChunkCount;
 
+  // Near-duplicate WARNINGs (PREFIX_OVERLAP / TITLE_SECTION / JACCARD) remain
+  // visible, but the FAIL ratio only counts EXACT content clones. Token-aware
+  // Worker splits share title/heading prefixes and would otherwise trip the
+  // 10% gate on healthy large packs.
+  const exactDuplicateRatio =
+    activeChunks.length > 0 ? exactDuplicateChunkCount / activeChunks.length : 0;
   const duplicateRatio =
     activeChunks.length > 0 ? duplicateChunkCount / activeChunks.length : 0;
-  if (duplicateRatio > DUPLICATE_FAIL_RATIO) {
+  if (exactDuplicateRatio > DUPLICATE_FAIL_RATIO) {
     issues.push({
       severity: "BLOCKER",
       code: "CHUNK_DUPLICATE_RATIO_HIGH",
-      message: "중복 chunk 비율이 10%를 초과합니다.",
+      message: "동일 본문(exact) 중복 chunk 비율이 10%를 초과합니다.",
     });
   }
 
@@ -613,11 +637,11 @@ export function runChunkQuality(input: {
   ).length;
 
   let coverageScore = 100;
-  if (eligibleSources.length === 0) {
-    coverageScore = 0;
+  if (chunkableSources.length === 0) {
+    coverageScore = eligibleSources.length === 0 ? 0 : 100;
   } else {
     coverageScore = clampScore(
-      (coveredSourceDocumentCount / eligibleSources.length) * 100,
+      (coveredSourceDocumentCount / chunkableSources.length) * 100,
     );
   }
 
@@ -678,7 +702,7 @@ export function runChunkQuality(input: {
     activeChunkCount: activeChunks.length,
     missingSourceChunkCount,
     orphanRatio,
-    duplicateRatio,
+    duplicateRatio: exactDuplicateRatio,
     emptyChunkCount,
   });
 
@@ -687,7 +711,7 @@ export function runChunkQuality(input: {
     totalScore,
     activeChunkCount: activeChunks.length,
     coveredSourceDocumentCount,
-    eligibleSourceCount: eligibleSources.length,
+    eligibleSourceCount: chunkableSources.length,
     orphanChunkCount,
     duplicateChunkCount,
   });
@@ -703,7 +727,7 @@ export function runChunkQuality(input: {
     structureAlignmentScore,
     activeChunkCount: activeChunks.length,
     inactiveChunkCount,
-    sourceDocumentCount: eligibleSources.length,
+    sourceDocumentCount: chunkableSources.length,
     coveredSourceDocumentCount,
     orphanChunkCount,
     missingSourceChunkCount,

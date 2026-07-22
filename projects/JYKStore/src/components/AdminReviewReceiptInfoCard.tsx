@@ -4,7 +4,6 @@ import {
   isDoclingBundleReviewSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import {
-  ADMIN_REVIEW_CTA_VIEW_PACKAGE,
   ADMIN_REVIEW_RECEIPT_INFO_TITLE,
   ADMIN_REVIEWS_STATUS_IN_REVIEW,
 } from "@/lib/role-based-ux-copy";
@@ -16,10 +15,8 @@ function formatDateTime(iso: string | null | undefined): string {
 
 export function AdminReviewReceiptInfoCard({
   detail,
-  onGoToPackageTab,
 }: {
   readonly detail: AdminReviewDetailDto;
-  readonly onGoToPackageTab: () => void;
 }) {
   const review = detail.latestReview;
   const snapshot = review?.submitSnapshot ?? null;
@@ -70,13 +67,6 @@ export function AdminReviewReceiptInfoCard({
           <li>제출 패키지: 없음</li>
         )}
       </ul>
-      <button
-        type="button"
-        onClick={onGoToPackageTab}
-        className="min-h-[44px] w-full rounded-xl border border-store-border bg-slate-50 text-sm font-semibold text-store-accent"
-      >
-        {ADMIN_REVIEW_CTA_VIEW_PACKAGE}
-      </button>
     </section>
   );
 }

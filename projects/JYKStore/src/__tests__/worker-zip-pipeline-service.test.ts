@@ -438,11 +438,19 @@ describe("worker-zip-pipeline-service (P5)", () => {
   });
 });
 
-type FakeSourceDoc = { id: string; versionId: string; legacySourceType: string; checksum: string | null; fileName: string };
+type FakeSourceDoc = {
+  id: string;
+  versionId: string;
+  legacySourceType: string;
+  checksum: string | null;
+  fileName: string;
+  content?: string | null;
+};
 
 function makeSourceDocPrisma(seed: FakeSourceDoc[] = []) {
   const rows: FakeSourceDoc[] = [...seed];
   const createdData: Array<Record<string, unknown>> = [];
+  const updatedData: Array<{ id: string; data: Record<string, unknown> }> = [];
   let seq = 0;
   const client = {
     sourceDocument: {
@@ -455,7 +463,7 @@ function makeSourceDocPrisma(seed: FakeSourceDoc[] = []) {
               ? r.checksum === where.checksum
               : r.fileName === where.fileName),
         );
-        return found ? { id: found.id } : null;
+        return found ? { id: found.id, content: found.content ?? null } : null;
       },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         createdData.push(data);
@@ -465,20 +473,43 @@ function makeSourceDocPrisma(seed: FakeSourceDoc[] = []) {
           legacySourceType: data.legacySourceType as string,
           checksum: (data.checksum as string | null) ?? null,
           fileName: data.fileName as string,
+          content: (data.content as string | null) ?? null,
         };
         rows.push(row);
         return { id: row.id };
       },
+      update: async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) => {
+        updatedData.push({ id: where.id, data });
+        const row = rows.find((r) => r.id === where.id);
+        if (row && typeof data.content === "string") row.content = data.content;
+        return { id: where.id };
+      },
     },
   };
-  return { client, createdData, rows };
+  return { client, createdData, updatedData, rows };
 }
 
 describe("ensureWorkerSourceDocuments (P5)", () => {
   it("creates a SourceDocument per normalized document and returns the mapping", async () => {
     const { client, createdData } = makeSourceDocPrisma();
     const mapping = await ensureWorkerSourceDocuments({
-      payload: makePayload(),
+      payload: makePayload({
+        normalizedDocuments: [
+          {
+            documentId: "d1",
+            sourcePath: "Docs/a.html",
+            sourceType: "html_api",
+            title: "A",
+            sections: [{ heading: "Overview", content: "Grid API overview body for validation." }],
+          },
+        ],
+      }),
       productVersion: "1.0.0",
       prismaClient: client as never,
     });
@@ -488,16 +519,20 @@ describe("ensureWorkerSourceDocuments (P5)", () => {
     assert.equal(createdData[0]?.legacySourceType, WORKER_ZIP_SOURCE_LEGACY_TYPE);
     assert.equal(createdData[0]?.checksum, "sha-a");
     assert.equal(createdData[0]?.fileName, "a.html");
+    assert.equal(createdData[0]?.sourceType, "PRODUCT_MANUAL");
+    assert.equal(createdData[0]?.sourceFormat, "HTML");
+    assert.match(String(createdData[0]?.content), /Grid API overview/);
   });
 
   it("reuses an existing SourceDocument (idempotent re-run) by checksum", async () => {
-    const { client, createdData } = makeSourceDocPrisma([
+    const { client, createdData, updatedData } = makeSourceDocPrisma([
       {
         id: "existing-1",
         versionId: "ver1",
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
         checksum: "sha-a",
         fileName: "a.html",
+        content: "already filled",
       },
     ]);
     const mapping = await ensureWorkerSourceDocuments({
@@ -506,5 +541,36 @@ describe("ensureWorkerSourceDocuments (P5)", () => {
     });
     assert.equal(mapping["Docs/a.html"], "existing-1");
     assert.equal(createdData.length, 0);
+    assert.equal(updatedData.length, 0);
+  });
+
+  it("backfills empty content on an existing Worker SourceDocument", async () => {
+    const { client, createdData, updatedData } = makeSourceDocPrisma([
+      {
+        id: "existing-empty",
+        versionId: "ver1",
+        legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+        checksum: "sha-a",
+        fileName: "a.html",
+        content: "",
+      },
+    ]);
+    const mapping = await ensureWorkerSourceDocuments({
+      payload: makePayload({
+        normalizedDocuments: [
+          {
+            documentId: "d1",
+            sourcePath: "Docs/a.html",
+            title: "A",
+            sections: [{ heading: "Setup", content: "설치 및 설정 안내입니다." }],
+          },
+        ],
+      }),
+      prismaClient: client as never,
+    });
+    assert.equal(mapping["Docs/a.html"], "existing-empty");
+    assert.equal(createdData.length, 0);
+    assert.equal(updatedData.length, 1);
+    assert.match(String(updatedData[0]?.data.content), /설치 및 설정/);
   });
 });

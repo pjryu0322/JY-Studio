@@ -274,6 +274,64 @@ describe("chunk quality runner", () => {
     );
   });
 
+  it("does not BLOCK coverage for short non-chunkable source stubs", () => {
+    const result = runChunkQuality({
+      sources: [
+        {
+          id: "doc-1",
+          sourceType: "PRODUCT_MANUAL",
+          validationStatus: "WARNING",
+          content: "A".repeat(200),
+        },
+        {
+          id: "license",
+          sourceType: "ETC",
+          validationStatus: "WARNING",
+          content: "Apache-License-2.0",
+        },
+      ],
+      chunks: [baseChunk({ sourceDocumentId: "doc-1" })],
+      structureSections: [baseSection()],
+    });
+    assert.equal(
+      result.issues.some((i) => i.code === "CHUNK_SOURCE_COVERAGE_MISSING"),
+      false,
+    );
+    assert.notEqual(result.status, "FAIL");
+  });
+
+  it("FAIL duplicate ratio uses EXACT clones only (near-dup WARNINGs do not gate)", () => {
+    // Many near-duplicate pairs (shared title/heading prefixes) must stay WARNING,
+    // not trip CHUNK_DUPLICATE_RATIO_HIGH — that gate is for exact content clones.
+    const sharedPrefix = "Shared title heading ".repeat(10);
+    const chunks = Array.from({ length: 12 }, (_, i) =>
+      baseChunk({
+        id: `c${i}`,
+        sourceDocumentId: "doc-1",
+        title: "Shared title",
+        section: "heading",
+        content: `${sharedPrefix} unique body ${i} ${"x".repeat(80)}`,
+        tags: ["t"],
+      }),
+    );
+    const result = runChunkQuality({
+      sources: [
+        {
+          id: "doc-1",
+          sourceType: "PRODUCT_MANUAL",
+          validationStatus: "PASS",
+          content: "A".repeat(200),
+        },
+      ],
+      chunks,
+      structureSections: [baseSection()],
+    });
+    assert.equal(
+      result.issues.some((i) => i.code === "CHUNK_DUPLICATE_RATIO_HIGH"),
+      false,
+    );
+  });
+
   it("allows submit classification for WARNING status", () => {
     assert.equal(classifyChunkQualitySubmitAllowed("WARNING"), true);
     assert.equal(classifyChunkQualitySubmitAllowed("FAIL"), false);

@@ -92,12 +92,15 @@ export function runKnowledgeQuality(input: {
   let sourceQualityScore = 100;
   sourceQualityScore -= validation.failCount * 40;
   sourceQualityScore -= validation.notCheckedCount * 30;
-  sourceQualityScore -= validation.warningCount * 10;
+  // Cap warning penalty: large packs (hundreds of docs) with a benign per-doc
+  // WARNING (e.g. temporary ETC typing) used to drive this to 0 via
+  // `warningCount * 10` and force totalScore FAIL even when coverage is 100%.
+  sourceQualityScore -= Math.min(40, validation.warningCount * 10);
   sourceQualityScore = clampScore(sourceQualityScore);
 
   let securityScore = securityBlockers.length > 0 ? 0 : 100;
   if (validation.warningCount > 0 && securityBlockers.length === 0) {
-    securityScore = clampScore(securityScore - validation.warningCount * 5);
+    securityScore = clampScore(securityScore - Math.min(25, validation.warningCount * 5));
   }
 
   let freshnessScore = 100;

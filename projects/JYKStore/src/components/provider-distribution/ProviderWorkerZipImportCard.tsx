@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  acknowledgeProviderWorkerZipRejectionApi,
   fetchProviderWorkerZipRequestStateApi,
   requestProviderWorkerZipGenerationApi,
   withdrawProviderWorkerZipRequestApi,
@@ -25,6 +26,7 @@ export function ProviderWorkerZipImportCard({
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<ProviderWorkerZipRequestState | null>(null);
 
@@ -73,11 +75,26 @@ export function ProviderWorkerZipImportCard({
     }
   };
 
+  const onAcknowledgeRejection = async () => {
+    if (!editable || acknowledging || submitting) return;
+    setAcknowledging(true);
+    setError(null);
+    try {
+      await acknowledgeProviderWorkerZipRejectionApi(packId);
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "반려 확인에 실패했습니다.");
+    } finally {
+      setAcknowledging(false);
+    }
+  };
+
   const request = state?.request ?? null;
   const status = state?.requestStatus ?? "NONE";
   const canWithdraw = status === "REQUESTED";
   const isRejected = status === "REJECTED";
   const rejectionReason = request?.rejection?.reason?.trim() || state?.reviewMemo?.trim() || null;
+  const rejectionAcknowledged = Boolean(request?.rejection?.acknowledgedAt);
 
   return (
     <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
@@ -139,16 +156,29 @@ export function ProviderWorkerZipImportCard({
       ) : null}
 
       {isRejected ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
+        <div className="space-y-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
           <p className="font-semibold">생성 요청 반려</p>
           <p className="mt-0.5">
-            관리자가 지식데이터 생성 요청을 반려했습니다. 안내된 사유를 확인한 뒤 ZIP 파일을 수정해 다시 요청해 주세요.
+            관리자가 지식데이터 생성 요청을 반려했습니다. 안내된 사유를 확인한 뒤 ZIP 파일을 수정해
+            다시 요청해 주세요.
           </p>
           {rejectionReason ? (
             <p className="mt-1 whitespace-pre-wrap rounded-lg bg-white/70 px-2 py-1 text-red-900">
               사유: {rejectionReason}
             </p>
           ) : null}
+          {rejectionAcknowledged ? (
+            <p className="text-[11px] text-red-700">반려 사유를 확인했습니다. ZIP을 수정해 다시 요청하세요.</p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onAcknowledgeRejection()}
+              disabled={!editable || acknowledging || submitting}
+              className="min-h-[36px] w-full rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-800 disabled:opacity-60"
+            >
+              {acknowledging ? "확인 중…" : "반려 사유 확인"}
+            </button>
+          )}
         </div>
       ) : null}
 
