@@ -1063,14 +1063,25 @@ export async function confirmProviderStoreReviewApi(packId: string): Promise<voi
   throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
 }
 
-export async function withdrawProviderStoreReviewApi(packId: string): Promise<void> {
+export async function withdrawProviderStoreReviewApi(
+  packId: string,
+  changesRequest?: {
+    changeType: string;
+    targetKind: string;
+    targetLabel?: string;
+    details: string;
+  },
+): Promise<void> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/store-workflow`,
     {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "withdraw" }),
+      body: JSON.stringify({
+        action: "withdraw",
+        ...(changesRequest ? { changesRequest } : {}),
+      }),
     },
   );
   const data = (await response.json().catch(() => null)) as

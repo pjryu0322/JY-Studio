@@ -780,6 +780,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         >
           <ProviderGenerationReviewPanel
             packId={packId}
+            pack={pack}
             phase={
               providerReviewPhase === "REQUESTED" ||
               providerReviewPhase === "CONFIRMED" ||
@@ -787,19 +788,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 ? providerReviewPhase
                 : "NONE"
             }
-            qualitySummary={{
-              structure: pack.structureQuality?.knowledgeQuality?.status ?? null,
-              chunk: pack.chunkQuality?.report?.status ?? null,
-              retrieval: pack.retrievalEvaluation?.latestRun?.status ?? null,
-            }}
             onChanged={load}
           />
-          <ProviderKnowledgeGenerationTab
-            packId={packId}
-            editable={editable}
-            onGoToSearchValidation={() => selectTab("serviceValidation")}
-            onStatusChange={setKnowledgeStatus}
-          />
+          {providerReviewPhase === "REQUESTED" ? null : (
+            <ProviderKnowledgeGenerationTab
+              packId={packId}
+              editable={editable}
+              onGoToSearchValidation={() => selectTab("serviceValidation")}
+              onStatusChange={setKnowledgeStatus}
+            />
+          )}
         </div>
 
         <div

@@ -80,6 +80,8 @@ export type ProviderPacksStatusSummary = {
   total: number;
   draft: number;
   reviewing: number;
+  /** Admin requested provider generation-result review (not PackStatus.REVIEWING). */
+  providerReviewRequested: number;
   published: number;
   verified: number;
   changesRequested: number;
@@ -183,12 +185,18 @@ function mapRegistrationStatus(
 }
 
 export function buildProviderPacksStatusSummary(
-  packs: Array<{ status: PackStatus; latestRejectionReason?: string | null }>,
+  packs: Array<{
+    status: PackStatus;
+    latestRejectionReason?: string | null;
+    storeWorkflowStatus?: StoreWorkflowStatus | null;
+    providerReviewPhase?: StoreProviderReviewPhase | null;
+  }>,
 ): ProviderPacksStatusSummary {
   const summary: ProviderPacksStatusSummary = {
     total: packs.length,
     draft: 0,
     reviewing: 0,
+    providerReviewRequested: 0,
     published: 0,
     verified: 0,
     changesRequested: 0,
@@ -196,6 +204,13 @@ export function buildProviderPacksStatusSummary(
   };
 
   for (const pack of packs) {
+    const reviewRequested =
+      pack.storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED" ||
+      pack.providerReviewPhase === "REQUESTED";
+    if (reviewRequested) {
+      summary.providerReviewRequested += 1;
+      continue;
+    }
     if (pack.status === "REVIEWING") {
       summary.reviewing += 1;
       continue;
@@ -331,12 +346,10 @@ export function buildProviderPackProgress(
   } else if (storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED") {
     currentStep = "PROVIDER_REVIEW_REQUESTED";
     currentStepLabel = workflowLabel.providerStatusLabel;
-    nextActionLabel = "관리자가 생성·품질점검한 결과를 검토하세요.";
+    nextActionLabel = "관리자가 생성·품질점검한 지식데이터를 검토해 주세요.";
     nextActionHref = detailHref(packId, "knowledge");
     actions = [
-      { label: "생성 결과 검토", href: detailHref(packId, "knowledge") },
-      { label: "확인 완료", href: detailHref(packId, "knowledge") },
-      { label: "회수하고 자료 다시 등록", href: detailHref(packId, "payload") },
+      { label: "상세 검토하기", href: detailHref(packId, "knowledge") },
     ];
     for (const step of steps) {
       if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {

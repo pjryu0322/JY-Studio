@@ -17,9 +17,14 @@ import type {
   StoreServiceValidationPhase,
 } from "@/lib/store-workflow-status";
 import { resolveStoreServiceChannelGates } from "@/lib/store-workflow-handoff-gates";
+import {
+  encodeProviderChangesRequestSummary,
+  type ProviderChangesRequestPayload,
+} from "@/lib/provider-review-workbench";
 
 /** Same trigger string as worker-zip-import-provider-service (avoid circular import). */
 const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
+const WORKER_ZIP_IMPORT_TRIGGER = "WORKER_ZIP_IMPORT";
 
 export const STORE_PROVIDER_REVIEW_TRIGGER = "STORE_PROVIDER_REVIEW";
 export const STORE_SERVICE_VALIDATION_TRIGGER = "STORE_SERVICE_VALIDATION";
@@ -33,6 +38,73 @@ export type StoreWorkflowMarkerSnapshot = {
   providerReviewConfirmedAt: string | null;
   serviceValidationPassedAt: string | null;
 };
+
+async function assertProviderConfirmEvidence(
+  packId: string,
+  client: PrismaClientLike,
+): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
+  const latestZip = await client.pipelineRun.findFirst({
+    where: {
+      packId,
+      triggerType: WORKER_ZIP_IMPORT_TRIGGER,
+    },
+    orderBy: [{ createdAt: "desc" }],
+    select: { id: true, status: true },
+  });
+  if (!latestZip || latestZip.status !== "PASS") {
+    return {
+      ok: false,
+      error: "GENERATION_OR_QUALITY_NOT_READY",
+      message: "생성 결과 또는 품질점검 결과가 준비되지 않았습니다.",
+    };
+  }
+
+  const generation = await client.searchIndexGeneration.findFirst({
+    where: {
+      packId,
+      pipelineRunId: latestZip.id,
+      status: "READY",
+      staleAt: null,
+      retiredAt: null,
+    },
+    select: { id: true },
+  });
+  if (!generation) {
+    return {
+      ok: false,
+      error: "GENERATION_OR_QUALITY_NOT_READY",
+      message: "생성 결과 또는 품질점검 결과가 준비되지 않았습니다.",
+    };
+  }
+
+  const [structure, chunk, knowledge] = await Promise.all([
+    client.structureCoverageReport.findFirst({
+      where: { packId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+    client.chunkQualityReport.findFirst({
+      where: { packId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+    client.knowledgeQualityReport.findFirst({
+      where: { packId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+  ]);
+  const reports = [structure, chunk, knowledge].filter(Boolean);
+  if (reports.length === 0 || reports.some((r) => r!.status === "FAIL")) {
+    return {
+      ok: false,
+      error: "GENERATION_OR_QUALITY_NOT_READY",
+      message: "생성 결과 또는 품질점검 결과가 준비되지 않았습니다.",
+    };
+  }
+
+  return { ok: true };
+}
 
 function mapProviderReviewStatus(status: string | undefined | null): StoreProviderReviewPhase {
   if (status === "PENDING" || status === "RUNNING") return "REQUESTED";
@@ -248,9 +320,12 @@ export async function confirmProviderStoreReview(input: {
     return {
       ok: false,
       error: "NOT_REQUESTED",
-      message: "제공자 검토 요청 상태가 아닙니다.",
+      message: "아직 검토 요청 상태가 아닙니다.",
     };
   }
+
+  const evidence = await assertProviderConfirmEvidence(packId, client);
+  if (!evidence.ok) return evidence;
 
   const open = await client.pipelineRun.findFirst({
     where: {
@@ -264,7 +339,7 @@ export async function confirmProviderStoreReview(input: {
     return {
       ok: false,
       error: "NOT_REQUESTED",
-      message: "제공자 검토 요청 상태가 아닙니다.",
+      message: "아직 검토 요청 상태가 아닙니다.",
     };
   }
 
@@ -284,15 +359,57 @@ export async function confirmProviderStoreReview(input: {
 /**
  * Provider withdraws after generation / review request — clears hold markers so
  * materials can be re-registered. Generation history (WORKER_ZIP_IMPORT runs) stays.
+ * When `changesRequest` is provided, persists structured 보완 요청 in PipelineRun.summary.
  */
 export async function withdrawProviderStoreReview(input: {
   packId: string;
   clientId: string;
   prismaClient?: PrismaClientLike;
+  changesRequest?: ProviderChangesRequestPayload;
 }): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
   const client = input.prismaClient ?? prisma;
   const packId = input.packId.trim();
   const now = new Date();
+
+  if (input.changesRequest) {
+    const markers = await resolveStoreWorkflowMarkers(packId, client);
+    if (markers.providerReviewPhase === "CONFIRMED") {
+      return {
+        ok: false,
+        error: "ALREADY_CONFIRMED",
+        message: "이미 처리된 검토 요청입니다.",
+      };
+    }
+    if (markers.providerReviewPhase === "WITHDRAWN") {
+      return {
+        ok: false,
+        error: "ALREADY_WITHDRAWN",
+        message: "이미 처리된 검토 요청입니다.",
+      };
+    }
+    if (markers.providerReviewPhase !== "REQUESTED") {
+      return {
+        ok: false,
+        error: "NOT_REQUESTED",
+        message: "아직 검토 요청 상태가 아닙니다.",
+      };
+    }
+    const details = input.changesRequest.details?.trim() ?? "";
+    if (!details) {
+      return {
+        ok: false,
+        error: "CHANGES_DETAILS_REQUIRED",
+        message: "보완 요청 내용을 입력해 주세요.",
+      };
+    }
+  }
+
+  const withdrawSummary = input.changesRequest
+    ? encodeProviderChangesRequestSummary({
+        ...input.changesRequest,
+        details: input.changesRequest.details.trim(),
+      })
+    : "제공자가 회수하고 자료를 다시 등록합니다.";
 
   await client.pipelineRun.updateMany({
     where: {
@@ -303,7 +420,7 @@ export async function withdrawProviderStoreReview(input: {
     data: {
       status: "SKIPPED",
       finishedAt: now,
-      summary: "제공자가 회수하고 자료를 다시 등록합니다.",
+      summary: withdrawSummary,
     },
   });
 
@@ -342,7 +459,12 @@ export async function withdrawProviderStoreReview(input: {
       triggeredByClientId: input.clientId,
       status: "SKIPPED",
       finishedAt: now,
-      summary: "제공자 회수 완료 — 자료 재등록 가능",
+      summary: input.changesRequest
+        ? encodeProviderChangesRequestSummary({
+            ...input.changesRequest,
+            details: input.changesRequest.details.trim(),
+          })
+        : "제공자 회수 완료 — 자료 재등록 가능",
     },
   });
 

@@ -44,7 +44,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const trimmed = packId?.trim() ?? "";
 
   try {
-    const body = (await request.json().catch(() => null)) as { action?: string } | null;
+    const body = (await request.json().catch(() => null)) as {
+      action?: string;
+      changesRequest?: {
+        changeType?: string;
+        targetKind?: string;
+        targetLabel?: string;
+        details?: string;
+      };
+    } | null;
     const action = body?.action?.trim();
 
     const pack = await getProviderPackForClient(userId, clientId, trimmed);
@@ -76,9 +84,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (action === "withdraw") {
+      const cr = body?.changesRequest;
+      const changesRequest =
+        cr && typeof cr.details === "string"
+          ? {
+              changeType: (cr.changeType ?? "OTHER") as
+                | "STRUCTURE"
+                | "MISSING"
+                | "CHUNKING"
+                | "RETRIEVAL"
+                | "OTHER",
+              targetKind: (cr.targetKind ?? "OTHER") as
+                | "FILE"
+                | "SECTION"
+                | "KU"
+                | "CHUNK"
+                | "QUERY"
+                | "OTHER",
+              targetLabel: cr.targetLabel,
+              details: cr.details,
+            }
+          : undefined;
       const result = await withdrawProviderStoreReview({
         packId: trimmed,
         clientId,
+        changesRequest,
       });
       if (!result.ok) {
         return jsonWithClientIdCookie(

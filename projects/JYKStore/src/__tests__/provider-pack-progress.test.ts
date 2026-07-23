@@ -62,10 +62,17 @@ describe("provider pack progress", () => {
     const summary = buildProviderPacksStatusSummary([
       { status: "PUBLISHED" },
       { status: "REVIEWING" },
+      {
+        status: "DRAFT",
+        storeWorkflowStatus: "PROVIDER_REVIEW_REQUESTED",
+        providerReviewPhase: "REQUESTED",
+      },
     ]);
-    assert.equal(summary.total, 2);
+    assert.equal(summary.total, 3);
     assert.equal(summary.published, 1);
     assert.equal(summary.reviewing, 1);
+    assert.equal(summary.providerReviewRequested, 1);
+    assert.equal(summary.draft, 0);
   });
 
   it("separates published version from working draft version", () => {
@@ -197,7 +204,11 @@ describe("provider pack progress", () => {
       publishedVersion: null,
     });
     assert.equal(progress.storeWorkflowStatus, "PROVIDER_REVIEW_REQUESTED");
-    assert.ok(progress.actions.some((a) => a.label === "생성 결과 검토"));
+    assert.equal(progress.currentStepLabel, "검토 요청");
+    assert.equal(progress.actions[0]?.label, "상세 검토하기");
+    assert.ok(progress.actions.some((a) => a.label === "상세 검토하기"));
+    assert.ok(!progress.actions.some((a) => a.label === "확인 완료"));
+    assert.ok(!progress.actions.some((a) => a.label === "생성 결과 검토"));
     assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
   });
 
@@ -278,5 +289,25 @@ describe("provider center pack progress UX sources", () => {
     assert.ok(route.includes("summary"));
     assert.ok(service.includes("buildProviderPackProgress"));
     assert.ok(service.includes("buildProviderPacksStatusSummary"));
+  });
+
+  it("surfaces provider review-request banner separately from admin reviewing wait", () => {
+    const center = readSource("src/components/ProviderCenterPageClient.tsx");
+    assert.ok(center.includes("검토 요청"));
+    assert.ok(center.includes("providerReviewRequested"));
+    assert.ok(center.includes("관리자 검수 결과를 기다려 주세요."));
+    assert.ok(center.includes("생성·품질점검한 지식데이터를 검토해 주세요."));
+    assert.ok(center.includes("상세 검토하기") === false || center.includes("검토 요청"));
+    // list CTA comes from progress builder; center filters use 검토 요청 entry
+    assert.ok(center.includes('onClick={() => setFilter("providerReviewRequested")}'));
+  });
+
+  it("keeps confirm and request-changes actions on generation review detail panel", () => {
+    const panel = readSource("src/components/ProviderGenerationReviewPanel.tsx");
+    assert.ok(panel.includes("확인 완료"));
+    assert.ok(panel.includes("보완 요청 작성"));
+    assert.ok(panel.includes("formatProviderReviewQualityLabel"));
+    assert.ok(panel.includes("confirmProviderStoreReviewApi"));
+    assert.ok(!panel.includes("WARNING"));
   });
 });

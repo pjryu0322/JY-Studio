@@ -94,7 +94,7 @@ const LABELS: Record<StoreWorkflowStatus, { label: string; providerStatusLabel: 
   },
   PROVIDER_REVIEW_REQUESTED: {
     label: "제공자 검토 요청됨",
-    providerStatusLabel: "생성 결과 검토 필요",
+    providerStatusLabel: "검토 요청",
   },
   PROVIDER_REVIEWING: {
     label: "제공자 검토 중",

@@ -871,7 +871,8 @@ describe("store workflow handoff gates", () => {
       publishedVersion: null,
     });
     assert.equal(progress.storeWorkflowStatus, "PROVIDER_REVIEW_REQUESTED");
-    assert.ok(progress.actions.some((a) => a.label === "생성 결과 검토"));
+    assert.ok(progress.actions.some((a) => a.label === "상세 검토하기"));
+    assert.ok(!progress.actions.some((a) => a.label === "확인 완료"));
     assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
   });
 });

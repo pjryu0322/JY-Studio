@@ -50,6 +50,14 @@ export function RoleRailItemView({
   const body = (
     <>
       <RoleRailIcon id={item.id} className="h-[22px] w-[22px]" />
+      {item.badge ? (
+        <span
+          className="absolute -left-0.5 -top-0.5 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-white"
+          aria-hidden
+        >
+          {item.badge}
+        </span>
+      ) : null}
       {dot ? (
         <span
           className={`absolute right-1 top-1 h-2 w-2 rounded-full ${dot}`}

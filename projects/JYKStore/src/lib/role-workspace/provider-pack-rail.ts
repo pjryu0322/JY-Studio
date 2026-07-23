@@ -33,7 +33,7 @@ export function getProviderPackRailState(input: {
     { id: "payload", label: "자료등록", href: `${base}?tab=payload` },
     { id: "request", label: "처리요청", href: `${base}?tab=payload` },
     { id: "adminStatus", label: "관리자 처리상태", href: `${base}?tab=knowledge` },
-    { id: "generationReview", label: "생성 결과 검토", href: `${base}?tab=knowledge` },
+    { id: "generationReview", label: "검토 요청", href: `${base}?tab=knowledge` },
     { id: "reviewStatus", label: "검수 상태", href: `${base}?tab=distributionReview` },
     { id: "publish", label: "공개 정보", href: `${base}?tab=distributionReview` },
     { id: "insights", label: "사용 통계", href: ROUTES.accountPlan },
@@ -79,7 +79,13 @@ export function getProviderPackRailState(input: {
       if (needsGenerationReview) status = activeRailId === "generationReview" ? "current" : "next";
       else if (providerPhase === "CONFIRMED" || submitted || published) status = "completed";
       else if (adminProcessing && hold === "COMPLETED") status = "next";
-      return { id: tab.id, label: tab.label, href: tab.href, status };
+      return {
+        id: tab.id,
+        label: tab.label,
+        href: tab.href,
+        status,
+        badge: needsGenerationReview ? "1" : undefined,
+      };
     }
 
     if (tab.id === "adminStatus") {

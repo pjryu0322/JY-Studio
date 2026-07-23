@@ -24,12 +24,24 @@ import {
 } from "@/lib/role-based-ux-copy";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
-type StatusFilter = "all" | "draft" | "reviewing" | "published" | "changesRequested";
+type StatusFilter =
+  | "all"
+  | "draft"
+  | "reviewing"
+  | "providerReviewRequested"
+  | "published"
+  | "changesRequested";
 
 type ViewState = "loading" | "notLoggedIn" | "notProvider" | "ready";
 
 function matchesFilter(pack: ProviderPackListItemDto, filter: StatusFilter): boolean {
   if (filter === "all") return true;
+  if (filter === "providerReviewRequested") {
+    return (
+      pack.progress?.storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED" ||
+      pack.progress?.currentStep === "PROVIDER_REVIEW_REQUESTED"
+    );
+  }
   if (filter === "reviewing") return pack.status === "REVIEWING";
   if (filter === "published") {
     return pack.status === "PUBLISHED" || pack.status === "VERIFIED";
@@ -39,7 +51,10 @@ function matchesFilter(pack: ProviderPackListItemDto, filter: StatusFilter): boo
   }
   if (filter === "draft") {
     return (
-      pack.status === "DRAFT" && pack.progress?.currentStep !== "CHANGES_REQUESTED"
+      pack.status === "DRAFT" &&
+      pack.progress?.currentStep !== "CHANGES_REQUESTED" &&
+      pack.progress?.currentStep !== "PROVIDER_REVIEW_REQUESTED" &&
+      pack.progress?.storeWorkflowStatus !== "PROVIDER_REVIEW_REQUESTED"
     );
   }
   return true;
@@ -57,6 +72,11 @@ function ProviderStatusDashboard({
   const cards: Array<{ key: StatusFilter; label: string; value: number }> = [
     { key: "all", label: "전체", value: summary.total },
     { key: "draft", label: "초안", value: summary.draft },
+    {
+      key: "providerReviewRequested",
+      label: "검토 요청",
+      value: summary.providerReviewRequested,
+    },
     { key: "reviewing", label: "검수 중", value: summary.reviewing },
     {
       key: "published",
@@ -94,6 +114,9 @@ function ProviderStatusDashboard({
 function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) {
   const detail = providerPackDetailPath(pack.packId);
   const progress = pack.progress;
+  const reviewRequested =
+    progress?.storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED" ||
+    progress?.currentStep === "PROVIDER_REVIEW_REQUESTED";
   const actions = progress?.actions?.slice(0, 2) ?? [
     { label: "상세 보기", href: detail },
   ];
@@ -108,11 +131,13 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
           ? `v${progress.workingVersion}`
           : null;
 
-  const metaParts = [
-    versionLabel,
-    progress?.currentStepLabel ? `단계 ${progress.currentStepLabel}` : null,
-    progress?.nextActionLabel ? `다음 ${progress.nextActionLabel}` : null,
-  ].filter(Boolean);
+  const metaParts = reviewRequested
+    ? ["상태 검토 요청", versionLabel].filter(Boolean)
+    : [
+        versionLabel,
+        progress?.currentStepLabel ? `단계 ${progress.currentStepLabel}` : null,
+        progress?.nextActionLabel ? `다음 ${progress.nextActionLabel}` : null,
+      ].filter(Boolean);
 
   return (
     <li className="rounded-xl border border-store-border bg-white px-3 py-2 shadow-sm">
@@ -120,7 +145,13 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
         <Link href={detail} className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="min-w-0 truncate text-sm font-semibold text-slate-900">{pack.name}</p>
-            <ProviderPackStatusBadge status={pack.status} />
+            {reviewRequested ? (
+              <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                검토 요청
+              </span>
+            ) : (
+              <ProviderPackStatusBadge status={pack.status} />
+            )}
           </div>
           {metaParts.length > 0 ? (
             <p className="mt-0.5 truncate text-[11px] text-store-muted">{metaParts.join(" · ")}</p>
@@ -252,12 +283,33 @@ export function ProviderCenterPageClient() {
         <ProviderStatusDashboard summary={summary} filter={filter} onFilter={setFilter} />
       ) : null}
 
+      {summary.providerReviewRequested > 0 ? (
+        <nav
+          aria-label="검토 요청 작업함"
+          className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <button
+            type="button"
+            onClick={() => setFilter("providerReviewRequested")}
+            className="inline-flex min-h-[36px] items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-amber-950 ring-1 ring-amber-200"
+          >
+            검토 요청
+            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+              {summary.providerReviewRequested}
+            </span>
+          </button>
+          <p className="text-xs text-amber-950">
+            관리자가 생성·품질점검한 지식데이터를 검토해 주세요.
+          </p>
+        </nav>
+      ) : null}
+
       {summary.changesRequested > 0 || summary.reviewing > 0 ? (
         <section
           aria-label="검수/보완 알림"
           className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
         >
-          <p className="font-bold">검수/보완 알림</p>
+          <p className="font-bold">할 일 / 대기 알림</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs">
             {summary.changesRequested > 0 ? (
               <li>보완 요청 {summary.changesRequested}건 — 의견을 확인하고 수정 후 재요청하세요.</li>

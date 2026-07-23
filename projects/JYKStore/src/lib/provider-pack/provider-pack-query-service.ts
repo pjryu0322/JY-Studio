@@ -189,9 +189,11 @@ export async function listProviderPacksForClient(
   });
 
   const summary = buildProviderPacksStatusSummary(
-    packs.map((pack) => ({
-      status: pack.status,
-      latestRejectionReason: pack.reviews[0]?.rejectionReason?.trim() || null,
+    items.map((item, index) => ({
+      status: packs[index]!.status,
+      latestRejectionReason: packs[index]!.reviews[0]?.rejectionReason?.trim() || null,
+      storeWorkflowStatus: item.progress?.storeWorkflowStatus,
+      providerReviewPhase: markersByPackId.get(packs[index]!.packId)?.providerReviewPhase ?? null,
     })),
   );
 

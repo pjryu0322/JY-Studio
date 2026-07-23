@@ -231,12 +231,27 @@ describe("getProviderPackRailState", () => {
       "자료등록",
       "처리요청",
       "관리자 처리상태",
-      "생성 결과 검토",
+      "검토 요청",
       "검수 상태",
       "공개 정보",
       "사용 통계",
     ]);
     assert.equal(items.find((i) => i.id === "basic")?.status, "current");
+  });
+
+  it("badges generation review when provider review is requested", () => {
+    const items = getProviderPackRailState({
+      packId: "pack-1",
+      activeTab: "knowledge",
+      pack: {
+        providerReviewPhase: "REQUESTED",
+        adminGenerationHold: "COMPLETED",
+      } as never,
+    });
+    const review = items.find((i) => i.id === "generationReview");
+    assert.equal(review?.label, "검토 요청");
+    assert.equal(review?.badge, "1");
+    assert.ok(review?.status === "current" || review?.status === "next");
   });
 
   it("keeps locked steps visible with blocked reason", () => {

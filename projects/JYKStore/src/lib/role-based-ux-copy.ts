@@ -166,7 +166,7 @@ export const PROVIDER_PACK_LOCKED_REVIEWING =
 export const PROVIDER_PACK_LOCKED_ADMIN_GENERATION =
   "관리자가 자료를 접수·생성·검토 중입니다. 제공자 쪽 작업이 다시 열릴 때까지 수정할 수 없습니다.";
 export const PROVIDER_PACK_LOCKED_GENERATION_REVIEW =
-  "관리자가 생성·품질점검한 결과 검토가 필요합니다. 아래 생성 결과 검토에서 확인 완료하거나 회수하세요.";
+  "관리자가 생성·품질점검한 지식데이터를 검토해 주세요. 아래 상세 검토에서 확인 완료하거나 보완 요청을 작성하세요.";
 export const PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE =
   "생성 결과 확인이 완료되었습니다. 관리자 서비스 검증·최종 검수 결과를 기다려 주세요.";
 export const PROVIDER_PACK_LOCKED_REJECTION =
