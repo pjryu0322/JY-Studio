@@ -387,9 +387,15 @@ export function buildProviderPackProgress(
   ) {
     currentStep = storeWorkflowStatus;
     currentStepLabel = workflowLabel.providerStatusLabel;
-    nextActionLabel = "관리자 처리 상태를 확인하세요.";
+    nextActionLabel =
+      storeWorkflowStatus === "ADMIN_QUALITY_CHECKING"
+        ? "관리자 품질점검이 진행 중입니다."
+        : "관리자 처리 상태를 확인하세요.";
     nextActionHref = detailHref(packId, "knowledge");
-    actions = [{ label: "처리 상태 보기", href: detailHref(packId, "knowledge") }];
+    actions =
+      storeWorkflowStatus === "ADMIN_QUALITY_CHECKING"
+        ? [{ label: "품질점검 진행 중", href: detailHref(packId, "knowledge") }]
+        : [{ label: "처리 상태 보기", href: detailHref(packId, "knowledge") }];
     for (const step of steps) {
       if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {
         step.status = "COMPLETED";

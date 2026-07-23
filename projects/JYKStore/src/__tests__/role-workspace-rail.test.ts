@@ -108,6 +108,20 @@ describe("getNextReviewAction", () => {
     assert.equal(action.primaryLabel, "제공자 확인 요청");
   });
 
+  it("hides provider-review CTA when knowledge generation is not completed", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    const action = getNextReviewAction({
+      workerZipPhase: "ACCEPTED",
+      quality,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
+      detail,
+    });
+    assert.equal(action.kind, "NONE");
+    assert.match(action.message, /지식데이터 생성/);
+  });
+
   it("does not unlock service validation before provider confirm", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);

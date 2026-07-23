@@ -69,6 +69,8 @@ import { providerPackDetailPath } from "@/lib/routes";
 import {
   PROVIDER_PACK_ID_LABEL,
   PROVIDER_PACK_LOCKED_ADMIN_GENERATION,
+  PROVIDER_PACK_LOCKED_GENERATION_REVIEW,
+  PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE,
   PROVIDER_PACK_LOCKED_REJECTION,
   PROVIDER_PACK_LOCKED_REVIEWING,
   PROVIDER_PACK_SAVE_DRAFT_SUCCESS,
@@ -597,18 +599,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <ProviderPackStatusBadge status={pack.status} />
         </div>
 
-        {isReviewing ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            {PROVIDER_PACK_LOCKED_REVIEWING}
-          </div>
-        ) : null}
-
-        {lockedByAdminGeneration && !isReviewing ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            {PROVIDER_PACK_LOCKED_ADMIN_GENERATION}
-          </div>
-        ) : null}
-
         {awaitingRejectionAck ? (
           <div className="space-y-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             <p className="font-bold">{PROVIDER_REVIEW_REJECTED_TITLE}</p>
@@ -625,7 +615,42 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           </div>
         ) : null}
 
-        {!editable && !isReviewing && !awaitingRejectionAck && !lockedByAdminGeneration ? (
+        {isReviewing ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {PROVIDER_PACK_LOCKED_REVIEWING}
+          </div>
+        ) : null}
+
+        {!awaitingRejectionAck && !isReviewing && providerReviewPhase === "REQUESTED" ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {PROVIDER_PACK_LOCKED_GENERATION_REVIEW}
+          </div>
+        ) : null}
+
+        {!awaitingRejectionAck &&
+        !isReviewing &&
+        providerReviewPhase === "CONFIRMED" ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+            {PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE}
+          </div>
+        ) : null}
+
+        {!awaitingRejectionAck &&
+        !isReviewing &&
+        providerReviewPhase !== "REQUESTED" &&
+        providerReviewPhase !== "CONFIRMED" &&
+        lockedByAdminGeneration ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {PROVIDER_PACK_LOCKED_ADMIN_GENERATION}
+          </div>
+        ) : null}
+
+        {!editable &&
+        !isReviewing &&
+        !awaitingRejectionAck &&
+        !lockedByAdminGeneration &&
+        providerReviewPhase !== "REQUESTED" &&
+        providerReviewPhase !== "CONFIRMED" ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
             {PROVIDER_PACK_LOCKED_REJECTION}
           </div>
@@ -674,11 +699,15 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             lockHint={
               isReviewing
                 ? PROVIDER_PACK_LOCKED_REVIEWING
-                : lockedByAdminGeneration
-                  ? PROVIDER_PACK_LOCKED_ADMIN_GENERATION
-                  : awaitingRejectionAck
-                    ? PROVIDER_PACK_LOCKED_REJECTION
-                    : null
+                : providerReviewPhase === "REQUESTED"
+                  ? PROVIDER_PACK_LOCKED_GENERATION_REVIEW
+                  : providerReviewPhase === "CONFIRMED"
+                    ? PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE
+                    : lockedByAdminGeneration
+                      ? PROVIDER_PACK_LOCKED_ADMIN_GENERATION
+                      : awaitingRejectionAck
+                        ? PROVIDER_PACK_LOCKED_REJECTION
+                        : null
             }
             name={name}
             shortDescription={shortDescription}

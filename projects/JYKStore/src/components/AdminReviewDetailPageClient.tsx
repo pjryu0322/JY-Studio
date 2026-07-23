@@ -11,6 +11,7 @@ import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminReviewDetail,
+  fetchAdminServiceChannelGates,
   fetchAdminStoreWorkflowMarkers,
   fetchAdminWorkerZipRequestState,
   markAdminServiceValidationPassedApi,
@@ -25,6 +26,7 @@ import {
   type AdminReviewWorkflowStep,
   type AdminWorkerZipPhase,
 } from "@/lib/role-workspace/admin-review-rail";
+import { canRequestProviderReviewHandoff } from "@/lib/store-workflow-handoff-gates-policy";
 
 function parseStep(raw: string | null): AdminReviewWorkflowStep {
   switch (raw) {
@@ -61,19 +63,26 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   });
   const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
+  const [channelGates, setChannelGates] = useState<{
+    allPassed: boolean;
+    channels: Array<{ channel: string; label: string; passed: boolean; reason: string | null }>;
+    missingLabels: string[];
+  } | null>(null);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const [data, zip, markers] = await Promise.all([
+      const [data, zip, markers, gates] = await Promise.all([
         fetchAdminReviewDetail(packId),
         fetchAdminWorkerZipRequestState(packId).catch(() => null),
         fetchAdminStoreWorkflowMarkers(packId).catch(() => null),
+        fetchAdminServiceChannelGates(packId).catch(() => null),
       ]);
       setDetail(data.detail);
       if (zip?.requestStatus) setWorkerZipPhase(zip.requestStatus as AdminWorkerZipPhase);
       if (markers) setWorkflowMarkers(markers);
+      if (gates) setChannelGates(gates);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
     } finally {
@@ -142,6 +151,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const showDecision = activeStep === "decision" || activeStep === "publish";
   const providerConfirmed = workflowMarkers.providerReviewPhase === "CONFIRMED";
   const serviceDone = workflowMarkers.serviceValidationPhase === "PASSED";
+  const canRequestProviderReview = canRequestProviderReviewHandoff({
+    workerZipPhase,
+    quality,
+    providerReviewPhase: workflowMarkers.providerReviewPhase,
+  });
+  const channelsReady = Boolean(channelGates?.allPassed);
 
   return (
     <div className="min-w-0 space-y-4">
@@ -234,10 +249,16 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           <div>
             <h2 className="text-sm font-bold text-slate-900">제공자 확인</h2>
             <p className="mt-1 text-xs text-store-muted">
-              품질점검 통과 후 제공자에게 생성 결과 검토를 요청합니다. 제공자 확인 전에는 서비스
-              검증·공개로 진행할 수 없습니다.
+              지식데이터 생성 완료와 품질점검 통과 후 제공자에게 생성 결과 검토를 요청합니다. 제공자
+              확인 전에는 서비스 검증·공개로 진행할 수 없습니다.
             </p>
           </div>
+          {workerZipPhase !== "COMPLETED" ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              지식데이터 생성이 완료되지 않아 제공자 확인을 요청할 수 없습니다. (현재:{" "}
+              {workerZipPhase})
+            </p>
+          ) : null}
           <dl className="grid gap-2 text-xs sm:grid-cols-2">
             <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
               <dt className="text-store-muted">제공자 검토 상태</dt>
@@ -257,7 +278,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           {workflowMarkers.providerReviewPhase === "NONE" ? (
             <button
               type="button"
-              disabled={actionBusy || !quality.completed || quality.hasBlockers}
+              disabled={actionBusy || !canRequestProviderReview}
               onClick={() => {
                 setActionBusy(true);
                 void requestAdminProviderReviewApi(packId)
@@ -291,10 +312,30 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
               제공자 확인이 완료되지 않아 서비스 검증 완료를 기록할 수 없습니다.
             </p>
           ) : null}
+          {providerConfirmed && channelGates && !channelGates.allPassed ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p className="font-semibold">미검증 채널</p>
+              <ul className="mt-1 list-disc pl-4">
+                {channelGates.channels
+                  .filter((c) => !c.passed)
+                  .map((c) => (
+                    <li key={c.channel}>
+                      {c.label}
+                      {c.reason ? ` — ${c.reason}` : ""}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
+          {providerConfirmed && channelsReady ? (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              API·MCP·ZIP/RAG Export 검증이 모두 통과했습니다.
+            </p>
+          ) : null}
           <AdminServiceValidationOpsPanel packId={packId} />
           <button
             type="button"
-            disabled={!providerConfirmed || serviceDone || actionBusy}
+            disabled={!providerConfirmed || !channelsReady || serviceDone || actionBusy}
             onClick={() => {
               setActionBusy(true);
               void markAdminServiceValidationPassedApi(packId)

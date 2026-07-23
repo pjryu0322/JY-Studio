@@ -147,7 +147,8 @@ export function getNextReviewAction(input: {
     quality.completed &&
     !quality.hasBlockers &&
     quality.failCount === 0 &&
-    providerReviewPhase === "NONE"
+    providerReviewPhase === "NONE" &&
+    workerZipPhase === "COMPLETED"
   ) {
     return {
       kind: "REQUEST_PROVIDER_REVIEW",
@@ -158,6 +159,24 @@ export function getNextReviewAction(input: {
         ? "품질점검 통과: 제공자에게 생성 결과 검토를 요청하세요. WARNING은 승인 전 확인하세요."
         : "품질점검 통과: 제공자에게 생성 결과 검토를 요청하세요.",
       tone: quality.hasWarnings ? "warning" : "ready",
+    };
+  }
+
+  if (
+    quality.completed &&
+    !quality.hasBlockers &&
+    quality.failCount === 0 &&
+    providerReviewPhase === "NONE" &&
+    workerZipPhase !== "COMPLETED"
+  ) {
+    return {
+      kind: "NONE",
+      primaryLabel: "",
+      message:
+        workerZipPhase === "ACCEPTED"
+          ? "지식데이터 생성이 완료된 뒤에 제공자 확인을 요청할 수 있습니다."
+          : "지식데이터 생성이 완료되지 않아 제공자 확인을 요청할 수 없습니다.",
+      tone: "ready",
     };
   }
 
@@ -273,9 +292,17 @@ export function getAdminReviewRailState(input: {
   } else if (quality.completed && quality.hasBlockers) {
     completedThrough = "generation";
     current = "quality";
-  } else if (quality.completed && providerReviewPhase === "NONE") {
+  } else if (
+    quality.completed &&
+    workerZipPhase === "COMPLETED" &&
+    providerReviewPhase === "NONE"
+  ) {
     completedThrough = "quality";
     current = "providerConfirm";
+  } else if (quality.completed && providerReviewPhase === "NONE") {
+    // Quality may look complete from legacy data, but generation must finish first.
+    completedThrough = "generation";
+    current = "quality";
   } else if (providerReviewPhase === "REQUESTED") {
     completedThrough = "quality";
     current = "providerConfirm";

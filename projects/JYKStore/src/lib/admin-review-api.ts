@@ -544,8 +544,44 @@ export async function markAdminServiceValidationPassedApi(packId: string): Promi
     { method: "POST", credentials: "include" },
   );
   const data = (await response.json().catch(() => null)) as
-    | { ok?: boolean; error?: string; message?: string }
+    | { ok?: boolean; error?: string; message?: string; missingChannels?: string[] }
     | null;
   if (response.ok && data?.ok === true) return;
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+export async function fetchAdminServiceChannelGates(
+  packId: string,
+): Promise<{
+  allPassed: boolean;
+  channels: Array<{ channel: string; label: string; passed: boolean; reason: string | null }>;
+  missingLabels: string[];
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/store-workflow/service-validation`,
+    { method: "GET", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | {
+        ok?: boolean;
+        allPassed?: boolean;
+        channels?: Array<{
+          channel: string;
+          label: string;
+          passed: boolean;
+          reason: string | null;
+        }>;
+        missingLabels?: string[];
+        error?: string;
+        message?: string;
+      }
+    | null;
+  if (response.ok && data?.channels) {
+    return {
+      allPassed: Boolean(data.allPassed),
+      channels: data.channels,
+      missingLabels: data.missingLabels ?? [],
+    };
+  }
   throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
 }

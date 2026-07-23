@@ -16,6 +16,7 @@ import type {
   StoreProviderReviewPhase,
   StoreServiceValidationPhase,
 } from "@/lib/store-workflow-status";
+import { resolveStoreServiceChannelGates } from "@/lib/store-workflow-handoff-gates";
 
 /** Same trigger string as worker-zip-import-provider-service (avoid circular import). */
 const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
@@ -352,7 +353,15 @@ export async function markAdminServiceValidationPassed(input: {
   packId: string;
   clientId: string;
   prismaClient?: PrismaClientLike;
-}): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
+}): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      message: string;
+      missingChannels?: string[];
+    }
+> {
   const client = input.prismaClient ?? prisma;
   const packId = input.packId.trim();
   const markers = await resolveStoreWorkflowMarkers(packId, client);
@@ -365,6 +374,16 @@ export async function markAdminServiceValidationPassed(input: {
   }
   if (markers.serviceValidationPhase === "PASSED") return { ok: true };
 
+  const channelGates = await resolveStoreServiceChannelGates(packId, client);
+  if (!channelGates.allPassed) {
+    return {
+      ok: false,
+      error: "SERVICE_CHANNELS_INCOMPLETE",
+      message: `API·MCP·ZIP/RAG Export 검증이 모두 통과해야 합니다. 미검증: ${channelGates.missingLabels.join(", ")}`,
+      missingChannels: channelGates.missingLabels,
+    };
+  }
+
   await client.pipelineRun.create({
     data: {
       packId,
@@ -372,7 +391,7 @@ export async function markAdminServiceValidationPassed(input: {
       triggeredByClientId: input.clientId,
       status: "PASS",
       finishedAt: new Date(),
-      summary: "관리자 서비스 검증 통과",
+      summary: "관리자 서비스 검증 통과 (API·MCP·ZIP/RAG Export)",
     },
   });
 

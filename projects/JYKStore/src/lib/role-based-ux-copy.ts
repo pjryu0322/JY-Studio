@@ -165,6 +165,10 @@ export const PROVIDER_PACK_LOCKED_REVIEWING =
   "관리자 검수 중입니다. 검수 요청을 회수하기 전까지 편집할 수 없습니다.";
 export const PROVIDER_PACK_LOCKED_ADMIN_GENERATION =
   "관리자가 자료를 접수·생성·검토 중입니다. 제공자 쪽 작업이 다시 열릴 때까지 수정할 수 없습니다.";
+export const PROVIDER_PACK_LOCKED_GENERATION_REVIEW =
+  "관리자가 생성·품질점검한 결과 검토가 필요합니다. 아래 생성 결과 검토에서 확인 완료하거나 회수하세요.";
+export const PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE =
+  "생성 결과 확인이 완료되었습니다. 관리자 서비스 검증·최종 검수 결과를 기다려 주세요.";
 export const PROVIDER_PACK_LOCKED_REJECTION =
   "검수 반려 사유를 확인한 뒤에 수정을 시작할 수 있습니다.";
 export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
