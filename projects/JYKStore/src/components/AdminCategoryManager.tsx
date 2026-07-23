@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AdminCategoryDto, AdminCategoryTreeNode } from "@/lib/admin-category-service";
 import {
   createAdminCategoryApi,
@@ -13,7 +13,6 @@ type FormState = {
   categoryId: string;
   name: string;
   description: string;
-  icon: string;
   parentCategoryId: string;
   sortOrder: string;
 };
@@ -22,21 +21,100 @@ const EMPTY_FORM: FormState = {
   categoryId: "",
   name: "",
   description: "",
-  icon: "📁",
   parentCategoryId: "",
   sortOrder: "0",
 };
 
-function flattenTree(
-  nodes: AdminCategoryTreeNode[],
-  depth = 0,
-): Array<AdminCategoryDto & { depth: number }> {
-  const out: Array<AdminCategoryDto & { depth: number }> = [];
-  for (const node of nodes) {
-    out.push({ ...node, depth });
-    out.push(...flattenTree(node.children, depth + 1));
-  }
-  return out;
+function CategoryTreeList({
+  nodes,
+  depth,
+  busy,
+  onAddChild,
+  onEdit,
+  onDelete,
+}: {
+  readonly nodes: AdminCategoryTreeNode[];
+  readonly depth: number;
+  readonly busy: boolean;
+  readonly onAddChild: (parentCategoryId: string) => void;
+  readonly onEdit: (item: AdminCategoryDto) => void;
+  readonly onDelete: (item: AdminCategoryDto) => void;
+}) {
+  if (nodes.length === 0) return null;
+
+  return (
+    <ul
+      className={
+        depth === 0
+          ? "space-y-2"
+          : "mt-2 space-y-2 border-l-2 border-slate-200 pl-3 sm:pl-4"
+      }
+    >
+      {nodes.map((node) => (
+        <li key={node.categoryId}>
+          <div className="rounded-xl border border-store-border bg-white px-3 py-2.5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="truncate text-sm font-semibold text-slate-900">{node.name}</p>
+                  {depth > 0 ? (
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                      하위
+                    </span>
+                  ) : (
+                    <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      상위
+                    </span>
+                  )}
+                  <code className="text-[10px] text-store-muted">{node.categoryId}</code>
+                </div>
+                <p className="mt-0.5 truncate text-[11px] text-store-muted">
+                  {node.description || "—"}
+                </p>
+                <p className="mt-1 text-[10px] text-store-muted">
+                  지식팩 {node.packCount} · 하위 {node.childCount} · 정렬 {node.sortOrder}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-row flex-wrap items-start justify-end gap-1">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAddChild(node.categoryId)}
+                  className="rounded-lg border border-store-border px-2 py-1 text-[10px] font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  하위 추가
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onEdit(node)}
+                  className="rounded-lg border border-store-border px-2 py-1 text-[10px] font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onDelete(node)}
+                  className="rounded-lg border border-red-100 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+          </div>
+          <CategoryTreeList
+            nodes={node.children}
+            depth={depth + 1}
+            busy={busy}
+            onAddChild={onAddChild}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function AdminCategoryManager({
@@ -56,8 +134,7 @@ export function AdminCategoryManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-
-  const flat = useMemo(() => flattenTree(tree), [tree]);
+  const [editingIcon, setEditingIcon] = useState("📁");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -84,6 +161,7 @@ export function AdminCategoryManager({
 
   const startCreate = (parentCategoryId?: string) => {
     setEditingId(null);
+    setEditingIcon("📁");
     setFormOpen(true);
     setForm({
       ...EMPTY_FORM,
@@ -95,12 +173,12 @@ export function AdminCategoryManager({
 
   const startEdit = (item: AdminCategoryDto) => {
     setEditingId(item.categoryId);
+    setEditingIcon(item.icon || "📁");
     setFormOpen(true);
     setForm({
       categoryId: item.categoryId,
       name: item.name,
       description: item.description,
-      icon: item.icon,
       parentCategoryId: item.parentCategoryId ?? "",
       sortOrder: String(item.sortOrder),
     });
@@ -112,6 +190,7 @@ export function AdminCategoryManager({
     setEditingId(null);
     setFormOpen(false);
     setForm(EMPTY_FORM);
+    setEditingIcon("📁");
   };
 
   const onSubmit = async () => {
@@ -122,7 +201,7 @@ export function AdminCategoryManager({
       const payload = {
         name: form.name,
         description: form.description,
-        icon: form.icon,
+        icon: editingIcon || "📁",
         parentCategoryId: form.parentCategoryId.trim() || null,
         sortOrder: Number(form.sortOrder) || 0,
       };
@@ -178,10 +257,7 @@ export function AdminCategoryManager({
 
   return (
     <div className="space-y-4 pb-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-store-muted">
-          상위·하위 카테고리를 추가·수정하고, 지식팩이 없는 항목만 삭제할 수 있습니다.
-        </p>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => startCreate()}
@@ -214,20 +290,11 @@ export function AdminCategoryManager({
                 className="mt-1 min-h-[36px] w-full rounded-lg border border-store-border px-3 text-sm disabled:bg-slate-50"
               />
             </label>
-            <label className="block text-xs font-semibold text-slate-700">
+            <label className="block text-xs font-semibold text-slate-700 sm:col-span-2">
               이름
               <input
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                disabled={busy}
-                className="mt-1 min-h-[36px] w-full rounded-lg border border-store-border px-3 text-sm"
-              />
-            </label>
-            <label className="block text-xs font-semibold text-slate-700">
-              아이콘
-              <input
-                value={form.icon}
-                onChange={(e) => setForm((prev) => ({ ...prev, icon: e.target.value }))}
                 disabled={busy}
                 className="mt-1 min-h-[36px] w-full rounded-lg border border-store-border px-3 text-sm"
               />
@@ -292,72 +359,20 @@ export function AdminCategoryManager({
       {loading ? <div className="min-h-[120px] rounded-xl bg-slate-50" aria-hidden /> : null}
 
       {!loading ? (
-        <ul className="space-y-1.5">
-          {flat.length === 0 ? (
-            <li className="rounded-xl border border-store-border bg-white p-4 text-sm text-store-muted">
-              등록된 카테고리가 없습니다. 상위 카테고리를 추가해 주세요.
-            </li>
-          ) : (
-            flat.map((item) => (
-              <li
-                key={item.categoryId}
-                className="rounded-xl border border-store-border bg-white px-3 py-2.5 shadow-sm"
-                style={{ marginLeft: item.depth * 16 }}
-              >
-                <div className="flex items-start gap-2">
-                  <span className="text-lg leading-none" aria-hidden>
-                    {item.icon}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
-                      {item.depth > 0 ? (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                          하위
-                        </span>
-                      ) : (
-                        <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                          상위
-                        </span>
-                      )}
-                      <code className="text-[10px] text-store-muted">{item.categoryId}</code>
-                    </div>
-                    <p className="mt-0.5 truncate text-[11px] text-store-muted">{item.description || "—"}</p>
-                    <p className="mt-1 text-[10px] text-store-muted">
-                      지식팩 {item.packCount} · 하위 {item.childCount} · 정렬 {item.sortOrder}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-1">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => startCreate(item.categoryId)}
-                      className="rounded-lg border border-store-border px-2 py-1 text-[10px] font-semibold text-slate-700"
-                    >
-                      하위 추가
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => startEdit(item)}
-                      className="rounded-lg border border-store-border px-2 py-1 text-[10px] font-semibold text-slate-700"
-                    >
-                      수정
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void onDelete(item)}
-                      className="rounded-lg border border-red-100 px-2 py-1 text-[10px] font-semibold text-red-700"
-                    >
-                      삭제
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))
-          )}
-        </ul>
+        tree.length === 0 ? (
+          <div className="rounded-xl border border-store-border bg-white p-4 text-sm text-store-muted">
+            등록된 카테고리가 없습니다. 상위 카테고리를 추가해 주세요.
+          </div>
+        ) : (
+          <CategoryTreeList
+            nodes={tree}
+            depth={0}
+            busy={busy}
+            onAddChild={startCreate}
+            onEdit={startEdit}
+            onDelete={(item) => void onDelete(item)}
+          />
+        )
       ) : null}
     </div>
   );

@@ -39,8 +39,14 @@ describe("admin category hierarchy", () => {
     assert.ok(page.includes("isAdminAccountRole"));
     assert.ok(manager.includes("하위 추가"));
     assert.ok(manager.includes("상위 카테고리 추가"));
+    assert.ok(manager.includes("CategoryTreeList"));
+    assert.ok(manager.includes("border-l-2"));
+    assert.ok(manager.includes("flex-row"));
+    assert.ok(!manager.includes("{item.icon}"));
+    assert.ok(!manager.includes("{node.icon}"));
     assert.ok(route.includes("createAdminCategory"));
     assert.ok(itemRoute.includes("updateAdminCategory"));
     assert.ok(itemRoute.includes("deleteAdminCategory"));
   });
 });
+

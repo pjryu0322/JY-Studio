@@ -58,15 +58,10 @@ export default async function CategoryDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <span className="text-3xl" aria-hidden>
-          {category.icon}
-        </span>
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">{category.name}</h2>
-          <p className="mt-1 text-sm text-store-muted">{category.description}</p>
-          <p className="mt-2 text-xs text-store-muted">등록된 공개 지식팩 {packs.length}개</p>
-        </div>
+      <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-lg font-bold text-slate-900">{category.name}</h2>
+        <p className="mt-1 text-sm text-store-muted">{category.description}</p>
+        <p className="mt-2 text-xs text-store-muted">등록된 공개 지식팩 {packs.length}개</p>
       </div>
 
       {childCategories.length > 0 ? (

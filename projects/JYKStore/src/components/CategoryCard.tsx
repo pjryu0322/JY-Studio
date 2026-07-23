@@ -12,9 +12,6 @@ export function CategoryCard(p: {
       href={categoryDetailPath(p.category.categoryId)}
       className="flex items-center gap-2.5 rounded-xl border border-store-border bg-white px-3 py-2.5 transition hover:bg-slate-50 active:bg-slate-50"
     >
-      <span className="text-lg leading-none" aria-hidden>
-        {p.category.icon}
-      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-semibold text-slate-900">{p.category.name}</p>
