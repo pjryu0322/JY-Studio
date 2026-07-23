@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminReviewStatusBadge } from "@/components/AdminReviewStatusBadge";
-import { AdminWorkerZipRequestQueue } from "@/components/AdminWorkerZipRequestQueue";
 import type { AdminReviewListItemDto } from "@/lib/admin-review-dto";
 import { fetchAdminReviewItems } from "@/lib/admin-review-api";
 import {
@@ -11,6 +10,7 @@ import {
   ADMIN_REVIEWS_OPEN_DETAIL,
   ADMIN_REVIEWS_STATUS_IN_REVIEW,
   ADMIN_REVIEWS_STATUS_PENDING,
+  ADMIN_WORK_SECTION_PACK_REVIEW_BODY,
 } from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
 
@@ -47,11 +47,9 @@ export function AdminReviewListPageClient() {
 
   return (
     <div className="space-y-6 pb-6">
-      <AdminWorkerZipRequestQueue />
-
       <div className="px-1">
         <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEWS_LIST_TITLE}</h2>
-        <p className="mt-1 text-xs text-store-muted">REVIEWING 상태 지식팩만 표시됩니다.</p>
+        <p className="mt-1 text-xs text-store-muted">{ADMIN_WORK_SECTION_PACK_REVIEW_BODY}</p>
       </div>
 
       {error ? (

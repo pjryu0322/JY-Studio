@@ -8,23 +8,6 @@ import { isAdminAccountRole } from "@/lib/account-role";
 import { fetchAuthSession } from "@/lib/auth-api";
 import { ROUTES } from "@/lib/routes";
 
-function MenuLink({ title, description, href }: { title: string; description: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border border-store-border bg-white px-4 py-3 active:bg-slate-50"
-    >
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        <p className="text-xs text-store-muted">{description}</p>
-      </div>
-      <span className="shrink-0 text-store-accent" aria-hidden>
-        →
-      </span>
-    </Link>
-  );
-}
-
 export function AccountPageClient() {
   const { logoutAndRedirect, busy: logoutBusy, error: logoutError } = useStoreLogout();
   const [loading, setLoading] = useState(true);
@@ -134,29 +117,6 @@ export function AccountPageClient() {
       </div>
 
       <AdminAccountManagementPanel />
-
-      <section className="space-y-2">
-        <h2 className="px-1 text-xs font-bold uppercase tracking-wide text-store-muted">
-          관리자 도구
-        </h2>
-        <ul className="space-y-2 text-sm">
-          <li>
-            <MenuLink title="관리자 콘솔" description="지식팩 검수 및 승인" href={ROUTES.adminReviews} />
-          </li>
-          <li>
-            <MenuLink title="운영 사용량 확인" description="API UsageLog 조회" href={ROUTES.adminOpsUsage} />
-          </li>
-          <li>
-            <MenuLink title="AuditLog" description="감사 로그 조회" href={ROUTES.adminOpsAudit} />
-          </li>
-          <li>
-            <MenuLink title="Ops 대시보드" description="Health, Quota, API Keys" href={ROUTES.adminOps} />
-          </li>
-          <li>
-            <MenuLink title="내 프로필" description="표시 이름·연락처" href={ROUTES.accountProfile} />
-          </li>
-        </ul>
-      </section>
     </div>
   );
 }

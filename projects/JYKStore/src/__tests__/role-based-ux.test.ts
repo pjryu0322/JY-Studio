@@ -32,16 +32,31 @@ describe("role-based UX copy", () => {
 describe("role-based account UX", () => {
   it("makes bottom account tab and account page admin-only for registered account management", () => {
     const page = readSource("src/app/(store)/account/page.tsx");
+    const settingsPage = readSource("src/app/(store)/settings/page.tsx");
     const account = readSource("src/components/AccountPageClient.tsx");
     const nav = readSource("src/components/BottomTabNav.tsx");
     const panel = readSource("src/components/AdminAccountManagementPanel.tsx");
+    const routes = readSource("src/lib/routes.ts");
 
     assert.ok(page.includes("AccountPageClient"));
+    assert.ok(!page.includes("ConsumerWorkspaceShell"));
+    assert.ok(settingsPage.includes("redirect(ROUTES.adminOps)"));
     assert.ok(account.includes("AdminAccountManagementPanel"));
     assert.ok(account.includes("관리자 전용 메뉴입니다"));
-    assert.ok(account.includes("등록 계정 관리") || panel.includes("등록 계정 관리"));
-    assert.ok(nav.includes('tab.key === "account" ? isAdmin') || nav.includes('tab.key === "account") return isAdmin'));
-    assert.ok(nav.includes("isAdminAccountRole"));
+    assert.ok(panel.includes("등록 계정 관리"));
+    assert.ok(routes.includes('key: "opsUsage"'));
+    assert.ok(routes.includes('key: "opsAudit"'));
+    assert.ok(routes.includes('key: "ops"'));
+    assert.ok(routes.includes('label: "운영 사용량"'));
+    assert.ok(routes.includes('label: "AuditLog"'));
+    assert.ok(routes.includes('label: "Ops 대시보드"'));
+    assert.ok(!routes.includes('key: "settings"'));
+    assert.ok(nav.includes("appRailTabsForRole"));
+    assert.ok(nav.includes('role === "ADMIN"'));
+    assert.ok(nav.includes('"opsUsage"'));
+    assert.ok(nav.includes('"opsAudit"'));
+    assert.ok(nav.includes('"ops"'));
+    assert.ok(!nav.includes('"settings"'));
   });
 
   it("shows provider center in bottom nav for knowledge providers", () => {
@@ -49,8 +64,13 @@ describe("role-based account UX", () => {
     const routes = readSource("src/lib/routes.ts");
     assert.ok(routes.includes('key: "provider"'));
     assert.ok(routes.includes('label: "제공자 센터"'));
-    assert.ok(nav.includes("isProviderAccountRole"));
-    assert.ok(nav.includes('tab.key === "provider"'));
+    assert.ok(nav.includes("isProviderAccountRole") || nav.includes("appRailTabsForRole"));
+    assert.ok(nav.includes("appRailTabsForRole"));
+    assert.ok(nav.includes('tab.key === "provider"') || nav.includes('key === "provider"'));
+    assert.ok(nav.includes("RailEdgeArrow") || nav.includes("메뉴 감추기"));
+    assert.ok(!nav.includes("PanelCollapseIcon"));
+    const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
+    assert.ok(!adminBlock.includes('"provider"'));
   });
 });
 

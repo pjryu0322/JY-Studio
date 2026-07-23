@@ -9,7 +9,7 @@ import {
   buildProviderPacksStatusSummary,
   type ProviderPacksStatusSummary,
 } from "@/lib/provider-pack-progress";
-import { isProviderAccountRole, isAdminAccountRole } from "@/lib/account-role";
+import { isProviderAccountRole } from "@/lib/account-role";
 import { fetchAuthSession } from "@/lib/auth-api";
 import { fetchProviderPacks, fetchProviderProfile } from "@/lib/provider-center-api";
 import {
@@ -165,10 +165,7 @@ export function ProviderCenterPageClient() {
       }
 
       const role = session.accountRole ?? session.user?.accountRole;
-      const canProvider =
-        isProviderAccountRole(role) ||
-        isAdminAccountRole(role) ||
-        Boolean(session.providerProfile);
+      const canProvider = isProviderAccountRole(role);
 
       if (!canProvider) {
         setView("notProvider");

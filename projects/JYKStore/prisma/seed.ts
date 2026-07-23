@@ -31,11 +31,15 @@ async function seedCategories() {
         name: category.name,
         description: category.description,
         icon: category.icon,
+        parentCategoryId: category.parentCategoryId ?? null,
+        sortOrder: category.sortOrder ?? 0,
       },
       update: {
         name: category.name,
         description: category.description,
         icon: category.icon,
+        parentCategoryId: category.parentCategoryId ?? null,
+        sortOrder: category.sortOrder ?? 0,
       },
     });
   }

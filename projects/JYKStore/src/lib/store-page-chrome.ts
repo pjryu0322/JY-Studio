@@ -1,6 +1,8 @@
 import {
   ADMIN_CONSOLE_TITLE,
   ADMIN_REVIEWS_LIST_TITLE,
+  ADMIN_WORK_INBOX_DESCRIPTION,
+  ADMIN_WORK_INBOX_TITLE,
   PROVIDER_CENTER_TAGLINE,
 } from "@/lib/role-based-ux-copy";
 import { ROUTES } from "@/lib/routes";
@@ -30,7 +32,7 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   if (pathname === ROUTES.categories) {
     return {
       title: "카테고리",
-      description: "분야별로 지식팩을 살펴봅니다.",
+      description: "분야별로 지식팩을 살펴보고, 관리자는 상위·하위 카테고리를 관리합니다.",
     };
   }
   if (pathname.startsWith(`${ROUTES.categories}/`)) {
@@ -54,7 +56,7 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   if (pathname === ROUTES.myPacks) {
     return {
       title: "내 지식팩",
-      description: "보관한 지식팩을 확인합니다. 제공자 등록 팩은 제공자 센터에서 관리합니다.",
+      description: "보관한 지식팩을 확인하고 연동·다운로드합니다.",
     };
   }
   if (pathname.startsWith(`${ROUTES.myPacks}/`)) {
@@ -84,7 +86,7 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   if (pathname === ROUTES.accountProfile) {
     return {
       title: "프로필 관리",
-      description: "로그인과 제공자 프로필을 관리합니다.",
+      description: "계정 역할과 프로필을 확인합니다. 제공자·사용자는 별도 계정입니다.",
     };
   }
   if (pathname === ROUTES.accountPlan) {
@@ -96,7 +98,7 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   if (pathname === ROUTES.account) {
     return {
       title: "계정",
-      description: "등록된 계정 정보와 관리자 도구를 관리합니다.",
+      description: "등록된 계정 정보와 역할을 관리합니다.",
     };
   }
   if (pathname === ROUTES.apiKeys) {
@@ -144,8 +146,8 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   }
   if (pathname === ROUTES.admin) {
     return {
-      title: ADMIN_CONSOLE_TITLE,
-      description: "검수 요청 처리 및 운영 도구",
+      title: ADMIN_WORK_INBOX_TITLE,
+      description: ADMIN_WORK_INBOX_DESCRIPTION,
     };
   }
   if (pathname === ROUTES.adminReviews) {

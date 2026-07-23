@@ -1,4 +1,4 @@
-import { AuditAction, PackStatus, PipelineStatus } from "@prisma/client";
+import { AuditAction, PackStatus, PipelineStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -13,6 +13,11 @@ import { prepareProviderPackForFinalReviewSubmit } from "@/lib/auto-pipeline/pro
 import { commitDistributionPackForReview } from "@/lib/distribution/distribution-submit-service";
 import { buildProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import { getProviderPackForClient } from "@/lib/provider-pack/provider-pack-query-service";
+import { PackReviewStatus } from "@/lib/pack-review-status";
+import {
+  isProviderRejectionAcknowledged,
+  withProviderRejectionAcknowledged,
+} from "@/lib/pack-review-rejection-ack";
 
 async function recordSubmitForReviewPipeline(
   packId: string,
@@ -292,4 +297,63 @@ export async function withdrawProviderPackFromReview(
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail! };
+}
+
+/**
+ * Provider acknowledges the latest admin rejection — unlocks editing after that.
+ */
+export async function acknowledgeProviderPackRejection(
+  userId: string,
+  clientId: string,
+  packId: string,
+) {
+  const profile = await findOrEnsureProviderProfileForUser(userId, clientId);
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+    select: { packId: true, status: true },
+  });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_DRAFT" as const };
+  }
+
+  const latestRejected = await prisma.packReview.findFirst({
+    where: { packId, decision: "REJECT", status: PackReviewStatus.REJECTED },
+    orderBy: { decidedAt: "desc" },
+    select: { id: true, submitSnapshot: true, rejectionReason: true },
+  });
+  if (!latestRejected?.rejectionReason?.trim()) {
+    return { error: "NO_REJECTION" as const };
+  }
+  if (isProviderRejectionAcknowledged(latestRejected.submitSnapshot)) {
+    const detail = await getProviderPackForClient(userId, clientId, packId);
+    return { pack: detail!, alreadyAcknowledged: true as const };
+  }
+
+  const now = new Date();
+  await prisma.packReview.update({
+    where: { id: latestRejected.id },
+    data: {
+      submitSnapshot: withProviderRejectionAcknowledged(latestRejected.submitSnapshot, {
+        acknowledgedAt: now.toISOString(),
+        acknowledgedByUserId: userId,
+      }) as Prisma.InputJsonValue,
+    },
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_UPDATE,
+    entityType: "PackReview",
+    entityId: latestRejected.id,
+    metadata: { packId, action: "acknowledge_rejection" },
+  });
+
+  const detail = await getProviderPackForClient(userId, clientId, packId);
+  return { pack: detail!, alreadyAcknowledged: false as const };
 }

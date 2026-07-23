@@ -43,13 +43,17 @@ describe("account role helpers", () => {
     });
   });
 
-  it("resolves session role with ADMIN precedence", () => {
+  it("resolves session role from stored account role only", () => {
     assert.equal(
       resolveSessionAccountRole({ storedRole: "ADMIN", hasProviderProfile: true }),
       "ADMIN",
     );
     assert.equal(
       resolveSessionAccountRole({ storedRole: "USER", hasProviderProfile: true }),
+      "USER",
+    );
+    assert.equal(
+      resolveSessionAccountRole({ storedRole: "PROVIDER", hasProviderProfile: false }),
       "PROVIDER",
     );
     assert.equal(
@@ -64,6 +68,6 @@ describe("account role helpers", () => {
     assert.equal(parseSelectableAccountRole("USER"), "USER");
     assert.equal(postAuthLandingPath("USER"), ROUTES.home);
     assert.equal(postAuthLandingPath("PROVIDER"), ROUTES.provider);
-    assert.equal(postAuthLandingPath("ADMIN"), ROUTES.adminReviews);
+    assert.equal(postAuthLandingPath("ADMIN"), ROUTES.admin);
   });
 });

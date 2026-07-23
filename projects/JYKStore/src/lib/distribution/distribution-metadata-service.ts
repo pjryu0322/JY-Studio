@@ -21,6 +21,7 @@ import {
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
+import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
 import type { PublicPackContentType } from "@/lib/public-pack-content-type";
 
 const MAX_TEXT = 8_000;
@@ -456,6 +457,14 @@ async function requireOwnedDraftPack(input: {
     throw new PayloadServiceError(
       "PACK_NOT_EDITABLE",
       "초안(DRAFT) 상태에서만 유통정보를 수정할 수 있습니다.",
+      409,
+    );
+  }
+  const adminHold = await resolveProviderAdminGenerationHold(pack.packId);
+  if (adminHold) {
+    throw new PayloadServiceError(
+      "PACK_NOT_EDITABLE",
+      "관리자가 생성 요청을 접수한 뒤에는 유통정보를 수정할 수 없습니다.",
       409,
     );
   }

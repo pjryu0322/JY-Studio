@@ -15,6 +15,7 @@ import {
 
 export function ProviderPackBasicInfoTab({
   editable,
+  lockHint,
   name,
   shortDescription,
   description,
@@ -33,6 +34,7 @@ export function ProviderPackBasicInfoTab({
   onSaveAndContinue,
 }: {
   readonly editable: boolean;
+  readonly lockHint?: string | null;
   readonly name: string;
   readonly shortDescription: string;
   readonly description: string;
@@ -56,6 +58,7 @@ export function ProviderPackBasicInfoTab({
 }) {
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!editable || saving) return;
     onSaveAndContinue();
   };
 
@@ -63,7 +66,9 @@ export function ProviderPackBasicInfoTab({
     <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <form onSubmit={onSubmit} className="space-y-4">
         {!editable ? (
-          <p className="text-xs text-store-muted">초안(DRAFT)이 아니면 수정할 수 없습니다.</p>
+          <p className="text-xs text-store-muted">
+            {lockHint ?? "초안(DRAFT)이 아니면 수정할 수 없습니다."}
+          </p>
         ) : null}
 
         {saveSuccessMessage ? (
@@ -216,25 +221,23 @@ export function ProviderPackBasicInfoTab({
           />
         </div>
 
-        {editable ? (
-          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={onSaveDraft}
-              className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800 disabled:opacity-50 sm:w-auto"
-            >
-              {saving ? "저장 중…" : PROVIDER_PACK_SAVE_DRAFT}
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto"
-            >
-              {saving ? "저장 중…" : PROVIDER_PACK_SAVE_AND_GO_PAYLOAD}
-            </button>
-          </div>
-        ) : null}
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={!editable || saving}
+            onClick={onSaveDraft}
+            className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            {saving ? "저장 중…" : PROVIDER_PACK_SAVE_DRAFT}
+          </button>
+          <button
+            type="submit"
+            disabled={!editable || saving}
+            className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            {saving ? "저장 중…" : PROVIDER_PACK_SAVE_AND_GO_PAYLOAD}
+          </button>
+        </div>
       </form>
     </section>
   );

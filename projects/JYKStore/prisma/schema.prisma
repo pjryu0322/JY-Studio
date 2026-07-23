@@ -223,15 +223,22 @@ model OrganizationMember {
 }
 
 model PackCategory {
-  id          String   @id @default(cuid())
-  categoryId  String   @unique
-  name        String
-  description String
-  icon        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(cuid())
+  categoryId        String   @unique
+  name              String
+  description       String
+  icon              String
+  parentCategoryId  String?
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  packs KnowledgePack[]
+  parent   PackCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [categoryId], onDelete: Restrict)
+  children PackCategory[] @relation("CategoryHierarchy")
+  packs    KnowledgePack[]
+
+  @@index([parentCategoryId])
+  @@index([sortOrder])
 }
 
 model KnowledgePack {

@@ -11,15 +11,23 @@ export const PROVIDER_CENTER_LOGIN_CTA = "로그인하고 제공자 센터 열�
 
 export const ACCOUNT_PROFILE_LOGIN_TITLE = "JYKStore 로그인";
 export const ACCOUNT_PROFILE_LOGIN_HINT =
-  "기존 계정은 로그인, 처음이면 역할을 고른 뒤 계정 생성을 선택하세요.";
+  "기존 계정은 로그인하세요. 계정 생성 시 역할은 하나만 선택할 수 있으며, 제공자와 일반 사용자는 각각 별도 계정이 필요합니다.";
 
-export const ACCOUNT_REGISTER_ROLE_LABEL = "계정 역할 (생성 시)";
+export const ACCOUNT_REGISTER_ROLE_LABEL = "계정 역할 (생성 시 · 변경 불가)";
 export const ACCOUNT_REGISTER_ROLE_USER = "일반 사용자";
-export const ACCOUNT_REGISTER_ROLE_USER_HINT = "지식팩 검색·보관·API 연결";
+export const ACCOUNT_REGISTER_ROLE_USER_HINT =
+  "지식팩 검색·보관·API 연결 (제공자로 등록하려면 별도 계정)";
 export const ACCOUNT_REGISTER_ROLE_PROVIDER = "지식팩 제공자";
-export const ACCOUNT_REGISTER_ROLE_PROVIDER_HINT = "제품 지식을 등록하고 지식팩을 만듭니다";
+export const ACCOUNT_REGISTER_ROLE_PROVIDER_HINT =
+  "지식팩 등록·검수 요청 (사용·보관은 별도 사용자 계정)";
 export const ACCOUNT_REGISTER_ROLE_ADMIN = "관리자";
 export const ACCOUNT_REGISTER_ROLE_ADMIN_HINT = "지식팩 검수·승인 및 운영 콘솔";
+
+export const ACCOUNT_ROLE_SEPARATION_NOTE =
+  "한 계정은 하나의 역할만 가집니다. 제공자와 일반 사용자를 모두 쓰려면 계정을 따로 만드세요.";
+
+export const ACCOUNT_USER_NEEDS_PROVIDER_ACCOUNT =
+  "제공자 프로필은 제공자 계정에서만 관리합니다. 지식팩을 등록하려면 제공자 계정을 새로 만든 뒤 그 계정으로 로그인하세요.";
 
 export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
 
@@ -28,7 +36,11 @@ export const PROVIDER_CENTER_TAGLINE =
 
 export const PROVIDER_CENTER_BEFORE_PROFILE_TITLE = "제공자 권한이 필요합니다.";
 export const PROVIDER_CENTER_BEFORE_PROFILE_BODY =
-  "지식팩 제공자 계정으로 로그인하면 제공자 센터에서 기존 지식팩을 관리할 수 있습니다.";
+  "현재 계정은 제공자 역할이 아닙니다. 제공자 센터는 제공자 계정으로만 이용할 수 있습니다. 같은 사람이라도 사용자 계정과 제공자 계정은 별도로 발급받아야 합니다.";
+
+export const MY_PACKS_PROVIDER_REDIRECT_TITLE = "내 지식팩은 일반 사용자 계정용입니다.";
+export const MY_PACKS_PROVIDER_REDIRECT_BODY =
+  "제공자 계정에서는 등록·검수 중인 지식팩을 제공자 센터에서 관리하세요. 보관한 지식팩을 쓰려면 일반 사용자 계정으로 로그인하세요.";
 
 export const PROVIDER_CENTER_REGISTERED_TITLE = "제공자 계정 확인됨";
 export const PROVIDER_CENTER_REGISTERED_BODY =
@@ -146,6 +158,15 @@ export const PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT =
   "관리자가 이미 접수한 검수 요청은 회수할 수 없습니다.";
 export const PROVIDER_REVIEW_REJECTED_TITLE = "검수 반려됨";
 export const PROVIDER_REVIEW_REJECTED_GO_FIX = "자료 확인하러 가기";
+export const PROVIDER_REVIEW_REJECTED_ACK_CTA = "반려 사유 확인";
+export const PROVIDER_REVIEW_REJECTED_ACK_HINT =
+  "반려 사유를 확인하기 전까지 지식팩을 수정할 수 없습니다.";
+export const PROVIDER_PACK_LOCKED_REVIEWING =
+  "관리자 검수 중입니다. 검수 요청을 회수하기 전까지 편집할 수 없습니다.";
+export const PROVIDER_PACK_LOCKED_ADMIN_GENERATION =
+  "관리자가 자료를 접수·생성·검토 중입니다. 제공자 쪽 작업이 다시 열릴 때까지 수정할 수 없습니다.";
+export const PROVIDER_PACK_LOCKED_REJECTION =
+  "검수 반려 사유를 확인한 뒤에 수정을 시작할 수 있습니다.";
 export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
   "개발자 테스트: 관리자 콘솔에서 검수 대기 목록을 확인하세요.";
 
@@ -155,6 +176,33 @@ export const ADMIN_LOGIN_DESCRIPTION =
 export const ADMIN_ACCESS_REQUIRED_TITLE = "관리자 권한이 필요합니다.";
 export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 주세요.";
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
+export const ADMIN_WORK_INBOX_TITLE = "오늘 처리할 일";
+export const ADMIN_WORK_INBOX_DESCRIPTION =
+  "접수·생성·제공자 검토 요청·검수 요청 순으로 확인하세요.";
+export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "접수해야 할 지식팩";
+export const ADMIN_WORK_SECTION_ACCEPT_BODY =
+  "제공자가 ZIP 자료 생성을 요청했습니다. 접수한 뒤 생성을 진행하세요.";
+export const ADMIN_WORK_SECTION_ACCEPT_CTA = "접수하기";
+export const ADMIN_WORK_SECTION_GENERATE_TITLE = "생성 실행이 필요한 지식팩";
+export const ADMIN_WORK_SECTION_GENERATE_BODY =
+  "접수는 끝났습니다. 지식데이터 생성을 실행하세요.";
+export const ADMIN_WORK_SECTION_GENERATE_CTA = "생성 실행하기";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자에게 검토를 요청해야 할 지식팩";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY =
+  "생성은 끝났습니다. 품질을 확인한 뒤 제공자에게 검수 요청을 안내하세요.";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA = "품질 점검·검토 요청";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_TITLE = "제공자로부터 검수 요청을 받은 지식팩";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_BODY =
+  "제공자가 검수 요청을 제출했습니다. 승인·반려를 판단하세요.";
+export const ADMIN_WORK_FILTER_CATEGORY_ALL = "전체 카테고리";
+export const ADMIN_WORK_FILTER_STATUS_ALL = "전체 상태";
+export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "접수 대기";
+export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성 실행";
+export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토 요청";
+export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 수신";
+export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
+export const ADMIN_WORK_EMPTY = "지금 처리할 작업이 없습니다.";
+export const ADMIN_WORK_SUMMARY_LABEL = "대기";
 export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
 export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
 export const ADMIN_REVIEWS_STATUS_PENDING = "접수 대기";

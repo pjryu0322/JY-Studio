@@ -22,6 +22,8 @@ describe("header profile UX", () => {
     assert.ok(!top.includes("HeaderProfileButton"));
     assert.ok(nav.includes("ROUTES.accountProfile"));
     assert.ok(nav.includes("프로필"));
+    assert.ok(nav.includes("accountRoleDisplayLabel"));
+    assert.ok(nav.includes("displayName"));
     assert.equal(ROUTES.accountProfile, "/account/profile");
   });
 
@@ -53,8 +55,10 @@ describe("header profile UX", () => {
     assert.ok(!page.includes("프로필 관리"));
     assert.ok(top.includes("resolveStorePageChrome"));
     assert.ok(chrome.includes("프로필 관리"));
-    assert.ok(chrome.includes("로그인과 제공자 프로필을 관리합니다."));
+    assert.ok(chrome.includes("별도 계정"));
     assert.ok(client.includes("StoreLoginForm"));
     assert.ok(client.includes("ProviderProfileForm"));
+    assert.ok(client.includes("ACCOUNT_USER_NEEDS_PROVIDER_ACCOUNT"));
+    assert.ok(client.includes("canEditProviderProfile"));
   });
 });

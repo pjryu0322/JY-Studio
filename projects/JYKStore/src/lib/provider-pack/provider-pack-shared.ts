@@ -10,6 +10,8 @@ import {
   type ProviderSourceDocumentValidationOverlay,
 } from "@/lib/provider-pack-dto";
 import type { ResolvedCreateProviderPackInput } from "@/lib/provider-pack/provider-pack-types";
+import { isProviderRejectionAcknowledged } from "@/lib/pack-review-rejection-ack";
+import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
 
 export const packDetailInclude = {
   versions: {
@@ -94,7 +96,7 @@ export async function mapProviderPackDetailWithValidation(
   const latestRejected = await prisma.packReview.findFirst({
     where: { packId: pack.packId, decision: "REJECT" },
     orderBy: { decidedAt: "desc" },
-    select: { rejectionReason: true },
+    select: { rejectionReason: true, submitSnapshot: true },
   });
   const latestOpenReview = await prisma.packReview.findFirst({
     where: {
@@ -104,6 +106,7 @@ export async function mapProviderPackDetailWithValidation(
     orderBy: { createdAt: "desc" },
     select: { status: true },
   });
+  const adminGenerationHold = await resolveProviderAdminGenerationHold(pack.packId);
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
@@ -112,6 +115,10 @@ export async function mapProviderPackDetailWithValidation(
     retrievalEvaluation,
     releaseGate,
     latestRejectionReason: latestRejected?.rejectionReason ?? null,
+    latestRejectionAcknowledged: latestRejected
+      ? isProviderRejectionAcknowledged(latestRejected.submitSnapshot)
+      : true,
     latestReviewStatus: latestOpenReview?.status ?? null,
+    adminGenerationHold,
   });
 }

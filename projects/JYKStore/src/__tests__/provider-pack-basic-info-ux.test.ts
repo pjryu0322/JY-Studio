@@ -46,6 +46,8 @@ describe("provider pack basic info UX sources", () => {
     assert.ok(basic.includes("PROVIDER_PACK_SAVE_DRAFT"));
     assert.ok(basic.includes("PROVIDER_PACK_SAVE_AND_GO_PAYLOAD"));
     assert.ok(!basic.includes("변경 저장"));
+    assert.ok(basic.includes("disabled={!editable || saving}"));
+    assert.ok(!basic.includes("{editable ? ("));
   });
 
   it("saves draft on basic tab and continues to payload after primary save", () => {

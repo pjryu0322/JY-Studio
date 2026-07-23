@@ -1,23 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
-import { getAdminConsoleRailItems } from "@/lib/role-workspace/admin-review-rail";
 
+/**
+ * Admin list/ops pages — content only (app left rail handles navigation).
+ * No nested workspace rail.
+ */
 export function AdminConsoleWorkspace({
-  activeId,
   children,
 }: {
-  readonly activeId: string;
+  readonly activeId?: string;
   readonly children: ReactNode;
 }) {
-  return (
-    <RoleWorkspaceShell
-      role="admin"
-      title="관리자 콘솔"
-      items={getAdminConsoleRailItems(activeId)}
-    >
-      {children}
-    </RoleWorkspaceShell>
-  );
+  return <div className="min-w-0 space-y-4">{children}</div>;
 }

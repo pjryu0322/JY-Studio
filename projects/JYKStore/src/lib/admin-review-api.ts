@@ -76,6 +76,8 @@ export type AdminWorkerZipRequestListItem = {
   packId: string;
   packName: string;
   providerName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
   versionLabel: string | null;
   requestedAt: string;
   originalFileName: string | null;

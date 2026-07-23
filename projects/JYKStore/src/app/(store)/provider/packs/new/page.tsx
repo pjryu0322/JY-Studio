@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderPackCreateForm } from "@/components/ProviderPackCreateForm";
 import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
-import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
+import { isProviderAccountRole } from "@/lib/account-role";
 import { getUserIdFromCookies } from "@/lib/auth-session";
 import {
   createClientId,
@@ -31,11 +31,9 @@ export default async function ProviderPackNewPage() {
   const clientId = jar.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? createClientId();
   const providerProfile = await findProviderProfileForUser(userId, clientId);
 
-  // Match Provider Center / session: role OR linked provider profile.
+  // Match Provider Center / session: PROVIDER role OR linked provider profile.
   const canProvider =
-    isProviderAccountRole(user?.accountRole) ||
-    isAdminAccountRole(user?.accountRole) ||
-    Boolean(providerProfile);
+    isProviderAccountRole(user?.accountRole) || Boolean(providerProfile);
 
   if (!canProvider) {
     return <ProviderRequiredCard />;

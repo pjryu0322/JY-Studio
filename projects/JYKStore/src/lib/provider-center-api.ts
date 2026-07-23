@@ -147,6 +147,22 @@ export async function withdrawProviderPackReviewApi(
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function acknowledgeProviderPackRejectionApi(
+  packId: string,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/acknowledge-rejection`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
 export async function createProviderPackVersionApi(
   packId: string,
   input: {

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const storedRole = parseAccountRole(user.accountRole);
     let profileRow = await findProviderProfileForUser(session.userId, clientId);
 
-    if (!profileRow && (storedRole === "PROVIDER" || storedRole === "ADMIN")) {
+    if (!profileRow && storedRole === "PROVIDER") {
       const ensured = await ensureProviderProfileForAccount({
         userId: session.userId,
         clientId,

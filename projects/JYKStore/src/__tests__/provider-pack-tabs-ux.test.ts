@@ -40,8 +40,9 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(tabIds.indexOf('"knowledge"') < tabIds.indexOf('"serviceValidation"'));
     assert.ok(tabIds.indexOf('"serviceValidation"') < tabIds.indexOf('"distributionReview"'));
     assert.ok(!editor.includes("ProviderPackTabs"));
-    assert.ok(editor.includes("RoleWorkspaceShell"));
-    assert.ok(editor.includes("getProviderPackRailState"));
+    assert.ok(!editor.includes("RoleWorkspaceShell"));
+    assert.ok(!editor.includes("getProviderPackRailState"));
+    assert.ok(editor.includes("isProviderPackContentEditable"));
     assert.ok(editor.includes("ProviderPayloadTab"));
     assert.ok(editor.includes("ProviderKnowledgeGenerationTab"));
     assert.ok(editor.includes("ProviderDistributionTab"));
@@ -100,8 +101,11 @@ describe("provider pack tabs UX sources", () => {
       "src/components/provider-distribution/ProviderWorkerZipImportCard.tsx",
     );
     assert.ok(!editor.includes("<ProviderPackTabs"));
-    assert.ok(editor.includes("RoleWorkspaceShell"));
-    assert.ok(editor.includes("getProviderPackRailState"));
+    assert.ok(!editor.includes("RoleWorkspaceShell"));
+    assert.ok(editor.includes("isProviderPackContentEditable"));
+    assert.ok(editor.includes("PROVIDER_PACK_LOCKED_REVIEWING"));
+    assert.ok(editor.includes("PROVIDER_PACK_LOCKED_ADMIN_GENERATION"));
+    assert.ok(editor.includes("adminGenerationHold"));
     assert.ok(zipCard.includes("자료 완료"));
     assert.ok(zipCard.includes("자료 미등록"));
     assert.ok(zipCard.includes("데이터 구조화 결과 확인"));

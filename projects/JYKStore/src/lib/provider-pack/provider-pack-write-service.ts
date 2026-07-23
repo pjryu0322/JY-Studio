@@ -21,7 +21,7 @@ import {
   packDetailInclude,
   validateCreatePackInput,
 } from "@/lib/provider-pack/provider-pack-shared";
-import { getProviderPackForClient } from "@/lib/provider-pack/provider-pack-query-service";
+import { getProviderPackForClient, assertProviderPackEditableForClient } from "@/lib/provider-pack/provider-pack-query-service";
 
 /** Build KnowledgePack scalar patch from update input (omit unchanged fields). */
 export function buildProviderPackScalarPatch(input: UpdateProviderPackInput): {
@@ -221,6 +221,11 @@ export async function updateProviderPackForClient(
 
   if (pack.status !== PackStatus.DRAFT) {
     return { error: "NOT_EDITABLE" as const };
+  }
+
+  const editableGate = await assertProviderPackEditableForClient(userId, clientId, packId);
+  if (!editableGate.ok) {
+    return { error: editableGate.error === "NOT_FOUND" ? ("NOT_FOUND" as const) : ("NOT_EDITABLE" as const) };
   }
 
   let parsedLanguage: "ko" | "en" | null | undefined = undefined;

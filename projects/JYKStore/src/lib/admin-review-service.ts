@@ -65,6 +65,7 @@ import {
 } from "@/lib/pack-review-status";
 
 const listInclude = {
+  category: true,
   versions: {
     include: { sourceDocuments: true },
   },

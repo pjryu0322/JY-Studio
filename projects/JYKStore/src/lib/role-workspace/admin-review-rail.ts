@@ -325,10 +325,9 @@ export function getAdminReviewRailState(input: {
 /** Static admin console rail (list / ops pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {
   const items: Array<{ id: string; label: string; href: string }> = [
-    { id: "queue", label: "접수 대기", href: ROUTES.adminReviews },
+    { id: "home", label: "할 일", href: ROUTES.admin },
     { id: "reviews", label: "검수 대기", href: ROUTES.adminReviews },
     { id: "ops", label: "운영 로그", href: ROUTES.adminOps },
-    { id: "home", label: "관리자 홈", href: ROUTES.admin },
   ];
   return items.map((item) => ({
     ...item,

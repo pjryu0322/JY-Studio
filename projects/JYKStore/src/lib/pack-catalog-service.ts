@@ -80,12 +80,16 @@ function toStoreCategory(row: {
   name: string;
   description: string;
   icon: string;
+  parentCategoryId?: string | null;
+  sortOrder?: number;
 }): StoreCategory {
   return {
     categoryId: row.categoryId,
     name: row.name,
     description: row.description,
     icon: row.icon,
+    parentCategoryId: row.parentCategoryId ?? null,
+    sortOrder: row.sortOrder ?? 0,
   };
 }
 
@@ -126,9 +130,33 @@ export type CategoryWithPublishedCount = StoreCategory & {
   publishedCount: number;
 };
 
+export type CategoryTreeNode = CategoryWithPublishedCount & {
+  children: CategoryTreeNode[];
+};
+
 export async function listCategoriesWithPublishedCounts(): Promise<CategoryWithPublishedCount[]> {
-  const [categories, rows] = await Promise.all([
-    prisma.packCategory.findMany({ orderBy: { name: "asc" } }),
+  // Prefer raw fields so parent/sort work even with a stale Prisma client in long-lived next dev.
+  const [categoryRows, rows] = await Promise.all([
+    prisma.$queryRaw<
+      Array<{
+        categoryId: string;
+        name: string;
+        description: string;
+        icon: string;
+        parentCategoryId: string | null;
+        sortOrder: number;
+      }>
+    >`
+      SELECT
+        "categoryId",
+        "name",
+        "description",
+        "icon",
+        "parentCategoryId",
+        "sortOrder"
+      FROM "PackCategory"
+      ORDER BY "sortOrder" ASC, "name" ASC
+    `,
     prisma.knowledgePack.findMany({
       where: publishedPackWhere,
       include: packCatalogInclude,
@@ -140,10 +168,34 @@ export async function listCategoriesWithPublishedCounts(): Promise<CategoryWithP
     countByCategory.set(row.categoryId, (countByCategory.get(row.categoryId) ?? 0) + 1);
   }
 
-  return categories.map((category) => ({
+  return categoryRows.map((category) => ({
     ...toStoreCategory(category),
     publishedCount: countByCategory.get(category.categoryId) ?? 0,
   }));
+}
+
+export async function listCategoryTreeWithPublishedCounts(): Promise<CategoryTreeNode[]> {
+  const flat = await listCategoriesWithPublishedCounts();
+  const byId = new Map<string, CategoryTreeNode>();
+  for (const item of flat) {
+    byId.set(item.categoryId, { ...item, children: [] });
+  }
+  const roots: CategoryTreeNode[] = [];
+  for (const node of byId.values()) {
+    if (node.parentCategoryId && byId.has(node.parentCategoryId)) {
+      byId.get(node.parentCategoryId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const sortNodes = (nodes: CategoryTreeNode[]) => {
+    nodes.sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, "ko"),
+    );
+    for (const node of nodes) sortNodes(node.children);
+  };
+  sortNodes(roots);
+  return roots;
 }
 
 export async function getCategoryById(categoryId: string): Promise<StoreCategory | null> {

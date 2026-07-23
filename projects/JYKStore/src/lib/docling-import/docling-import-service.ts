@@ -77,6 +77,7 @@ import { evaluateNormalizedDocumentQuality } from "@/lib/docling-import/docling-
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
+import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
 
 export { bundleHasSubmissionHistory } from "@/lib/docling-import/docling-import-submission";
 export {
@@ -345,6 +346,15 @@ async function requireOwnedDraftPack(input: {
     throw new DoclingImportError(
       "PACK_NOT_EDITABLE",
       "초안(DRAFT) 상태에서만 Docling import를 관리할 수 있습니다.",
+      409,
+    );
+  }
+
+  const adminHold = await resolveProviderAdminGenerationHold(pack.packId);
+  if (adminHold) {
+    throw new DoclingImportError(
+      "PACK_NOT_EDITABLE",
+      "관리자가 생성 요청을 접수한 뒤에는 Docling import를 변경할 수 없습니다.",
       409,
     );
   }

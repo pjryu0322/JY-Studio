@@ -27,6 +27,8 @@ describe("provider profile account link", () => {
     assert.ok(service.includes("ensureProviderProfileForAccount"));
     assert.ok(service.includes("findOrEnsureProviderProfileForUser"));
     assert.ok(service.includes("NOT_PROVIDER"));
+    assert.ok(service.includes('parseAccountRole(accountRole) === "PROVIDER"'));
+    assert.ok(!service.includes('role === "PROVIDER" || role === "ADMIN"'));
     assert.ok(service.includes("P2002"));
     assert.ok(service.includes("clientIdForCreate"));
     // Existing profile must be accepted before the USER role NOT_PROVIDER reject.
@@ -35,6 +37,8 @@ describe("provider profile account link", () => {
     assert.ok(existingIdx > 0 && notProviderIdx > existingIdx);
     assert.ok(packs.includes("findOrEnsureProviderProfileForUser"));
     assert.ok(session.includes("ensureProviderProfileForAccount"));
+    assert.ok(session.includes('storedRole === "PROVIDER"'));
+    assert.ok(!session.includes('storedRole === "PROVIDER" || storedRole === "ADMIN"'));
     assert.ok(profileRoute.includes("ensureProviderProfileForAccount"));
     assert.ok(profileRoute.includes("export async function PATCH"));
   });

@@ -577,8 +577,13 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
   });
 
   it("admin console surfaces the generation request queue", () => {
-    const src = readSrc("components/AdminReviewListPageClient.tsx");
-    assert.match(src, /AdminWorkerZipRequestQueue/);
+    const inbox = readSrc("components/AdminWorkInboxPageClient.tsx");
+    assert.match(inbox, /fetchAdminWorkerZipRequests/);
+    assert.match(inbox, /ADMIN_WORK_SECTION_ACCEPT_TITLE/);
+    assert.match(inbox, /ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE/);
+    assert.match(inbox, /ADMIN_WORK_SECTION_PACK_REVIEW_TITLE/);
+    const page = readSrc("app/(store)/admin/page.tsx");
+    assert.match(page, /AdminWorkInboxPageClient/);
     const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");
     assert.match(queue, /fetchAdminWorkerZipRequests/);
     assert.match(queue, /접수하고 생성 실행/);
@@ -673,6 +678,9 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
             versions: [{ id: "verA", version: "1.0.0", language: "KO" }],
           }),
         },
+        pipelineRun: {
+          findFirst: async () => null,
+        },
       } as never,
       findProfile: async () => ({ id: "prof-1" }),
       storeRequest: (async (input: Record<string, unknown>) => {
@@ -740,6 +748,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
           }),
         },
         pipelineRun: {
+          findFirst: async () => null,
           updateMany: async () => ({ count: 0 }),
           create: async ({ data }: { data: Record<string, unknown> }) => {
             created.push(data);
@@ -773,6 +782,8 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               status: "PENDING",
               pack: {
                 name: "A",
+                categoryId: "ui",
+                category: { name: "UI" },
                 providerProfile: { displayName: "Prov A" },
                 versions: [{ id: "verA", version: "1.0.0" }],
               },
@@ -783,6 +794,8 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               status: "PENDING",
               pack: {
                 name: "A",
+                categoryId: "ui",
+                category: { name: "UI" },
                 providerProfile: { displayName: "Prov A" },
                 versions: [{ id: "verA", version: "1.0.0" }],
               },
@@ -791,7 +804,13 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               packId: "packB",
               createdAt: new Date(0),
               status: "PASS",
-              pack: { name: "B", providerProfile: null, versions: [] },
+              pack: {
+                name: "B",
+                categoryId: "grid",
+                category: { name: "Grid" },
+                providerProfile: null,
+                versions: [],
+              },
             },
           ],
         },
@@ -809,6 +828,8 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal(items[0]!.originalFileName, "a.zip");
     assert.equal(items[0]!.providerName, "Prov A");
     assert.equal(items[0]!.phase, "REQUESTED");
+    assert.equal(items[0]!.categoryId, "ui");
+    assert.equal(items[0]!.categoryName, "UI");
     assert.equal(items[1]!.packId, "packB");
     assert.equal(items[1]!.originalFileName, null);
     assert.equal(items[1]!.phase, "COMPLETED");

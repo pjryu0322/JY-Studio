@@ -35,6 +35,7 @@ export type AdminReviewListItemDto = {
   name: string;
   providerName: string;
   categoryId: string;
+  categoryName: string | null;
   status: string;
   /** Latest PackReview.status (PENDING = 접수 대기, IN_REVIEW = 검수 중). */
   reviewStatus: string | null;
@@ -260,6 +261,7 @@ function computeReadiness(pack: PackWithDetail) {
 
 export function toAdminReviewListItem(
   pack: KnowledgePack & {
+    category?: { name: string } | null;
     versions: { sourceDocuments: unknown[] }[];
     reviews: { createdAt: Date; status: string }[];
   },
@@ -277,6 +279,7 @@ export function toAdminReviewListItem(
     name: pack.name,
     providerName: pack.providerName,
     categoryId: pack.categoryId,
+    categoryName: pack.category?.name ?? null,
     status: pack.status,
     reviewStatus: latestReview?.status ?? null,
     shortDescription: pack.shortDescription,

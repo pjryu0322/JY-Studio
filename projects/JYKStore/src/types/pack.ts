@@ -110,4 +110,6 @@ export type StoreCategory = {
   name: string;
   description: string;
   icon: string;
+  parentCategoryId?: string | null;
+  sortOrder?: number;
 };

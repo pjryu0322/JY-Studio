@@ -29,8 +29,8 @@ describe("provider pack wizard UX sources", () => {
     assert.ok(knowledgeIdx < searchIdx);
     assert.ok(searchIdx < distributionReviewIdx);
     assert.ok(!editor.includes("ProviderPackTabs"));
-    assert.ok(editor.includes("RoleWorkspaceShell"));
-    assert.ok(editor.includes("getProviderPackRailState"));
+    assert.ok(!editor.includes("RoleWorkspaceShell"));
+    assert.ok(editor.includes("isProviderPackContentEditable"));
     assert.ok(editor.includes("ProviderPackBasicInfoTab"));
     assert.ok(editor.includes("ProviderPayloadTab"));
     assert.ok(editor.includes("ProviderKnowledgeGenerationTab"));

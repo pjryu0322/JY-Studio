@@ -287,11 +287,18 @@ export function buildProviderPackProgress(
       currentStepLabel = current.label;
       nextActionHref = current.href ?? detailHref(packId, current.tab);
       if (current.id === "BASIC_INFO") {
-        nextActionLabel = "지식팩 기본정보를 입력하세요.";
-        actions = [
-          { label: "계속 작성", href: detailHref(packId, "basic") },
-          { label: "자료등록", href: detailHref(packId, "payload") },
-        ];
+        nextActionLabel = materialIsReady
+          ? "문서 언어 등 남은 기본정보를 입력하세요."
+          : "지식팩 기본정보를 입력하세요.";
+        actions = materialIsReady
+          ? [
+              { label: "기본정보 완성", href: detailHref(packId, "basic") },
+              { label: "구조화 결과 확인", href: detailHref(packId, "knowledge") },
+            ]
+          : [
+              { label: "계속 작성", href: detailHref(packId, "basic") },
+              { label: "자료등록", href: detailHref(packId, "payload") },
+            ];
       } else if (current.id === "SOURCE_MATERIALS") {
         nextActionLabel = "원본문서와 생성 도구 산출물을 등록하세요.";
         actions = [
@@ -374,7 +381,8 @@ export function isDistributionReadyForProgress(input: {
   allowDownload?: boolean;
   /** @deprecated Prefer rightsBasis + channels. */
   licenseName?: string | null;
-}): boolean {
+} | null | undefined): boolean {
+  if (!input) return false;
   const hasSource = Boolean(input.sourceTitle?.trim() || input.sourceUrl?.trim());
   const hasRights = Boolean(input.rightsBasis && input.rightsConfirmedAt);
   const hasChannel = Boolean(input.allowApi || input.allowMcp || input.allowDownload);

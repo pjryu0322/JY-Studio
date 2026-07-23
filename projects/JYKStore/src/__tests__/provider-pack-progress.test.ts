@@ -115,6 +115,34 @@ describe("provider pack progress", () => {
     assert.ok(!progress.steps.some((s) => s.label.includes("Payload")));
   });
 
+  it("does not push 자료등록 when materials already exist but basic info is incomplete", () => {
+    const progress = buildProviderPackProgress({
+      packId: "rmate",
+      packStatus: "DRAFT",
+      name: "리아모어",
+      categoryId: "ui",
+      shortDescription: "short enough",
+      description: "long enough description text here",
+      language: null,
+      workingVersion: {
+        id: "v1",
+        version: "v6.0",
+        sourceDocumentCount: 273,
+        materialReady: true,
+        structureReady: true,
+        searchFoundationReady: true,
+        searchValidationReady: false,
+        distributionReady: false,
+        pipelineCurrent: true,
+      },
+      publishedVersion: null,
+    });
+    assert.equal(progress.currentStep, "BASIC_INFO");
+    assert.ok(progress.actions.some((a) => a.label === "기본정보 완성"));
+    assert.ok(!progress.actions.some((a) => a.label === "자료등록"));
+    assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
+  });
+
   it("maps pack-scoped onboarding steps through facade", () => {
     const steps = buildProviderOnboardingSteps({
       hasProfile: true,

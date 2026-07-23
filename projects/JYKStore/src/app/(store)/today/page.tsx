@@ -1,11 +1,23 @@
+import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { TodayView } from "@/components/TodayView";
+import { isProviderAccountRole } from "@/lib/account-role";
+import { getStoreAuthSessionFromCookies } from "@/lib/auth-session";
 import { listTodayFeaturedPacks } from "@/lib/pack-catalog-service";
 import { ROUTES } from "@/lib/routes";
+import { getStoreUserById } from "@/lib/store-auth-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
+  const session = await getStoreAuthSessionFromCookies();
+  if (session) {
+    const user = await getStoreUserById(session.userId);
+    if (isProviderAccountRole(user?.accountRole)) {
+      redirect(ROUTES.provider);
+    }
+  }
+
   const featured = await listTodayFeaturedPacks();
 
   if (!featured) {

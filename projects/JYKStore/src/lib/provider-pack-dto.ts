@@ -119,8 +119,20 @@ export type ProviderPackDetailDto = {
   releaseGate: ReleaseGateSummaryDto | null;
   /** Latest REJECT decision reason when pack was returned for fixes. */
   latestRejectionReason: string | null;
+  /**
+   * Whether the provider has acknowledged the latest rejection.
+   * When false (and a rejection reason exists), content editing stays locked.
+   */
+  latestRejectionAcknowledged: boolean;
   /** Latest open PackReview.status — PENDING allows withdraw, IN_REVIEW does not. */
   latestReviewStatus: string | null;
+  /**
+   * Admin ZIP 접수 hold while pack may still be DRAFT.
+   * ACCEPTED = 접수완료, PROCESSING = 생성 실행 중,
+   * COMPLETED = 생성 완료·관리자 품질검토 중 (검수 요청/반려 전).
+   * null = no hold.
+   */
+  adminGenerationHold: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -174,7 +186,9 @@ export function toProviderPackDetail(
     retrievalEvaluation?: RetrievalEvaluationSummaryDto | null;
     releaseGate?: ReleaseGateSummaryDto | null;
     latestRejectionReason?: string | null;
+    latestRejectionAcknowledged?: boolean;
     latestReviewStatus?: string | null;
+    adminGenerationHold?: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -196,7 +210,9 @@ export function toProviderPackDetail(
     retrievalEvaluation: options?.retrievalEvaluation ?? null,
     releaseGate: options?.releaseGate ?? null,
     latestRejectionReason: options?.latestRejectionReason ?? null,
+    latestRejectionAcknowledged: options?.latestRejectionAcknowledged ?? true,
     latestReviewStatus: options?.latestReviewStatus ?? null,
+    adminGenerationHold: options?.adminGenerationHold ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

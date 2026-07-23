@@ -20,6 +20,8 @@ import { prisma } from "@/lib/prisma";
 import type { PackLanguageCode } from "@/lib/pack-language";
 import {
   isDistributionReadyForProgress,
+  isMaterialReadyForProgress,
+  isPipelineReadyForProgress,
   type BuildProviderPackProgressInput,
 } from "@/lib/provider-pack-progress";
 import {
@@ -131,6 +133,8 @@ export async function resolvePackRegistrationSignals(input: {
   packId: string;
   versionId: string;
   distribution: Parameters<typeof isDistributionReadyForProgress>[0] | null;
+  sourceDocumentCount?: number;
+  pipelineStatus?: string | null;
 }): Promise<PackRegistrationSignals> {
   const bundleRow = await prisma.doclingImportBundle.findFirst({
     where: { versionId: input.versionId, isActive: true, deletedAt: null },
@@ -165,7 +169,25 @@ export async function resolvePackRegistrationSignals(input: {
       }
     : null;
 
-  const sourceMaterialsReady = isDoclingSourceMaterialsReady(bundleCtx);
+  const sourceDocumentCount =
+    input.sourceDocumentCount ??
+    (await prisma.sourceDocument.count({ where: { versionId: input.versionId } }));
+  const packPipelineStatus =
+    input.pipelineStatus ??
+    (
+      await prisma.knowledgePack.findUnique({
+        where: { packId: input.packId },
+        select: { pipelineStatus: true },
+      })
+    )?.pipelineStatus;
+
+  const sourceMaterialsReady =
+    isDoclingSourceMaterialsReady(bundleCtx) ||
+    isMaterialReadyForProgress({
+      sourceDocumentCount,
+      legacySourceOnly: true,
+    }) ||
+    isPipelineReadyForProgress(packPipelineStatus);
 
   const latestRun = await prisma.pipelineRun.findFirst({
     where: { packId: input.packId, triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER },
@@ -201,6 +223,7 @@ export async function resolvePackRegistrationSignals(input: {
     steps,
     bindingMatches,
   });
+  const readyForReview = isPipelineReadyForProgress(packPipelineStatus);
 
   const allPreparationChannelsPassed = await computePreparationChannelsPassed({
     versionId: input.versionId,
@@ -214,9 +237,11 @@ export async function resolvePackRegistrationSignals(input: {
 
   return {
     sourceMaterialsReady,
-    ...pipeline,
+    structurePassed: pipeline.structurePassed || readyForReview,
+    searchFoundationPassed: pipeline.searchFoundationPassed || readyForReview,
     allPreparationChannelsPassed,
     distributionMetadataReady,
+    pipelineCurrent: pipeline.pipelineCurrent || readyForReview,
   };
 }
 
@@ -264,6 +289,8 @@ export async function resolveProviderRegistrationReadinessFromDb(input: {
 export type ListPackForBatch = {
   packId: string;
   packStatus: PackStatus;
+  /** Pack-level pipeline status (e.g. READY_FOR_REVIEW after worker-zip). */
+  pipelineStatus?: string | null;
   name: string;
   categoryId: string;
   shortDescription: string;
@@ -407,7 +434,14 @@ export async function batchResolveListRegistrationProgressInputs(input: {
         }
       : null;
 
-    const sourceMaterialsReady = isDoclingSourceMaterialsReady(bundleCtx);
+    const doclingMaterialsReady = isDoclingSourceMaterialsReady(bundleCtx);
+    const sourceMaterialsReady =
+      doclingMaterialsReady ||
+      isMaterialReadyForProgress({
+        sourceDocumentCount: working.sourceDocumentCount,
+        legacySourceOnly: true,
+      }) ||
+      isPipelineReadyForProgress(pack.pipelineStatus);
     const packRuns = runsByPack.get(pack.packId) ?? [];
     const latestRun = packRuns[0] ?? null;
     const binding = parseKnowledgeRunBinding(latestRun?.summary);
@@ -438,6 +472,7 @@ export async function batchResolveListRegistrationProgressInputs(input: {
       steps,
       bindingMatches,
     });
+    const readyForReview = isPipelineReadyForProgress(pack.pipelineStatus);
 
     let allPreparationChannelsPassed = true;
     for (const channel of SEARCH_VALIDATION_PREPARATION_CHANNELS) {
@@ -489,11 +524,11 @@ export async function batchResolveListRegistrationProgressInputs(input: {
       version: working.version,
       sourceDocumentCount: working.sourceDocumentCount,
       materialReady: sourceMaterialsReady,
-      structureReady: pipeline.structurePassed,
-      searchFoundationReady: pipeline.searchFoundationPassed,
+      structureReady: pipeline.structurePassed || readyForReview,
+      searchFoundationReady: pipeline.searchFoundationPassed || readyForReview,
       searchValidationReady: allPreparationChannelsPassed,
       distributionReady,
-      pipelineCurrent: pipeline.pipelineCurrent,
+      pipelineCurrent: pipeline.pipelineCurrent || readyForReview,
     });
   }
 

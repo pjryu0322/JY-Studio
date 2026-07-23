@@ -12,7 +12,6 @@ import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderP
 import { ProviderKnowledgeGenerationTab } from "@/components/provider-distribution/ProviderKnowledgeGenerationTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
-import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
@@ -36,7 +35,13 @@ import {
   buildProviderPackProgress,
   isDistributionReadyForProgress,
 } from "@/lib/provider-pack-progress";
+import { isOpenPackReviewStatus } from "@/lib/pack-review-status";
 import {
+  isAdminGenerationHoldActive,
+  isProviderPackContentEditable,
+} from "@/lib/pack-review-rejection-ack";
+import {
+  acknowledgeProviderPackRejectionApi,
   fetchProviderDoclingImportApi,
   fetchProviderKnowledgePipelineApi,
   fetchProviderPack,
@@ -59,11 +64,16 @@ import {
   resolveProviderRegistrationReadiness,
   tabLocksFromRegistrationReadiness,
 } from "@/lib/provider-registration-readiness";
-import { getProviderPackRailState } from "@/lib/role-workspace/provider-pack-rail";
 import { providerPackDetailPath } from "@/lib/routes";
 import {
   PROVIDER_PACK_ID_LABEL,
+  PROVIDER_PACK_LOCKED_ADMIN_GENERATION,
+  PROVIDER_PACK_LOCKED_REJECTION,
+  PROVIDER_PACK_LOCKED_REVIEWING,
   PROVIDER_PACK_SAVE_DRAFT_SUCCESS,
+  PROVIDER_REVIEW_REJECTED_ACK_CTA,
+  PROVIDER_REVIEW_REJECTED_ACK_HINT,
+  PROVIDER_REVIEW_REJECTED_TITLE,
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
   PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
@@ -91,6 +101,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [acknowledgingRejection, setAcknowledgingRejection] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [basicFieldErrors, setBasicFieldErrors] = useState<{
     name?: string;
@@ -104,7 +115,21 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [versionOverview, setVersionOverview] = useState("");
   const [language, setLanguage] = useState<PackLanguageCode | null>(null);
 
-  const editable = pack?.status === "DRAFT";
+  const awaitingRejectionAck = Boolean(
+    pack?.latestRejectionReason?.trim() && !pack.latestRejectionAcknowledged,
+  );
+  const adminGenerationHold = pack?.adminGenerationHold ?? null;
+  const lockedByAdminGeneration = isAdminGenerationHoldActive(adminGenerationHold);
+  const editable = isProviderPackContentEditable({
+    status: pack?.status ?? "DRAFT",
+    latestRejectionReason: pack?.latestRejectionReason,
+    latestRejectionAcknowledged: pack?.latestRejectionAcknowledged,
+    latestReviewStatus: pack?.latestReviewStatus,
+    adminGenerationHold,
+  });
+  const isReviewing =
+    pack?.status === "REVIEWING" ||
+    Boolean(pack?.latestReviewStatus && isOpenPackReviewStatus(pack.latestReviewStatus));
 
   useEffect(() => {
     const syncHash = () => setLocationHash(window.location.hash);
@@ -402,17 +427,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     serviceValidationPassed,
   ]);
 
-  const railItems = useMemo(
-    () =>
-      getProviderPackRailState({
-        packId,
-        activeTab,
-        pack,
-        tabLocks,
-      }),
-    [packId, activeTab, pack, tabLocks],
-  );
-
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
       if (tabLocks[tab]?.locked) return;
@@ -517,6 +531,21 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     }
   };
 
+  const onAcknowledgeRejection = async () => {
+    if (acknowledgingRejection) return;
+    setAcknowledgingRejection(true);
+    setError(null);
+    try {
+      const data = await acknowledgeProviderPackRejectionApi(packId);
+      setPack(data.pack);
+      selectTab("distributionReview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "반려 확인에 실패했습니다.");
+    } finally {
+      setAcknowledgingRejection(false);
+    }
+  };
+
   const onWithdrawReview = async () => {
     const ok = window.confirm(PROVIDER_REVIEW_WITHDRAW_CONFIRM);
     if (!ok) return;
@@ -544,8 +573,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const latestVersion = pack.versions[0];
 
   return (
-    <RoleWorkspaceShell role="provider" items={railItems} title="제공자 작업 흐름">
-      <div className="space-y-4 pb-6">
+    <div className="space-y-4 pb-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-2xl shrink-0">{pack.icon}</span>
           <div className="min-w-0 flex-1">
@@ -559,6 +587,40 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           </div>
           <ProviderPackStatusBadge status={pack.status} />
         </div>
+
+        {isReviewing ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {PROVIDER_PACK_LOCKED_REVIEWING}
+          </div>
+        ) : null}
+
+        {lockedByAdminGeneration && !isReviewing ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {PROVIDER_PACK_LOCKED_ADMIN_GENERATION}
+          </div>
+        ) : null}
+
+        {awaitingRejectionAck ? (
+          <div className="space-y-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <p className="font-bold">{PROVIDER_REVIEW_REJECTED_TITLE}</p>
+            <p className="text-xs">사유: {pack.latestRejectionReason}</p>
+            <p className="text-xs">{PROVIDER_REVIEW_REJECTED_ACK_HINT}</p>
+            <button
+              type="button"
+              disabled={acknowledgingRejection}
+              onClick={() => void onAcknowledgeRejection()}
+              className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+            >
+              {acknowledgingRejection ? "확인 중…" : PROVIDER_REVIEW_REJECTED_ACK_CTA}
+            </button>
+          </div>
+        ) : null}
+
+        {!editable && !isReviewing && !awaitingRejectionAck && !lockedByAdminGeneration ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+            {PROVIDER_PACK_LOCKED_REJECTION}
+          </div>
+        ) : null}
 
         {packProgress ? (
           <div className="space-y-2">
@@ -600,6 +662,15 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           >
           <ProviderPackBasicInfoTab
             editable={editable}
+            lockHint={
+              isReviewing
+                ? PROVIDER_PACK_LOCKED_REVIEWING
+                : lockedByAdminGeneration
+                  ? PROVIDER_PACK_LOCKED_ADMIN_GENERATION
+                  : awaitingRejectionAck
+                    ? PROVIDER_PACK_LOCKED_REJECTION
+                    : null
+            }
             name={name}
             shortDescription={shortDescription}
             description={description}
@@ -737,6 +808,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 serviceValidationPassed={serviceValidationPassed}
                 onSubmitReview={() => void onSubmitReview()}
                 onWithdrawReview={() => void onWithdrawReview()}
+                onAcknowledgeRejection={() => void onAcknowledgeRejection()}
+                acknowledgingRejection={acknowledgingRejection}
                 onGoToPayloadTab={() => selectTab("payload")}
                 onGoToDistributionTab={() => {
                   const el = document.getElementById("pack-distribution");
@@ -750,7 +823,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           )}
         </div>
       </div>
-      </div>
-    </RoleWorkspaceShell>
+    </div>
   );
 }

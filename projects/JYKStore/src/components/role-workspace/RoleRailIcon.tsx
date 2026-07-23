@@ -30,11 +30,18 @@ export function RoleRailIcon({
         </svg>
       );
     case "basic":
-    case "home":
       return (
         <svg {...common}>
           <circle cx="12" cy="8" r="3.5" />
           <path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5" />
+        </svg>
+      );
+    case "home":
+      return (
+        <svg {...common}>
+          <path d="M8 5h10a2 2 0 0 1 2 2v12H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+          <path d="m10 12 2 2 4-4" />
+          <path d="M10 17h5" />
         </svg>
       );
     case "payload":

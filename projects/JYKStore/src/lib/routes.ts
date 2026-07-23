@@ -8,6 +8,7 @@ export const ROUTES = {
   account: "/account",
   accountProfile: "/account/profile",
   accountPlan: "/account/plan",
+  settings: "/settings",
   apiKeys: "/api-keys",
   packs: "/packs",
   provider: "/provider",
@@ -79,7 +80,11 @@ export type BottomTabKey =
   | "categories"
   | "myPacks"
   | "provider"
-  | "account";
+  | "admin"
+  | "account"
+  | "opsUsage"
+  | "opsAudit"
+  | "ops";
 
 export const BOTTOM_TABS: readonly {
   key: BottomTabKey;
@@ -91,8 +96,12 @@ export const BOTTOM_TABS: readonly {
   { key: "search", href: ROUTES.search, label: "검색", icon: "⌕" },
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
+  { key: "admin", href: ROUTES.admin, label: "할 일", icon: "☑" },
   { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
   { key: "account", href: ROUTES.account, label: "계정", icon: "👤" },
+  { key: "opsUsage", href: ROUTES.adminOpsUsage, label: "운영 사용량", icon: "📊" },
+  { key: "opsAudit", href: ROUTES.adminOpsAudit, label: "AuditLog", icon: "📋" },
+  { key: "ops", href: ROUTES.adminOps, label: "Ops 대시보드", icon: "⚙" },
 ];
 
 export function isTodayPath(pathname: string): boolean {
@@ -111,11 +120,26 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "provider":
       return pathname === ROUTES.provider || pathname.startsWith(`${ROUTES.provider}/`);
+    case "admin":
+      // Only the work inbox — detail/reviews pages should not keep this icon active.
+      return pathname === ROUTES.admin;
     case "account":
       return (
         pathname === ROUTES.account ||
         pathname.startsWith(`${ROUTES.account}/`)
       );
+    case "opsUsage":
+      return (
+        pathname === ROUTES.adminOpsUsage ||
+        pathname.startsWith(`${ROUTES.adminOpsUsage}/`)
+      );
+    case "opsAudit":
+      return (
+        pathname === ROUTES.adminOpsAudit ||
+        pathname.startsWith(`${ROUTES.adminOpsAudit}/`)
+      );
+    case "ops":
+      return pathname === ROUTES.adminOps;
     default:
       return false;
   }

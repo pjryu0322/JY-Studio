@@ -6,7 +6,11 @@ import {
 } from "@/components/provider-distribution/ProviderDistributionReadiness";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
-import { canProviderWithdrawReview, PackReviewStatus } from "@/lib/pack-review-status";
+import {
+  canProviderWithdrawReview,
+  isOpenPackReviewStatus,
+  PackReviewStatus,
+} from "@/lib/pack-review-status";
 import {
   PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
   PROVIDER_PACK_REVIEW_READY_BODY,
@@ -15,6 +19,8 @@ import {
   PROVIDER_REVIEW_ACCEPTED_BODY,
   PROVIDER_REVIEW_ACCEPTED_TITLE,
   PROVIDER_REVIEW_DEV_ADMIN_HINT,
+  PROVIDER_REVIEW_REJECTED_ACK_CTA,
+  PROVIDER_REVIEW_REJECTED_ACK_HINT,
   PROVIDER_REVIEW_REJECTED_GO_FIX,
   PROVIDER_REVIEW_REJECTED_TITLE,
   PROVIDER_REVIEW_WAITING_BODY,
@@ -37,6 +43,8 @@ export function ProviderPackReviewTab({
   serviceValidationPassed = false,
   onSubmitReview,
   onWithdrawReview,
+  onAcknowledgeRejection,
+  acknowledgingRejection = false,
   onGoToPayloadTab,
   onGoToDistributionTab,
   onGoToKnowledgeTab,
@@ -47,22 +55,29 @@ export function ProviderPackReviewTab({
   readonly editable: boolean;
   readonly submitting: boolean;
   readonly withdrawing: boolean;
+  readonly acknowledgingRejection?: boolean;
   readonly sourceDocumentCount: number;
   readonly distributionMode: boolean;
   readonly distributionReadiness: DistributionReadiness | null;
   readonly serviceValidationPassed?: boolean;
   readonly onSubmitReview: () => void;
   readonly onWithdrawReview: () => void;
+  readonly onAcknowledgeRejection?: () => void;
   readonly onGoToPayloadTab: () => void;
   readonly onGoToDistributionTab: () => void;
   readonly onGoToKnowledgeTab?: () => void;
   readonly onGoToServiceValidationTab?: () => void;
   readonly onGoToBasicTab: () => void;
 }) {
-  const isReviewing = pack.status === "REVIEWING";
+  const isReviewing =
+    pack.status === "REVIEWING" ||
+    Boolean(pack.latestReviewStatus && isOpenPackReviewStatus(pack.latestReviewStatus));
   const isPublished = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
   const canWithdraw = canProviderWithdrawReview(pack.latestReviewStatus);
   const isAccepted = pack.latestReviewStatus === PackReviewStatus.IN_REVIEW;
+  const awaitingRejectionAck = Boolean(
+    pack.latestRejectionReason?.trim() && !pack.latestRejectionAcknowledged,
+  );
 
   const legacyMissingSources = !distributionMode && sourceDocumentCount === 0;
   const distributionReady = distributionMode
@@ -72,6 +87,7 @@ export function ProviderPackReviewTab({
     editable &&
     !isReviewing &&
     !isPublished &&
+    !awaitingRejectionAck &&
     distributionReady &&
     serviceValidationPassed &&
     !legacyMissingSources;
@@ -122,13 +138,27 @@ export function ProviderPackReviewTab({
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
           <p className="font-bold">{PROVIDER_REVIEW_REJECTED_TITLE}</p>
           <p className="mt-1 text-xs">사유: {pack.latestRejectionReason}</p>
-          <button
-            type="button"
-            onClick={onGoToPayloadTab}
-            className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
-          >
-            {PROVIDER_REVIEW_REJECTED_GO_FIX}
-          </button>
+          {awaitingRejectionAck ? (
+            <>
+              <p className="mt-2 text-xs">{PROVIDER_REVIEW_REJECTED_ACK_HINT}</p>
+              <button
+                type="button"
+                disabled={acknowledgingRejection}
+                onClick={onAcknowledgeRejection}
+                className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+              >
+                {acknowledgingRejection ? "확인 중…" : PROVIDER_REVIEW_REJECTED_ACK_CTA}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onGoToPayloadTab}
+              className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
+            >
+              {PROVIDER_REVIEW_REJECTED_GO_FIX}
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -138,7 +168,7 @@ export function ProviderPackReviewTab({
         </div>
       ) : null}
 
-      {distributionMode && distributionReadiness && !isReviewing && !isPublished ? (
+      {distributionMode && distributionReadiness && !isReviewing && !isPublished && !awaitingRejectionAck ? (
         <ProviderDistributionReadiness
           readiness={distributionReadiness}
           onGoToTab={(tab) => {
@@ -164,7 +194,7 @@ export function ProviderPackReviewTab({
         </div>
       ) : null}
 
-      {!isReviewing && !isPublished && !legacyMissingSources ? (
+      {!isReviewing && !isPublished && !legacyMissingSources && !awaitingRejectionAck ? (
         <>
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
             <p className="text-sm font-bold text-slate-900">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>

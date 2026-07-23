@@ -9,6 +9,7 @@ import { PROVIDER_PACK_CREATE_AUTO_ID_HINT } from "@/lib/role-based-ux-copy";
 type CategoryOption = {
   categoryId: string;
   name: string;
+  parentCategoryId?: string | null;
 };
 
 export function ProviderPackCreateForm({
@@ -82,11 +83,15 @@ export function ProviderPackCreateForm({
           onChange={(e) => setCategoryId(e.target.value)}
           className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
         >
-          {categories.map((c) => (
-            <option key={c.categoryId} value={c.categoryId}>
-              {c.name}
-            </option>
-          ))}
+          {categories.map((c) => {
+            const indent = c.parentCategoryId ? "ㄴ " : "";
+            return (
+              <option key={c.categoryId} value={c.categoryId}>
+                {indent}
+                {c.name}
+              </option>
+            );
+          })}
         </select>
       </div>
       <div>

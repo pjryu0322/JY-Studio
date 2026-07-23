@@ -8,7 +8,6 @@ import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoC
 import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
 import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
-import { RoleWorkspaceShell } from "@/components/role-workspace/RoleWorkspaceShell";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminReviewDetail,
@@ -96,7 +95,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     [workerZipPhase, quality, searchValidationDone, detail],
   );
 
-  const rail = useMemo(
+  const workflow = useMemo(
     () =>
       getAdminReviewRailState({
         packId,
@@ -126,7 +125,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const showDecision = activeStep === "decision" || activeStep === "publish";
 
   return (
-    <RoleWorkspaceShell role="admin" items={rail.items} title="검수 작업 흐름">
+    <div className="min-w-0 space-y-4">
       {error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
@@ -138,12 +137,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       <div className="rounded-2xl border border-store-border bg-white px-4 py-3 text-xs text-slate-700 shadow-card">
         <p>
           <span className="font-semibold text-slate-900">현재 단계:</span>{" "}
-          {rail.items.find((i) => i.status === "current")?.label ?? "-"}
+          {workflow.items.find((i) => i.status === "current")?.label ?? "-"}
         </p>
         <p className="mt-1">
           <span className="font-semibold text-slate-900">다음 단계:</span>{" "}
-          {rail.items.find((i) => i.status === "next")?.label ??
-            rail.items.find((i) => i.status === "current")?.label ??
+          {workflow.items.find((i) => i.status === "next")?.label ??
+            workflow.items.find((i) => i.status === "current")?.label ??
             "-"}
         </p>
       </div>
@@ -217,6 +216,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           </p>
         </section>
       ) : null}
-    </RoleWorkspaceShell>
+    </div>
   );
 }

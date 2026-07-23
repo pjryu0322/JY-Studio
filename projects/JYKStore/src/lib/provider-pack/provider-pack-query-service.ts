@@ -20,6 +20,8 @@ import {
   packDetailInclude,
   mapProviderPackDetailWithValidation,
 } from "@/lib/provider-pack/provider-pack-shared";
+import { isProviderRejectionAcknowledged } from "@/lib/pack-review-rejection-ack";
+import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
 
 export async function listProviderPacksForClient(
   userId: string,
@@ -78,6 +80,7 @@ export async function listProviderPacksForClient(
     return {
       packId: pack.packId,
       packStatus: pack.status,
+      pipelineStatus: pack.pipelineStatus,
       name: pack.name,
       categoryId: pack.categoryId,
       shortDescription: pack.shortDescription,
@@ -216,6 +219,34 @@ export async function assertProviderPackEditableForClient(
   }
 
   if (pack.status !== PackStatus.DRAFT) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
+
+  const openReview = await prisma.packReview.findFirst({
+    where: {
+      packId: pack.packId,
+      status: { in: ["PENDING", "IN_REVIEW"] },
+    },
+    select: { id: true },
+  });
+  if (openReview) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
+
+  const adminGenerationHold = await resolveProviderAdminGenerationHold(pack.packId);
+  if (adminGenerationHold) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
+
+  const latestRejected = await prisma.packReview.findFirst({
+    where: { packId: pack.packId, decision: "REJECT" },
+    orderBy: { decidedAt: "desc" },
+    select: { rejectionReason: true, submitSnapshot: true },
+  });
+  if (
+    latestRejected?.rejectionReason?.trim() &&
+    !isProviderRejectionAcknowledged(latestRejected.submitSnapshot)
+  ) {
     return { ok: false, error: "NOT_EDITABLE", status: pack.status };
   }
 

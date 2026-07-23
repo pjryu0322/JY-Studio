@@ -62,8 +62,7 @@ export function validateProviderProfileInput(
 }
 
 function canAutoCreateProviderProfile(accountRole: string | null | undefined): boolean {
-  const role = parseAccountRole(accountRole);
-  return role === "PROVIDER" || role === "ADMIN";
+  return parseAccountRole(accountRole) === "PROVIDER";
 }
 
 /** Links legacy clientId-only profiles on first login. Does not auto-create. */
@@ -87,7 +86,7 @@ export async function findProviderProfileForUser(userId: string, clientId?: stri
 }
 
 /**
- * Ensures a ProviderProfile exists for PROVIDER/ADMIN accounts.
+ * Ensures a ProviderProfile exists for PROVIDER accounts.
  * USER accounts are not auto-created.
  *
  * clientId is browser-scoped and may already belong to another user after account

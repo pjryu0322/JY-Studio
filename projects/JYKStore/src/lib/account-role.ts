@@ -26,7 +26,7 @@ export function parseSelectableAccountRole(value: string | null | undefined): Se
 export function postAuthLandingPath(role: AccountRole): string {
   switch (parseAccountRole(role)) {
     case "ADMIN":
-      return ROUTES.adminReviews;
+      return ROUTES.admin;
     case "PROVIDER":
       return ROUTES.provider;
     default:
@@ -58,13 +58,15 @@ export function isAdminEmailAllowlisted(email: string | null | undefined): boole
   return getAdminEmailAllowlist().includes(normalized);
 }
 
+/**
+ * Session-facing role from the stored account role only.
+ * One account has one role — a ProviderProfile alone must not elevate USER to PROVIDER.
+ * (`hasProviderProfile` is accepted for call-site compatibility but ignored.)
+ */
 export function resolveSessionAccountRole(input: {
   storedRole?: string | null;
   hasProviderProfile?: boolean;
 }): AccountRole {
-  if (isAdminAccountRole(input.storedRole)) return "ADMIN";
-  if (input.hasProviderProfile || parseAccountRole(input.storedRole) === "PROVIDER") {
-    return "PROVIDER";
-  }
-  return "USER";
+  void input.hasProviderProfile;
+  return parseAccountRole(input.storedRole);
 }

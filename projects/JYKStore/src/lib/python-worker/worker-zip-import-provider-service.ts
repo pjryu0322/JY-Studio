@@ -257,6 +257,13 @@ export const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
  */
 export const WORKER_ZIP_REQUEST_ACCEPTED_STATUS = "RUNNING";
 
+/**
+ * Admin has 접수'd the ZIP generation request, is running generation, or has
+ * finished generation while the pack is still in the Admin DRAFT queue
+ * (품질 점검 / 검수 승격 전). Provider must not edit during any of these.
+ */
+export type ProviderAdminGenerationHold = "ACCEPTED" | "PROCESSING" | "COMPLETED";
+
 /** Latest open (PENDING|ACCEPTED) request marker for a pack, or null. */
 async function getLatestOpenRequestMarker(
   client: typeof prisma,
@@ -272,6 +279,54 @@ async function getLatestOpenRequestMarker(
     select: { status: true, createdAt: true },
   });
   return marker ? { status: marker.status, createdAt: marker.createdAt } : null;
+}
+
+/**
+ * Resolve whether admin currently holds the pack after 접수.
+ * - PROCESSING: generation running
+ * - ACCEPTED: 접수완료, not yet finished
+ * - COMPLETED: generation done, still DRAFT in admin queue (until PackReview or 반려)
+ * REQUESTED / FAILED / REJECTED are not holds (provider may edit or re-submit).
+ */
+export async function resolveProviderAdminGenerationHold(
+  packId: string,
+  client: typeof prisma = prisma,
+): Promise<ProviderAdminGenerationHold | null> {
+  const trimmed = packId.trim();
+  if (!trimmed) return null;
+
+  const [processingRun, openMarker, completedMarker, draftPack] = await Promise.all([
+    client.pipelineRun.findFirst({
+      where: {
+        packId: trimmed,
+        triggerType: "WORKER_ZIP_IMPORT",
+        status: "RUNNING",
+      },
+      select: { id: true },
+    }),
+    getLatestOpenRequestMarker(client, trimmed),
+    client.pipelineRun.findFirst({
+      where: {
+        packId: trimmed,
+        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+        status: "PASS",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    }),
+    client.knowledgePack.findFirst({
+      where: { packId: trimmed, status: PackStatus.DRAFT },
+      select: { packId: true },
+    }),
+  ]);
+
+  if (processingRun) return "PROCESSING";
+  if (openMarker?.status === WORKER_ZIP_REQUEST_ACCEPTED_STATUS) return "ACCEPTED";
+  // Fresh REQUESTED (PENDING) — provider may still withdraw / replace materials.
+  if (openMarker?.status === "PENDING") return null;
+  // Generation complete, still DRAFT in admin queue (listAdminWorkerZipRequests).
+  if (completedMarker && draftPack) return "COMPLETED";
+  return null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -324,6 +379,15 @@ export async function submitProviderWorkerZipRequest(
     clientId: input.clientId,
     packId: input.packId,
   });
+
+  const adminHold = await resolveProviderAdminGenerationHold(pack.packId, client);
+  if (adminHold) {
+    throw new WorkerZipImportServiceError(
+      "PACK_NOT_EDITABLE",
+      "관리자가 생성 요청을 접수한 뒤에는 자료를 교체할 수 없습니다.",
+      409,
+    );
+  }
 
   const stored = await storeRequest({
     packId: pack.packId,
@@ -1263,6 +1327,8 @@ export type AdminWorkerZipRequestListItem = {
   packId: string;
   packName: string;
   providerName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
   versionLabel: string | null;
   requestedAt: string;
   originalFileName: string | null;
@@ -1304,6 +1370,8 @@ export async function listAdminWorkerZipRequests(input?: {
       pack: {
         select: {
           name: true,
+          categoryId: true,
+          category: { select: { name: true } },
           providerProfile: { select: { displayName: true } },
           versions: {
             orderBy: latestKnowledgePackVersionOrderBy,
@@ -1340,6 +1408,8 @@ export async function listAdminWorkerZipRequests(input?: {
       packId: run.packId,
       packName: run.pack?.name ?? run.packId,
       providerName: run.pack?.providerProfile?.displayName ?? null,
+      categoryId: run.pack?.categoryId ?? null,
+      categoryName: run.pack?.category?.name ?? null,
       versionLabel: version?.version ?? null,
       requestedAt: run.createdAt.toISOString(),
       originalFileName,
