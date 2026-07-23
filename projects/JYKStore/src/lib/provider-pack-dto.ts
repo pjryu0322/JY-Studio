@@ -9,6 +9,8 @@ import type {
   ProviderPackProgressAction,
   ProviderPackCurrentStep,
 } from "@/lib/provider-pack-progress";
+import type { StoreWorkflowStatus } from "@/lib/store-workflow-status";
+import type { StoreProviderReviewPhase } from "@/lib/store-workflow-status";
 
 export type ProviderPackListProgressDto = {
   currentStep: ProviderPackCurrentStep;
@@ -18,6 +20,7 @@ export type ProviderPackListProgressDto = {
   publishedVersion: string | null;
   workingVersion: string | null;
   actions: ProviderPackProgressAction[];
+  storeWorkflowStatus?: StoreWorkflowStatus;
 };
 
 export type ProviderPackListItemDto = {
@@ -133,6 +136,8 @@ export type ProviderPackDetailDto = {
    * null = no hold.
    */
   adminGenerationHold: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
+  /** Persisted provider-review handoff phase (PipelineRun marker). */
+  providerReviewPhase: StoreProviderReviewPhase;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -189,6 +194,7 @@ export function toProviderPackDetail(
     latestRejectionAcknowledged?: boolean;
     latestReviewStatus?: string | null;
     adminGenerationHold?: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
+    providerReviewPhase?: StoreProviderReviewPhase | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -213,6 +219,7 @@ export function toProviderPackDetail(
     latestRejectionAcknowledged: options?.latestRejectionAcknowledged ?? true,
     latestReviewStatus: options?.latestReviewStatus ?? null,
     adminGenerationHold: options?.adminGenerationHold ?? null,
+    providerReviewPhase: options?.providerReviewPhase ?? "NONE",
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

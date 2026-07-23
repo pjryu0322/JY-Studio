@@ -217,5 +217,6 @@
   "src/__tests__/context-api-connect-ux-compact.test.ts",
   "src/__tests__/python-worker-output-import.test.ts",
   "src/__tests__/worker-zip-pipeline-service.test.ts",
-  "src/__tests__/worker-zip-quality-refresh.test.ts"
+  "src/__tests__/worker-zip-quality-refresh.test.ts",
+  "src/__tests__/store-workflow-status.test.ts"
 ]

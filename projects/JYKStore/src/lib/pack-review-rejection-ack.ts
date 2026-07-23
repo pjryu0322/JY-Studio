@@ -47,7 +47,7 @@ export function isAdminGenerationHoldActive(
 
 /**
  * Provider content editing: DRAFT only, no open PackReview, no admin generation
- * hold, and rejection must be acknowledged first.
+ * hold, no open provider-review handoff, and rejection must be acknowledged first.
  */
 export function isProviderPackContentEditable(input: {
   status: string;
@@ -55,12 +55,19 @@ export function isProviderPackContentEditable(input: {
   latestRejectionAcknowledged?: boolean | null;
   latestReviewStatus?: string | null;
   adminGenerationHold?: string | null;
+  providerReviewPhase?: string | null;
 }): boolean {
   if (input.status !== "DRAFT") return false;
   if (input.latestReviewStatus && isOpenPackReviewStatus(input.latestReviewStatus)) {
     return false;
   }
   if (isAdminGenerationHoldActive(input.adminGenerationHold)) {
+    return false;
+  }
+  if (
+    input.providerReviewPhase === "REQUESTED" ||
+    input.providerReviewPhase === "CONFIRMED"
+  ) {
     return false;
   }
   if (input.latestRejectionReason?.trim() && !input.latestRejectionAcknowledged) {

@@ -95,7 +95,7 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
   const detail = providerPackDetailPath(pack.packId);
   const progress = pack.progress;
   const actions = progress?.actions?.slice(0, 2) ?? [
-    { label: "계속 작성", href: detail },
+    { label: "상세 보기", href: detail },
   ];
 
   const versionLabel =

@@ -31,6 +31,7 @@ export type NextReviewActionKind =
   | "RERUN_QUALITY"
   | "REGENERATE_KNOWLEDGE"
   | "REQUEST_PROVIDER_FIX"
+  | "REQUEST_PROVIDER_REVIEW"
   | "NONE";
 
 export type NextReviewAction = {

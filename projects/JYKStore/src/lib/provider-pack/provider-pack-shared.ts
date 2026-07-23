@@ -12,6 +12,7 @@ import {
 import type { ResolvedCreateProviderPackInput } from "@/lib/provider-pack/provider-pack-types";
 import { isProviderRejectionAcknowledged } from "@/lib/pack-review-rejection-ack";
 import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
+import { resolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
 
 export const packDetailInclude = {
   versions: {
@@ -107,6 +108,7 @@ export async function mapProviderPackDetailWithValidation(
     select: { status: true },
   });
   const adminGenerationHold = await resolveProviderAdminGenerationHold(pack.packId);
+  const workflowMarkers = await resolveStoreWorkflowMarkers(pack.packId);
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
@@ -120,5 +122,6 @@ export async function mapProviderPackDetailWithValidation(
       : true,
     latestReviewStatus: latestOpenReview?.status ?? null,
     adminGenerationHold,
+    providerReviewPhase: workflowMarkers.providerReviewPhase,
   });
 }

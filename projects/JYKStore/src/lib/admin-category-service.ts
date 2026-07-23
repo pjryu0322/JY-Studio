@@ -37,7 +37,12 @@ function normalizeText(value: string | undefined, fallback = ""): string {
   return (value ?? fallback).trim();
 }
 
-export function validateCategoryId(categoryId: string): string | null {
+export type CategoryIdValidationError =
+  | "CATEGORY_ID_REQUIRED"
+  | "CATEGORY_ID_TOO_LONG"
+  | "CATEGORY_ID_INVALID";
+
+export function validateCategoryId(categoryId: string): CategoryIdValidationError | null {
   const id = normalizeSlug(categoryId);
   if (!id) return "CATEGORY_ID_REQUIRED";
   if (id.length > 64) return "CATEGORY_ID_TOO_LONG";

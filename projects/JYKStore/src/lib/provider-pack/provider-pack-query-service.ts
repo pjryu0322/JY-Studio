@@ -21,7 +21,13 @@ import {
   mapProviderPackDetailWithValidation,
 } from "@/lib/provider-pack/provider-pack-shared";
 import { isProviderRejectionAcknowledged } from "@/lib/pack-review-rejection-ack";
-import { resolveProviderAdminGenerationHold } from "@/lib/python-worker/worker-zip-import-provider-service";
+import {
+  batchResolveProviderAdminGenerationHold,
+  deriveListWorkerZipRequestStatus,
+  resolveProviderAdminGenerationHold,
+  WORKER_ZIP_REQUEST_TRIGGER,
+} from "@/lib/python-worker/worker-zip-import-provider-service";
+import { batchResolveStoreWorkflowMarkers, resolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
 
 export async function listProviderPacksForClient(
   userId: string,
@@ -112,6 +118,22 @@ export async function listProviderPacksForClient(
     packs: batchInput,
   });
 
+  const packIds = packs.map((p) => p.packId);
+  const [holdsByPackId, markersByPackId, pendingMarkers] = await Promise.all([
+    batchResolveProviderAdminGenerationHold(packIds),
+    batchResolveStoreWorkflowMarkers(packIds),
+    prisma.pipelineRun.findMany({
+      where: {
+        packId: { in: packIds },
+        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { packId: true },
+    }),
+  ]);
+  const pendingRequestPackIds = new Set(pendingMarkers.map((m) => m.packId));
+
   const items = packs.map((pack) => {
     const working = pack.versions[0] ?? null;
     const previous = pack.versions[1] ?? null;
@@ -130,6 +152,12 @@ export async function listProviderPacksForClient(
         : null;
 
     const workingVersion = working ? (workingByPackId.get(pack.packId) ?? null) : null;
+    const adminGenerationHold = holdsByPackId.get(pack.packId) ?? null;
+    const markers = markersByPackId.get(pack.packId);
+    const workerZipRequestStatus = deriveListWorkerZipRequestStatus({
+      adminGenerationHold,
+      hasPendingRequestMarker: pendingRequestPackIds.has(pack.packId),
+    });
 
     const progress = buildProviderPackProgress({
       packId: pack.packId,
@@ -140,6 +168,10 @@ export async function listProviderPacksForClient(
       description: pack.description,
       language: toPackLanguageCode(working?.language),
       latestRejectionReason,
+      adminGenerationHold,
+      workerZipRequestStatus,
+      providerReviewPhase: markers?.providerReviewPhase ?? "NONE",
+      serviceValidationPhase: markers?.serviceValidationPhase ?? "NONE",
       workingVersion,
       publishedVersion,
     });
@@ -152,6 +184,7 @@ export async function listProviderPacksForClient(
       publishedVersion: progress.publishedVersion?.version ?? null,
       workingVersion: progress.workingVersion?.version ?? null,
       actions: progress.actions,
+      storeWorkflowStatus: progress.storeWorkflowStatus,
     });
   });
 
@@ -235,6 +268,14 @@ export async function assertProviderPackEditableForClient(
 
   const adminGenerationHold = await resolveProviderAdminGenerationHold(pack.packId);
   if (adminGenerationHold) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
+
+  const markers = await resolveStoreWorkflowMarkers(pack.packId);
+  if (
+    markers.providerReviewPhase === "REQUESTED" ||
+    markers.providerReviewPhase === "CONFIRMED"
+  ) {
     return { ok: false, error: "NOT_EDITABLE", status: pack.status };
   }
 

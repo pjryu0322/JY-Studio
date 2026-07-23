@@ -78,15 +78,13 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
               structureStatus: "PASS",
               chunkStatus: "PASS",
               retrievalStatus: "PASS",
-              graphStatus: null,
-              summary: "ok",
-              checkedBy: "admin",
-              checkedAt: new Date().toISOString(),
-              issues: [],
+              createdAt: new Date().toISOString(),
+              finishedAt: new Date().toISOString(),
             },
             freshness: {
               status: "CURRENT",
               reason: null,
+              reasonCode: null,
               checkedAt: new Date().toISOString(),
               versionId: null,
             },
@@ -96,71 +94,72 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
 }
 
 describe("getNextReviewAction", () => {
-  it("shows search-validation CTA when quality passed with fail 0 and no blockers", () => {
+  it("requests provider review after quality passed", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
     const action = getNextReviewAction({
       workerZipPhase: "COMPLETED",
       quality,
-      searchValidationDone: false,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
       detail,
     });
-    assert.equal(action.kind, "GO_SEARCH_VALIDATION");
-    assert.equal(action.primaryLabel, "검색데이터 생성 및 검증으로 이동");
-    assert.equal(action.secondaryLabel, "품질 점검 다시 실행");
-    assert.match(action.message, /차단 이슈가 없습니다/);
+    assert.equal(action.kind, "REQUEST_PROVIDER_REVIEW");
+    assert.equal(action.primaryLabel, "제공자 확인 요청");
   });
 
-  it("does not block next step when only warnings exist", () => {
-    const detail = baseDetail({
-      readiness: {
-        versionCount: 1,
-        sourceDocumentCount: 9,
-        hasRequiredDescription: true,
-        canApprove: true,
-        pipelineStatus: "READY",
-        sourceValidation: {
-          passCount: 4,
-          warningCount: 2,
-          failCount: 0,
-          notCheckedCount: 0,
-        },
-        sourceTypeCoverage: {},
-        structureCoverageStatus: "PASS",
-        knowledgeQualityStatus: "WARNING",
-        structureQualityMessage: null,
-        chunkQualityStatus: "PASS",
-        chunkQualityMessage: null,
-        retrievalEvaluationStatus: "WARNING",
-        retrievalEvaluationMessage: null,
-        releaseGateStatus: "PASS",
-        releaseGateMessage: null,
-      },
-    });
+  it("does not unlock service validation before provider confirm", () => {
+    const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
-    assert.equal(quality.hasWarnings, true);
-    assert.equal(quality.hasBlockers, false);
     const action = getNextReviewAction({
       workerZipPhase: "COMPLETED",
       quality,
-      searchValidationDone: false,
+      providerReviewPhase: "REQUESTED",
+      serviceValidationPhase: "NONE",
       detail,
     });
-    assert.equal(action.kind, "GO_SEARCH_VALIDATION");
-    assert.equal(action.tone, "warning");
-    assert.match(action.message, /WARNING/);
+    assert.equal(action.kind, "NONE");
+    assert.match(action.message, /제공자 확인 대기/);
 
     const rail = getAdminReviewRailState({
       packId: "pack-1",
       workerZipPhase: "COMPLETED",
       quality,
-      searchValidationDone: false,
+      providerReviewPhase: "REQUESTED",
+      serviceValidationPhase: "NONE",
       detail,
-      activeStep: "quality",
+      activeStep: "providerConfirm",
     });
     const search = rail.items.find((i) => i.id === "searchValidation");
-    assert.ok(search);
-    assert.notEqual(search.status, "blocked");
+    assert.equal(search?.status, "blocked");
+  });
+
+  it("unlocks service validation after provider confirm", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    const action = getNextReviewAction({
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "CONFIRMED",
+      serviceValidationPhase: "NONE",
+      detail,
+    });
+    assert.equal(action.kind, "GO_SEARCH_VALIDATION");
+    assert.equal(action.primaryLabel, "서비스 검증으로 이동");
+  });
+
+  it("shows final-decision CTA after service validation is done", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    const action = getNextReviewAction({
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "CONFIRMED",
+      serviceValidationPhase: "PASSED",
+      detail,
+    });
+    assert.equal(action.kind, "GO_FINAL_DECISION");
+    assert.equal(action.primaryLabel, "최종 검수 판단으로 이동");
   });
 
   it("blocks next step and surfaces reasons when blocking issues exist", () => {
@@ -194,37 +193,13 @@ describe("getNextReviewAction", () => {
     const action = getNextReviewAction({
       workerZipPhase: "COMPLETED",
       quality,
-      searchValidationDone: false,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
       detail,
     });
     assert.equal(action.kind, "REGENERATE_KNOWLEDGE");
     assert.equal(action.tone, "blocked");
     assert.ok((action.blockedReasons?.length ?? 0) > 0);
-
-    const rail = getAdminReviewRailState({
-      packId: "pack-1",
-      workerZipPhase: "COMPLETED",
-      quality,
-      searchValidationDone: false,
-      detail,
-      activeStep: "quality",
-    });
-    const search = rail.items.find((i) => i.id === "searchValidation");
-    assert.equal(search?.status, "blocked");
-    assert.ok(search?.blockedReason);
-  });
-
-  it("shows final-decision CTA after search validation is done", () => {
-    const detail = baseDetail();
-    const quality = buildAdminQualityGateSnapshot(detail);
-    const action = getNextReviewAction({
-      workerZipPhase: "COMPLETED",
-      quality,
-      searchValidationDone: true,
-      detail,
-    });
-    assert.equal(action.kind, "GO_FINAL_DECISION");
-    assert.equal(action.primaryLabel, "최종 검수 판단으로 이동");
   });
 });
 
@@ -240,34 +215,32 @@ describe("getProviderPackRailState", () => {
       "내 지식팩",
       "기본정보",
       "자료등록",
-      "데이터 구조화",
-      "검색데이터 생성·검증",
-      "유통정보",
-      "검수요청",
-      "검수결과",
-      "공개 관리",
-      "성과/사용량",
+      "처리요청",
+      "관리자 처리상태",
+      "생성 결과 검토",
+      "검수 상태",
+      "공개 정보",
+      "사용 통계",
     ]);
     assert.equal(items.find((i) => i.id === "basic")?.status, "current");
-    assert.equal(items.find((i) => i.id === "payload")?.status, "next");
   });
 
   it("keeps locked steps visible with blocked reason", () => {
     const items = getProviderPackRailState({
       packId: "pack-1",
-      activeTab: "serviceValidation",
+      activeTab: "payload",
       pack: null,
       tabLocks: {
-        distributionReview: {
+        payload: {
           locked: true,
-          reason: "검색데이터 검증을 완료하면 열립니다.",
+          reason: "관리자 처리 중에는 자료를 수정할 수 없습니다.",
         },
       },
     });
-    const dist = items.find((i) => i.id === "distribution");
-    assert.equal(dist?.status, "blocked");
-    assert.equal(dist?.blockedReason, "검색데이터 검증을 완료하면 열립니다.");
-    assert.ok(dist?.href);
+    const payload = items.find((i) => i.id === "payload");
+    assert.equal(payload?.status, "blocked");
+    assert.equal(payload?.blockedReason, "관리자 처리 중에는 자료를 수정할 수 없습니다.");
+    assert.ok(payload?.href);
   });
 });
 

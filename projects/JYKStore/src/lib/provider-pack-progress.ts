@@ -5,6 +5,13 @@ import {
   type ProviderRegistrationStepStatus,
 } from "@/lib/provider-registration-readiness";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
+import {
+  deriveStoreWorkflowStatus,
+  describeStoreWorkflowStatus,
+  type StoreProviderReviewPhase,
+  type StoreServiceValidationPhase,
+  type StoreWorkflowStatus,
+} from "@/lib/store-workflow-status";
 
 /** Registration progress steps — aligned with provider pack tabs. */
 export type ProviderPackProgressStepKey = ProviderRegistrationStepId;
@@ -26,7 +33,18 @@ export type ProviderPackCurrentStep =
   | "PUBLISHED"
   | "CHANGES_REQUESTED"
   | "SUSPENDED"
-  | "REVIEWING";
+  | "REVIEWING"
+  | "SOURCE_SUBMITTED"
+  | "ADMIN_RECEIVED"
+  | "KNOWLEDGE_GENERATING"
+  | "KNOWLEDGE_GENERATED"
+  | "ADMIN_QUALITY_CHECKING"
+  | "ADMIN_QUALITY_PASSED"
+  | "PROVIDER_REVIEW_REQUESTED"
+  | "PROVIDER_REVIEW_CONFIRMED"
+  | "PROVIDER_WITHDRAWN"
+  | "SERVICE_VALIDATING"
+  | "SERVICE_VALIDATION_PASSED";
 
 export type ProviderPackProgressStep = {
   key: ProviderPackProgressStepKey;
@@ -46,6 +64,8 @@ export type ProviderPackProgressDto = {
   packStatus: PackStatus;
   /** Lifecycle status for display — separate from registration steps. */
   lifecycleStatus: PackStatus;
+  /** Derived Store process stage (persisted inputs, not URL). */
+  storeWorkflowStatus: StoreWorkflowStatus;
   publishedVersion: { id: string; version: string } | null;
   workingVersion: { id: string; version: string; status: string } | null;
   currentStep: ProviderPackCurrentStep;
@@ -76,6 +96,21 @@ export type BuildProviderPackProgressInput = {
   /** Provider-selected document language; required for basic-info readiness. */
   language?: string | null;
   latestRejectionReason?: string | null;
+  /** Admin ZIP 접수 hold — list + detail must pass this for correct CTAs. */
+  adminGenerationHold?: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
+  workerZipRequestStatus?:
+    | "NONE"
+    | "REQUESTED"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "FAILED"
+    | null;
+  providerReviewPhase?: StoreProviderReviewPhase | null;
+  serviceValidationPhase?: StoreServiceValidationPhase | null;
+  adminQualityPassed?: boolean;
+  adminQualityStarted?: boolean;
   workingVersion: {
     id: string;
     version: string;
@@ -207,6 +242,20 @@ export function buildProviderPackProgress(
     input.packStatus === "DRAFT" && input.latestRejectionReason?.trim(),
   );
 
+  const storeWorkflowStatus = deriveStoreWorkflowStatus({
+    packStatus: input.packStatus,
+    latestRejectionReason: input.latestRejectionReason,
+    workerZipRequestStatus: input.workerZipRequestStatus,
+    adminGenerationHold: input.adminGenerationHold,
+    adminQualityPassed: input.adminQualityPassed,
+    adminQualityStarted: input.adminQualityStarted,
+    providerReviewPhase: input.providerReviewPhase,
+    serviceValidationPhase: input.serviceValidationPhase,
+    basicInfoReady: basicReady,
+    sourceMaterialsReady: materialIsReady,
+  });
+  const workflowLabel = describeStoreWorkflowStatus(storeWorkflowStatus);
+
   const readiness = resolveProviderRegistrationReadiness({
     packId,
     packStatus: input.packStatus,
@@ -248,18 +297,18 @@ export function buildProviderPackProgress(
     nextActionHref = detailHref(packId);
     actions = [{ label: "상태 확인", href: detailHref(packId) }];
     for (const step of steps) step.status = "BLOCKED";
-  } else if (rejected) {
+  } else if (rejected || storeWorkflowStatus === "REJECTED") {
     currentStep = "CHANGES_REQUESTED";
-    currentStepLabel = "보완 요청";
+    currentStepLabel = workflowLabel.providerStatusLabel;
     nextActionLabel = "보완사항을 확인하고 수정 후 재요청하세요.";
     nextActionHref = detailHref(packId, "distributionReview");
     actions = [
       { label: "보완사항 보기", href: detailHref(packId, "distributionReview") },
       { label: "수정 후 재요청", href: detailHref(packId, "payload") },
     ];
-  } else if (input.packStatus === "REVIEWING") {
+  } else if (storeWorkflowStatus === "REVIEWING" || input.packStatus === "REVIEWING") {
     currentStep = "REVIEWING";
-    currentStepLabel = "검수 요청됨";
+    currentStepLabel = workflowLabel.providerStatusLabel;
     nextActionLabel = "검수 결과를 기다리세요.";
     nextActionHref = detailHref(packId, "distributionReview");
     actions = [
@@ -271,7 +320,7 @@ export function buildProviderPackProgress(
     }
   } else if (isPublishedStatus(input.packStatus) && !workingDraft) {
     currentStep = "PUBLISHED";
-    currentStepLabel = "공개됨";
+    currentStepLabel = workflowLabel.providerStatusLabel;
     nextActionLabel = "공개 정보와 사용 통계를 확인하세요.";
     nextActionHref = detailHref(packId, "distributionReview");
     actions = [
@@ -279,6 +328,84 @@ export function buildProviderPackProgress(
       { label: "사용 통계 보기", href: ROUTES.accountPlan },
     ];
     for (const step of steps) step.status = "COMPLETED";
+  } else if (storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED") {
+    currentStep = "PROVIDER_REVIEW_REQUESTED";
+    currentStepLabel = workflowLabel.providerStatusLabel;
+    nextActionLabel = "관리자가 생성·품질점검한 결과를 검토하세요.";
+    nextActionHref = detailHref(packId, "knowledge");
+    actions = [
+      { label: "생성 결과 검토", href: detailHref(packId, "knowledge") },
+      { label: "확인 완료", href: detailHref(packId, "knowledge") },
+      { label: "회수하고 자료 다시 등록", href: detailHref(packId, "payload") },
+    ];
+    for (const step of steps) {
+      if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {
+        step.status = "COMPLETED";
+      } else {
+        step.status = "LOCKED";
+      }
+    }
+  } else if (
+    storeWorkflowStatus === "PROVIDER_REVIEW_CONFIRMED" ||
+    storeWorkflowStatus === "SERVICE_VALIDATING" ||
+    storeWorkflowStatus === "SERVICE_VALIDATION_PASSED"
+  ) {
+    currentStep =
+      storeWorkflowStatus === "SERVICE_VALIDATION_PASSED"
+        ? "SERVICE_VALIDATION_PASSED"
+        : storeWorkflowStatus === "SERVICE_VALIDATING"
+          ? "SERVICE_VALIDATING"
+          : "PROVIDER_REVIEW_CONFIRMED";
+    currentStepLabel = workflowLabel.providerStatusLabel;
+    nextActionLabel = "관리자 서비스 검증·최종 검수 결과를 기다리세요.";
+    nextActionHref = detailHref(packId, "distributionReview");
+    actions = [
+      { label: "검수 상태 보기", href: detailHref(packId, "distributionReview") },
+    ];
+    for (const step of steps) step.status = "LOCKED";
+  } else if (storeWorkflowStatus === "SOURCE_SUBMITTED") {
+    currentStep = "SOURCE_SUBMITTED";
+    currentStepLabel = workflowLabel.providerStatusLabel;
+    nextActionLabel = "관리자 접수를 기다리세요.";
+    nextActionHref = detailHref(packId, "payload");
+    actions = [
+      { label: "제출 내용 확인", href: detailHref(packId, "payload") },
+    ];
+    for (const step of steps) {
+      if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {
+        step.status = "COMPLETED";
+      } else {
+        step.status = "LOCKED";
+      }
+    }
+  } else if (
+    storeWorkflowStatus === "ADMIN_RECEIVED" ||
+    storeWorkflowStatus === "KNOWLEDGE_GENERATING" ||
+    storeWorkflowStatus === "KNOWLEDGE_GENERATED" ||
+    storeWorkflowStatus === "ADMIN_QUALITY_CHECKING" ||
+    storeWorkflowStatus === "ADMIN_QUALITY_PASSED"
+  ) {
+    currentStep = storeWorkflowStatus;
+    currentStepLabel = workflowLabel.providerStatusLabel;
+    nextActionLabel = "관리자 처리 상태를 확인하세요.";
+    nextActionHref = detailHref(packId, "knowledge");
+    actions = [{ label: "처리 상태 보기", href: detailHref(packId, "knowledge") }];
+    for (const step of steps) {
+      if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {
+        step.status = "COMPLETED";
+      } else {
+        step.status = "LOCKED";
+      }
+    }
+  } else if (storeWorkflowStatus === "PROVIDER_WITHDRAWN") {
+    currentStep = "PROVIDER_WITHDRAWN";
+    currentStepLabel = workflowLabel.providerStatusLabel;
+    nextActionLabel = "원본 자료를 다시 등록하고 처리 요청하세요.";
+    nextActionHref = detailHref(packId, "payload");
+    actions = [
+      { label: "자료등록", href: detailHref(packId, "payload") },
+      { label: "기본정보 수정", href: detailHref(packId, "basic") },
+    ];
   } else {
     // Authoring path — derive next action from readiness current step.
     const current = readiness.steps.find((s) => s.id === readiness.currentStepId);
@@ -337,6 +464,7 @@ export function buildProviderPackProgress(
     packId,
     packStatus: input.packStatus,
     lifecycleStatus: input.packStatus,
+    storeWorkflowStatus,
     publishedVersion: input.publishedVersion,
     workingVersion: input.workingVersion
       ? {

@@ -12,6 +12,7 @@ import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderP
 import { ProviderKnowledgeGenerationTab } from "@/components/provider-distribution/ProviderKnowledgeGenerationTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
+import { ProviderGenerationReviewPanel } from "@/components/ProviderGenerationReviewPanel";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
@@ -119,6 +120,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     pack?.latestRejectionReason?.trim() && !pack.latestRejectionAcknowledged,
   );
   const adminGenerationHold = pack?.adminGenerationHold ?? null;
+  const providerReviewPhase = pack?.providerReviewPhase ?? "NONE";
   const lockedByAdminGeneration = isAdminGenerationHoldActive(adminGenerationHold);
   const editable = isProviderPackContentEditable({
     status: pack?.status ?? "DRAFT",
@@ -126,6 +128,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     latestRejectionAcknowledged: pack?.latestRejectionAcknowledged,
     latestReviewStatus: pack?.latestReviewStatus,
     adminGenerationHold,
+    providerReviewPhase,
   });
   const isReviewing =
     pack?.status === "REVIEWING" ||
@@ -299,6 +302,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       description: description || pack.description,
       language: language ?? pack.versions[0]?.language ?? null,
       latestRejectionReason: pack.latestRejectionReason,
+      adminGenerationHold,
+      workerZipRequestStatus: workerZipStatus,
+      providerReviewPhase,
       workingVersion: working
         ? {
             id: working.id,
@@ -332,6 +338,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     serviceValidationPassed,
     distributionReadyForProgress,
     pipelineCurrent,
+    adminGenerationHold,
+    workerZipStatus,
+    providerReviewPhase,
   ]);
 
   const defaultTab = useMemo(
@@ -740,6 +749,22 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           className={activeTab === "knowledge" ? undefined : "hidden"}
           aria-hidden={activeTab !== "knowledge"}
         >
+          <ProviderGenerationReviewPanel
+            packId={packId}
+            phase={
+              providerReviewPhase === "REQUESTED" ||
+              providerReviewPhase === "CONFIRMED" ||
+              providerReviewPhase === "WITHDRAWN"
+                ? providerReviewPhase
+                : "NONE"
+            }
+            qualitySummary={{
+              structure: pack.structureQuality?.knowledgeQuality?.status ?? null,
+              chunk: pack.chunkQuality?.report?.status ?? null,
+              retrieval: pack.retrievalEvaluation?.latestRun?.status ?? null,
+            }}
+            onChanged={load}
+          />
           <ProviderKnowledgeGenerationTab
             packId={packId}
             editable={editable}

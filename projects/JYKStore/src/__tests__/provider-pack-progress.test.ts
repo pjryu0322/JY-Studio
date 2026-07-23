@@ -143,6 +143,88 @@ describe("provider pack progress", () => {
     assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
   });
 
+  it("hides draft CTAs while admin hold is active (리아모어 regression)", () => {
+    const progress = buildProviderPackProgress({
+      packId: "rmate",
+      packStatus: "DRAFT",
+      name: "리아모어",
+      categoryId: "ui",
+      shortDescription: "short enough",
+      description: "long enough description text here",
+      language: "ko",
+      adminGenerationHold: "COMPLETED",
+      workerZipRequestStatus: "COMPLETED",
+      workingVersion: {
+        id: "v1",
+        version: "v6.0",
+        sourceDocumentCount: 273,
+        materialReady: true,
+        structureReady: true,
+        searchFoundationReady: true,
+        searchValidationReady: false,
+        distributionReady: false,
+        pipelineCurrent: true,
+      },
+      publishedVersion: null,
+    });
+    assert.equal(progress.storeWorkflowStatus, "KNOWLEDGE_GENERATED");
+    assert.ok(progress.actions.some((a) => a.label === "처리 상태 보기"));
+    assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
+    assert.ok(!progress.actions.some((a) => a.label === "자료등록"));
+    assert.ok(!progress.actions.some((a) => a.label === "검수 요청"));
+  });
+
+  it("shows 생성 결과 검토 when provider review is requested", () => {
+    const progress = buildProviderPackProgress({
+      packId: "pack-1",
+      packStatus: "DRAFT",
+      name: "Pack",
+      categoryId: "cat",
+      shortDescription: "short",
+      description: "desc",
+      language: "ko",
+      adminGenerationHold: "COMPLETED",
+      workerZipRequestStatus: "COMPLETED",
+      providerReviewPhase: "REQUESTED",
+      adminQualityPassed: true,
+      workingVersion: {
+        id: "v1",
+        version: "0.1.0",
+        sourceDocumentCount: 2,
+        materialReady: true,
+        distributionReady: true,
+      },
+      publishedVersion: null,
+    });
+    assert.equal(progress.storeWorkflowStatus, "PROVIDER_REVIEW_REQUESTED");
+    assert.ok(progress.actions.some((a) => a.label === "생성 결과 검토"));
+    assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
+  });
+
+  it("shows 검수 상태 보기 after provider confirm", () => {
+    const progress = buildProviderPackProgress({
+      packId: "pack-1",
+      packStatus: "DRAFT",
+      name: "Pack",
+      categoryId: "cat",
+      shortDescription: "short",
+      description: "desc",
+      language: "ko",
+      providerReviewPhase: "CONFIRMED",
+      workingVersion: {
+        id: "v1",
+        version: "0.1.0",
+        sourceDocumentCount: 2,
+        materialReady: true,
+        distributionReady: true,
+      },
+      publishedVersion: null,
+    });
+    assert.equal(progress.storeWorkflowStatus, "SERVICE_VALIDATING");
+    assert.ok(progress.actions.some((a) => a.label === "검수 상태 보기"));
+    assert.ok(!progress.actions.some((a) => a.label === "자료등록"));
+  });
+
   it("maps pack-scoped onboarding steps through facade", () => {
     const steps = buildProviderOnboardingSteps({
       hasProfile: true,

@@ -495,3 +495,57 @@ export function adminDoclingImportFileDownloadUrl(
   }
   return `${base}?${params.toString()}`;
 }
+
+export type AdminStoreWorkflowMarkers = {
+  providerReviewPhase: "NONE" | "REQUESTED" | "CONFIRMED" | "WITHDRAWN";
+  serviceValidationPhase: "NONE" | "PASSED";
+  providerReviewRequestedAt: string | null;
+  providerReviewConfirmedAt: string | null;
+  serviceValidationPassedAt: string | null;
+};
+
+export async function fetchAdminStoreWorkflowMarkers(
+  packId: string,
+): Promise<AdminStoreWorkflowMarkers> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/store-workflow`,
+    { method: "GET", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | (AdminStoreWorkflowMarkers & { ok?: boolean; error?: string; message?: string })
+    | null;
+  if (response.ok && data?.providerReviewPhase) {
+    return {
+      providerReviewPhase: data.providerReviewPhase,
+      serviceValidationPhase: data.serviceValidationPhase,
+      providerReviewRequestedAt: data.providerReviewRequestedAt,
+      providerReviewConfirmedAt: data.providerReviewConfirmedAt,
+      serviceValidationPassedAt: data.serviceValidationPassedAt,
+    };
+  }
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+export async function requestAdminProviderReviewApi(packId: string): Promise<void> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/store-workflow/request-provider-review`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string; message?: string }
+    | null;
+  if (response.ok && data?.ok === true) return;
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+export async function markAdminServiceValidationPassedApi(packId: string): Promise<void> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/store-workflow/service-validation`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string; message?: string }
+    | null;
+  if (response.ok && data?.ok === true) return;
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}

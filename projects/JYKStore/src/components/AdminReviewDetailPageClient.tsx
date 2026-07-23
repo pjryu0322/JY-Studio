@@ -11,7 +11,11 @@ import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminReviewDetail,
+  fetchAdminStoreWorkflowMarkers,
   fetchAdminWorkerZipRequestState,
+  markAdminServiceValidationPassedApi,
+  requestAdminProviderReviewApi,
+  type AdminStoreWorkflowMarkers,
 } from "@/lib/admin-review-api";
 import { isReviewAccepted } from "@/lib/admin-review-tabs";
 import {
@@ -27,6 +31,7 @@ function parseStep(raw: string | null): AdminReviewWorkflowStep {
     case "queue":
     case "generation":
     case "quality":
+    case "providerConfirm":
     case "searchValidation":
     case "decision":
     case "publish":
@@ -47,19 +52,28 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminReviewDetailDto | null>(null);
   const [workerZipPhase, setWorkerZipPhase] = useState<AdminWorkerZipPhase>("NONE");
-  const [searchValidationDone, setSearchValidationDone] = useState(false);
+  const [workflowMarkers, setWorkflowMarkers] = useState<AdminStoreWorkflowMarkers>({
+    providerReviewPhase: "NONE",
+    serviceValidationPhase: "NONE",
+    providerReviewRequestedAt: null,
+    providerReviewConfirmedAt: null,
+    serviceValidationPassedAt: null,
+  });
+  const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const [data, zip] = await Promise.all([
+      const [data, zip, markers] = await Promise.all([
         fetchAdminReviewDetail(packId),
         fetchAdminWorkerZipRequestState(packId).catch(() => null),
+        fetchAdminStoreWorkflowMarkers(packId).catch(() => null),
       ]);
       setDetail(data.detail);
       if (zip?.requestStatus) setWorkerZipPhase(zip.requestStatus as AdminWorkerZipPhase);
+      if (markers) setWorkflowMarkers(markers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
     } finally {
@@ -89,10 +103,11 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       getNextReviewAction({
         workerZipPhase,
         quality,
-        searchValidationDone,
+        providerReviewPhase: workflowMarkers.providerReviewPhase,
+        serviceValidationPhase: workflowMarkers.serviceValidationPhase,
         detail,
       }),
-    [workerZipPhase, quality, searchValidationDone, detail],
+    [workerZipPhase, quality, workflowMarkers, detail],
   );
 
   const workflow = useMemo(
@@ -101,11 +116,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         packId,
         workerZipPhase,
         quality,
-        searchValidationDone,
+        providerReviewPhase: workflowMarkers.providerReviewPhase,
+        serviceValidationPhase: workflowMarkers.serviceValidationPhase,
         detail,
         activeStep,
       }),
-    [packId, workerZipPhase, quality, searchValidationDone, detail, activeStep],
+    [packId, workerZipPhase, quality, workflowMarkers, detail, activeStep],
   );
 
   if (loading) {
@@ -120,9 +136,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     activeStep === "queue" ||
     activeStep === "generation" ||
     activeStep === "quality" ||
-    activeStep === "searchValidation";
+    activeStep === "providerConfirm";
+  const showProviderConfirm = activeStep === "providerConfirm";
   const showSearch = activeStep === "searchValidation";
   const showDecision = activeStep === "decision" || activeStep === "publish";
+  const providerConfirmed = workflowMarkers.providerReviewPhase === "CONFIRMED";
+  const serviceDone = workflowMarkers.serviceValidationPhase === "PASSED";
 
   return (
     <div className="min-w-0 space-y-4">
@@ -145,12 +164,45 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             workflow.items.find((i) => i.status === "current")?.label ??
             "-"}
         </p>
+        <nav className="mt-3 flex flex-wrap gap-1.5" aria-label="검수 단계">
+          {workflow.items
+            .filter((item) => item.id !== "ops")
+            .map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={item.status === "blocked"}
+                onClick={() => goStep(item.id as AdminReviewWorkflowStep)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                  item.status === "current"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : item.status === "blocked"
+                      ? "border-slate-200 text-slate-400"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+                title={item.blockedReason}
+              >
+                {item.label}
+              </button>
+            ))}
+        </nav>
       </div>
 
       {nextAction.kind !== "NONE" || nextAction.message ? (
         <NextActionPanel
           action={nextAction}
           onPrimary={() => {
+            if (nextAction.kind === "REQUEST_PROVIDER_REVIEW") {
+              setActionBusy(true);
+              void requestAdminProviderReviewApi(packId)
+                .then(() => refreshSilently())
+                .then(() => goStep("providerConfirm"))
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "제공자 확인 요청에 실패했습니다."),
+                )
+                .finally(() => setActionBusy(false));
+              return;
+            }
             if (nextAction.kind === "GO_SEARCH_VALIDATION") goStep("searchValidation");
             else if (nextAction.kind === "GO_FINAL_DECISION") goStep("decision");
             else if (nextAction.kind === "REGENERATE_KNOWLEDGE") goStep("generation");
@@ -177,44 +229,110 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         />
       ) : null}
 
+      {showProviderConfirm ? (
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">제공자 확인</h2>
+            <p className="mt-1 text-xs text-store-muted">
+              품질점검 통과 후 제공자에게 생성 결과 검토를 요청합니다. 제공자 확인 전에는 서비스
+              검증·공개로 진행할 수 없습니다.
+            </p>
+          </div>
+          <dl className="grid gap-2 text-xs sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+              <dt className="text-store-muted">제공자 검토 상태</dt>
+              <dd className="mt-0.5 font-semibold text-slate-900">
+                {workflowMarkers.providerReviewPhase}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+              <dt className="text-store-muted">요청/확인 시각</dt>
+              <dd className="mt-0.5 font-semibold text-slate-900">
+                {workflowMarkers.providerReviewConfirmedAt ??
+                  workflowMarkers.providerReviewRequestedAt ??
+                  "-"}
+              </dd>
+            </div>
+          </dl>
+          {workflowMarkers.providerReviewPhase === "NONE" ? (
+            <button
+              type="button"
+              disabled={actionBusy || !quality.completed || quality.hasBlockers}
+              onClick={() => {
+                setActionBusy(true);
+                void requestAdminProviderReviewApi(packId)
+                  .then(() => refreshSilently())
+                  .catch((err) =>
+                    setError(
+                      err instanceof Error ? err.message : "제공자 확인 요청에 실패했습니다.",
+                    ),
+                  )
+                  .finally(() => setActionBusy(false));
+              }}
+              className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
+            >
+              제공자 확인 요청
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
       {showSearch ? (
         <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">검색데이터 생성·검증</h2>
+            <h2 className="text-sm font-bold text-slate-900">서비스 검증</h2>
             <p className="mt-1 text-xs text-store-muted">
-              Worker ZIP 경로에서는 지식데이터 생성 시 검색데이터가 함께 반영됩니다. 운영 검증
-              내역을 확인하고 다음 단계로 진행하세요.
+              API·MCP·ZIP/RAG Export 동작과 검색 품질 샘플을 확인합니다. 제공자 확인 완료 후에만
+              검증 완료를 기록할 수 있습니다.
             </p>
           </div>
+          {!providerConfirmed ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              제공자 확인이 완료되지 않아 서비스 검증 완료를 기록할 수 없습니다.
+            </p>
+          ) : null}
           <AdminServiceValidationOpsPanel packId={packId} />
           <button
             type="button"
+            disabled={!providerConfirmed || serviceDone || actionBusy}
             onClick={() => {
-              setSearchValidationDone(true);
-              goStep("decision");
+              setActionBusy(true);
+              void markAdminServiceValidationPassedApi(packId)
+                .then(() => refreshSilently())
+                .then(() => goStep("decision"))
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "서비스 검증 기록에 실패했습니다."),
+                )
+                .finally(() => setActionBusy(false));
             }}
-            className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"
+            className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
           >
-            검증 확인 완료 · 최종 검수 판단으로 이동
+            {serviceDone
+              ? "서비스 검증 완료됨 · 최종 검수 판단으로 이동"
+              : "검증 확인 완료 · 최종 검수 판단으로 이동"}
           </button>
         </section>
       ) : null}
 
       {showDecision ? (
         <>
-          {isReviewAccepted(detail) ? <AdminReviewReceiptInfoCard detail={detail} /> : null}
-          <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={setDetail} />
+          {!serviceDone || !providerConfirmed ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              제공자 확인과 서비스 검증이 완료된 뒤에 최종 승인·공개를 진행하세요.
+            </p>
+          ) : null}
+          <AdminReviewReceiptInfoCard detail={detail} />
+          <AdminReviewAcceptTab
+            packId={packId}
+            detail={detail}
+            onUpdated={(next) => {
+              setDetail(next);
+              if (isReviewAccepted(next)) {
+                // keep decision step
+              }
+            }}
+          />
         </>
-      ) : null}
-
-      {activeStep === "publish" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-card">
-          <p className="font-bold text-slate-900">게시 관리</p>
-          <p className="mt-1 text-xs text-store-muted">
-            승인·공개 이후 게시 상태와 배포 옵션을 관리합니다. 최종 검수 판단에서 승인하면 이
-            단계로 이어집니다.
-          </p>
-        </section>
       ) : null}
     </div>
   );
