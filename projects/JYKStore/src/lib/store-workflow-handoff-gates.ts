@@ -33,6 +33,7 @@ export type StoreServiceChannelGateReasonCode =
   | "STALE_BINDING"
   | "BINDING_MISSING"
   | "BINDING_NOT_READY"
+  | "WORKER_ZIP_NOT_PASSED"
   | "WORKER_ZIP_GENERATION_MISSING"
   | "FINGERPRINT_MISMATCH"
   | "INDEX_GENERATION_MISMATCH"
@@ -92,13 +93,35 @@ export async function resolveAdminWorkerZipPhaseForPack(input: {
   }
 }
 
+function workerZipNotPassedReason(status: string): {
+  status: StoreValidationBindingStatus;
+  reason: string;
+  reasonCode: StoreServiceChannelGateReasonCode;
+} {
+  if (status === "PENDING" || status === "RUNNING") {
+    return {
+      status: "NOT_READY",
+      reason:
+        `최신 지식데이터 생성이 완료되지 않아 서비스 검증을 완료할 수 없습니다. Worker ZIP 생성 상태: ${status}`,
+      reasonCode: "WORKER_ZIP_NOT_PASSED",
+    };
+  }
+  return {
+    status: "STALE",
+    reason:
+      `최신 Worker ZIP 실행이 통과하지 않아 서비스 검증을 완료할 수 없습니다. Worker ZIP 생성 상태: ${status}`,
+    reasonCode: "WORKER_ZIP_NOT_PASSED",
+  };
+}
+
 /**
- * Resolve the current knowledge binding for Store service-validation gates.
+ * Single entry point for Store service-validation current binding.
  *
- * Priority:
- * 1. Latest WORKER_ZIP_IMPORT PASS + linked SearchIndexGeneration
- * 2. Docling current binding only when no Worker ZIP PASS exists
- * 3. Otherwise MISSING / NOT_READY / STALE — never fall back to an unrelated READY generation
+ * Policy:
+ * 1. Latest WORKER_ZIP_IMPORT run (any status) — if present, Worker ZIP owns binding
+ * 2. That latest run must be PASS + linked READY SearchIndexGeneration
+ * 3. Never fall back to older Worker ZIP PASS, orphan READY, or Docling while any Worker ZIP run exists
+ * 4. Docling-only only when no Worker ZIP import history exists
  */
 export async function resolveStoreValidationBinding(input: {
   packId: string;
@@ -116,22 +139,33 @@ export async function resolveStoreValidationBinding(input: {
 }> {
   const client = input.prismaClient ?? prisma;
 
-  const latestZipPass = await client.pipelineRun.findFirst({
+  // Latest knowledge generation attempt — status-unfiltered. Do not query "latest PASS".
+  const latestZipRun = await client.pipelineRun.findFirst({
     where: {
       packId: input.packId,
       triggerType: WORKER_ZIP_IMPORT_TRIGGER,
-      status: "PASS",
     },
-    orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
-    select: { id: true },
+    orderBy: [{ createdAt: "desc" }, { finishedAt: "desc" }],
+    select: { id: true, status: true },
   });
 
-  if (latestZipPass) {
+  if (latestZipRun) {
+    if (latestZipRun.status !== "PASS") {
+      const blocked = workerZipNotPassedReason(latestZipRun.status);
+      return {
+        status: blocked.status,
+        binding: null,
+        source: "WORKER_ZIP",
+        reason: blocked.reason,
+        reasonCode: blocked.reasonCode,
+      };
+    }
+
     const generation = await client.searchIndexGeneration.findFirst({
       where: {
         packId: input.packId,
         versionId: input.versionId,
-        pipelineRunId: latestZipPass.id,
+        pipelineRunId: latestZipRun.id,
         staleAt: null,
         retiredAt: null,
       },
@@ -164,7 +198,10 @@ export async function resolveStoreValidationBinding(input: {
       };
     }
 
-    if (generation && !(SEARCH_GENERATION_VALIDATABLE_STATUSES as readonly string[]).includes(generation.status)) {
+    if (
+      generation &&
+      !(SEARCH_GENERATION_VALIDATABLE_STATUSES as readonly string[]).includes(generation.status)
+    ) {
       return {
         status: "NOT_READY",
         binding: null,
@@ -174,7 +211,7 @@ export async function resolveStoreValidationBinding(input: {
       };
     }
 
-    // Worker ZIP PASS exists but no linked generation — do not fall back to Docling or orphan READY.
+    // Latest Worker ZIP PASS but no linked generation — never fall back to older READY/Docling.
     return {
       status: "STALE",
       binding: null,

@@ -74,6 +74,9 @@ function doclingSummary(input: {
 }
 
 function createBindingClient(opts: {
+  /** Latest Worker ZIP run (any status). Prefer this over legacy workerZipPassId. */
+  latestWorkerZipRun?: { id: string; status: string } | null;
+  /** @deprecated use latestWorkerZipRun */
   workerZipPassId?: string | null;
   workerZipGeneration?: MockGen | null;
   orphanReadyGeneration?: MockGen | null;
@@ -83,6 +86,13 @@ function createBindingClient(opts: {
   } | null;
   normalizedDocumentFound?: boolean;
 }) {
+  const latestZip =
+    opts.latestWorkerZipRun !== undefined
+      ? opts.latestWorkerZipRun
+      : opts.workerZipPassId
+        ? { id: opts.workerZipPassId, status: "PASS" }
+        : null;
+
   return {
     pipelineRun: {
       findFirst: async ({
@@ -90,8 +100,12 @@ function createBindingClient(opts: {
       }: {
         where: { triggerType?: string; status?: string };
       }) => {
-        if (where.triggerType === WORKER_ZIP_IMPORT_TRIGGER && where.status === "PASS") {
-          return opts.workerZipPassId ? { id: opts.workerZipPassId } : null;
+        if (where.triggerType === WORKER_ZIP_IMPORT_TRIGGER) {
+          // Policy: latest run is status-unfiltered. Reject mocks that still filter PASS-only.
+          if (where.status != null) {
+            throw new Error("resolveStoreValidationBinding must not query Worker ZIP by status PASS");
+          }
+          return latestZip;
         }
         if (where.triggerType === DOCLING_KNOWLEDGE_PIPELINE_TRIGGER) {
           return opts.doclingPass
@@ -112,10 +126,9 @@ function createBindingClient(opts: {
       }: {
         where: { pipelineRunId?: string };
       }) => {
-        if (where.pipelineRunId && opts.workerZipPassId === where.pipelineRunId) {
+        if (where.pipelineRunId && latestZip?.id === where.pipelineRunId) {
           return opts.workerZipGeneration ?? null;
         }
-        // Orphan READY fallback must not be used when Worker ZIP PASS exists.
         if (!where.pipelineRunId) {
           return opts.orphanReadyGeneration ?? null;
         }
@@ -649,20 +662,183 @@ describe("store workflow handoff gates", () => {
     assert.equal(mcp?.reasonCode, "FINGERPRINT_MISMATCH");
   });
 
-  it("enforces Worker ZIP priority in resolveStoreValidationBinding source", () => {
-    const gates = readSource("src/lib/store-workflow-handoff-gates.ts");
-    assert.match(
-      gates,
-      /latestZipPass[\s\S]*resolveValidationBindingState\(/,
+  it("blocks when latest Worker ZIP is RUNNING even if older PASS exists", async () => {
+    const versionId = "ver-1";
+    const resolved = await resolveStoreValidationBinding({
+      packId: "pack-1",
+      versionId,
+      prismaClient: createBindingClient({
+        latestWorkerZipRun: { id: "zip-running", status: "RUNNING" },
+        // Linked to older PASS — must not be used when latest is RUNNING
+        workerZipGeneration: {
+          id: "gen-old-pass",
+          fingerprint: "fp-old",
+          pipelineRunId: "zip-old-pass",
+          versionId,
+          status: "READY",
+        },
+        orphanReadyGeneration: {
+          id: "gen-orphan",
+          fingerprint: "fp-orphan",
+          pipelineRunId: "zip-old-pass",
+          versionId,
+          status: "READY",
+        },
+        doclingPass: {
+          id: "docling-old",
+          summary: doclingSummary({
+            versionId,
+            fingerprint: "fp-docling",
+            indexGenerationId: "gen-docling",
+          }),
+        },
+      }) as never,
+    });
+    assert.equal(resolved.status, "NOT_READY");
+    assert.equal(resolved.source, "WORKER_ZIP");
+    assert.equal(resolved.reasonCode, "WORKER_ZIP_NOT_PASSED");
+    assert.equal(resolved.binding, null);
+    assert.match(resolved.reason ?? "", /RUNNING/);
+  });
+
+  it("blocks when latest Worker ZIP is FAIL even if older PASS exists", async () => {
+    const versionId = "ver-1";
+    const resolved = await resolveStoreValidationBinding({
+      packId: "pack-1",
+      versionId,
+      prismaClient: createBindingClient({
+        latestWorkerZipRun: { id: "zip-fail", status: "FAIL" },
+        orphanReadyGeneration: {
+          id: "gen-orphan",
+          fingerprint: "fp-orphan",
+          pipelineRunId: "zip-old-pass",
+          versionId,
+          status: "READY",
+        },
+        doclingPass: {
+          id: "docling-old",
+          summary: doclingSummary({
+            versionId,
+            fingerprint: "fp-docling",
+            indexGenerationId: "gen-docling",
+          }),
+        },
+      }) as never,
+    });
+    assert.equal(resolved.status, "STALE");
+    assert.equal(resolved.reasonCode, "WORKER_ZIP_NOT_PASSED");
+    assert.equal(resolved.binding, null);
+    assert.match(resolved.reason ?? "", /FAIL/);
+  });
+
+  it("blocks service validation gates when latest Worker ZIP is RUNNING", async () => {
+    const versionId = "ver-1";
+    const snapshot = await resolveStoreServiceChannelGates(
+      "pack-1",
+      createGatesClient({
+        versionId,
+        bindingClient: createBindingClient({
+          latestWorkerZipRun: { id: "zip-running", status: "RUNNING" },
+          orphanReadyGeneration: {
+            id: "gen-old",
+            fingerprint: "fp-old",
+            pipelineRunId: "zip-old-pass",
+            versionId,
+            status: "READY",
+          },
+        }),
+        runs: {
+          API: {
+            id: "api-1",
+            channel: "API",
+            status: "PASS",
+            fingerprint: "fp-old",
+            indexGenerationId: "gen-old",
+            details: RANKING_DETAILS,
+          },
+          MCP: {
+            id: "mcp-1",
+            channel: "MCP",
+            status: "PASS",
+            fingerprint: "fp-old",
+            indexGenerationId: "gen-old",
+            details: RANKING_DETAILS,
+          },
+          DOWNLOAD: {
+            id: "dl-1",
+            channel: "DOWNLOAD",
+            status: "PASS",
+            fingerprint: "fp-old",
+            indexGenerationId: "gen-old",
+            details: RAG_DETAILS,
+          },
+        },
+        downloadTestReady: true,
+      }) as never,
     );
+    assert.equal(snapshot.serviceValidationReady, false);
+    assert.equal(snapshot.bindingStatus, "NOT_READY");
+    assert.equal(snapshot.channels[0]?.reasonCode, "WORKER_ZIP_NOT_PASSED");
+  });
+
+  it("blocks when MCP is missing under current Worker ZIP binding", async () => {
+    const versionId = "ver-1";
+    const snapshot = await resolveStoreServiceChannelGates(
+      "pack-1",
+      createGatesClient({
+        versionId,
+        bindingClient: createBindingClient({
+          latestWorkerZipRun: { id: "zip-pass-new", status: "PASS" },
+          workerZipGeneration: {
+            id: "gen-zip",
+            fingerprint: "fp-zip",
+            pipelineRunId: "zip-pass-new",
+            versionId,
+            status: "READY",
+          },
+        }),
+        runs: {
+          API: {
+            id: "api-1",
+            channel: "API",
+            status: "PASS",
+            fingerprint: "fp-zip",
+            indexGenerationId: "gen-zip",
+            details: RANKING_DETAILS,
+          },
+          MCP: null,
+          DOWNLOAD: {
+            id: "dl-1",
+            channel: "DOWNLOAD",
+            status: "PASS",
+            fingerprint: "fp-zip",
+            indexGenerationId: "gen-zip",
+            details: RAG_DETAILS,
+          },
+        },
+        downloadTestReady: true,
+      }) as never,
+    );
+    assert.equal(snapshot.serviceValidationReady, false);
+    const mcp = snapshot.channels.find((c) => c.channel === "MCP");
+    assert.equal(mcp?.passed, false);
+    assert.equal(mcp?.reasonCode, "NOT_VALIDATED");
+    assert.ok(snapshot.missingLabels.includes("MCP"));
+  });
+
+  it("enforces latest Worker ZIP run (status-unfiltered) before Docling fallback", () => {
+    const gates = readSource("src/lib/store-workflow-handoff-gates.ts");
+    assert.match(gates, /latestZipRun[\s\S]*resolveValidationBindingState\(/);
+    assert.ok(gates.includes("WORKER_ZIP_NOT_PASSED"));
     assert.ok(gates.includes("WORKER_ZIP_GENERATION_MISSING"));
-    assert.ok(!gates.includes("// Binding may be missing for early drafts"));
+    assert.ok(!gates.includes('status: "PASS"'));
   });
 
   it("service-validation complete API surfaces binding errors", () => {
     const markers = readSource("src/lib/store-workflow-markers.ts");
     assert.ok(markers.includes("BINDING_MISSING") || markers.includes("STALE_BINDING"));
     assert.ok(markers.includes("WORKER_ZIP_GENERATION_MISSING"));
+    assert.ok(markers.includes("WORKER_ZIP_NOT_PASSED"));
     assert.ok(markers.includes("bindingStatus"));
   });
 

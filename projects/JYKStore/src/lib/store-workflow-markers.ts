@@ -387,13 +387,15 @@ export async function markAdminServiceValidationPassed(input: {
       error:
         channelReason === "WORKER_ZIP_GENERATION_MISSING"
           ? "WORKER_ZIP_GENERATION_MISSING"
-          : channelGates.bindingStatus === "MISSING"
-            ? "BINDING_MISSING"
-            : channelGates.bindingStatus === "STALE"
-              ? "STALE_BINDING"
-              : channelGates.bindingStatus === "NOT_READY"
-                ? "BINDING_NOT_READY"
-                : "SERVICE_CHANNELS_INCOMPLETE",
+          : channelReason === "WORKER_ZIP_NOT_PASSED"
+            ? "WORKER_ZIP_NOT_PASSED"
+            : channelGates.bindingStatus === "MISSING"
+              ? "BINDING_MISSING"
+              : channelGates.bindingStatus === "STALE"
+                ? "STALE_BINDING"
+                : channelGates.bindingStatus === "NOT_READY"
+                  ? "BINDING_NOT_READY"
+                  : "SERVICE_CHANNELS_INCOMPLETE",
       message:
         bindingHint ??
         `API·MCP·ZIP/RAG Export 검증이 모두 통과해야 합니다. 미검증: ${channelGates.missingLabels.join(", ")}`,
