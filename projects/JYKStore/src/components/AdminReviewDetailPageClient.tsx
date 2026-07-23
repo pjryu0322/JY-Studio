@@ -324,7 +324,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           {providerConfirmed && channelGates && channelGates.bindingStatus !== "CURRENT" ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {channelGates.bindingReason ??
-                "최신 지식데이터 기준 API/MCP/ZIP 검증이 필요합니다."}
+                "최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다."}
             </p>
           ) : null}
           {providerConfirmed && channelGates && !channelGates.allPassed ? (

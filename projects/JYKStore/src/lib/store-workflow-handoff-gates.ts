@@ -33,6 +33,7 @@ export type StoreServiceChannelGateReasonCode =
   | "STALE_BINDING"
   | "BINDING_MISSING"
   | "BINDING_NOT_READY"
+  | "WORKER_ZIP_GENERATION_MISSING"
   | "FINGERPRINT_MISMATCH"
   | "INDEX_GENERATION_MISMATCH"
   | "DOWNLOAD_TEST_INCOMPLETE"
@@ -93,8 +94,11 @@ export async function resolveAdminWorkerZipPhaseForPack(input: {
 
 /**
  * Resolve the current knowledge binding for Store service-validation gates.
- * Prefers Docling knowledge pipeline binding; falls back to latest READY
- * SearchIndexGeneration from a PASS WORKER_ZIP_IMPORT run (or latest READY gen).
+ *
+ * Priority:
+ * 1. Latest WORKER_ZIP_IMPORT PASS + linked SearchIndexGeneration
+ * 2. Docling current binding only when no Worker ZIP PASS exists
+ * 3. Otherwise MISSING / NOT_READY / STALE — never fall back to an unrelated READY generation
  */
 export async function resolveStoreValidationBinding(input: {
   packId: string;
@@ -108,8 +112,78 @@ export async function resolveStoreValidationBinding(input: {
   > | null;
   source: "DOCLING_KNOWLEDGE" | "WORKER_ZIP" | null;
   reason: string | null;
+  reasonCode: StoreServiceChannelGateReasonCode | null;
 }> {
   const client = input.prismaClient ?? prisma;
+
+  const latestZipPass = await client.pipelineRun.findFirst({
+    where: {
+      packId: input.packId,
+      triggerType: WORKER_ZIP_IMPORT_TRIGGER,
+      status: "PASS",
+    },
+    orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
+    select: { id: true },
+  });
+
+  if (latestZipPass) {
+    const generation = await client.searchIndexGeneration.findFirst({
+      where: {
+        packId: input.packId,
+        versionId: input.versionId,
+        pipelineRunId: latestZipPass.id,
+        staleAt: null,
+        retiredAt: null,
+      },
+      orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        fingerprint: true,
+        pipelineRunId: true,
+        versionId: true,
+        status: true,
+      },
+    });
+
+    if (
+      generation?.fingerprint &&
+      generation.id &&
+      (SEARCH_GENERATION_VALIDATABLE_STATUSES as readonly string[]).includes(generation.status)
+    ) {
+      return {
+        status: "CURRENT",
+        binding: {
+          fingerprint: generation.fingerprint,
+          indexGenerationId: generation.id,
+          pipelineRunId: generation.pipelineRunId,
+          versionId: generation.versionId,
+        },
+        source: "WORKER_ZIP",
+        reason: null,
+        reasonCode: null,
+      };
+    }
+
+    if (generation && !(SEARCH_GENERATION_VALIDATABLE_STATUSES as readonly string[]).includes(generation.status)) {
+      return {
+        status: "NOT_READY",
+        binding: null,
+        source: "WORKER_ZIP",
+        reason: "최신 지식데이터 생성이 아직 완료되지 않았습니다.",
+        reasonCode: "BINDING_NOT_READY",
+      };
+    }
+
+    // Worker ZIP PASS exists but no linked generation — do not fall back to Docling or orphan READY.
+    return {
+      status: "STALE",
+      binding: null,
+      source: "WORKER_ZIP",
+      reason: "Worker ZIP 생성 결과와 검색 인덱스 세대가 연결되지 않았습니다.",
+      reasonCode: "WORKER_ZIP_GENERATION_MISSING",
+    };
+  }
+
   const docling = await resolveValidationBindingState(client, {
     packId: input.packId,
     versionId: input.versionId,
@@ -125,69 +199,7 @@ export async function resolveStoreValidationBinding(input: {
       },
       source: "DOCLING_KNOWLEDGE",
       reason: null,
-    };
-  }
-
-  const latestZipPass = await client.pipelineRun.findFirst({
-    where: {
-      packId: input.packId,
-      triggerType: WORKER_ZIP_IMPORT_TRIGGER,
-      status: "PASS",
-    },
-    orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
-    select: { id: true },
-  });
-
-  const generation =
-    (latestZipPass
-      ? await client.searchIndexGeneration.findFirst({
-          where: {
-            packId: input.packId,
-            versionId: input.versionId,
-            pipelineRunId: latestZipPass.id,
-            status: { in: [...SEARCH_GENERATION_VALIDATABLE_STATUSES] },
-            staleAt: null,
-            retiredAt: null,
-          },
-          orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
-          select: {
-            id: true,
-            fingerprint: true,
-            pipelineRunId: true,
-            versionId: true,
-            status: true,
-          },
-        })
-      : null) ??
-    (await client.searchIndexGeneration.findFirst({
-      where: {
-        packId: input.packId,
-        versionId: input.versionId,
-        status: { in: [...SEARCH_GENERATION_VALIDATABLE_STATUSES] },
-        staleAt: null,
-        retiredAt: null,
-      },
-      orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
-      select: {
-        id: true,
-        fingerprint: true,
-        pipelineRunId: true,
-        versionId: true,
-        status: true,
-      },
-    }));
-
-  if (generation?.fingerprint && generation.id) {
-    return {
-      status: "CURRENT",
-      binding: {
-        fingerprint: generation.fingerprint,
-        indexGenerationId: generation.id,
-        pipelineRunId: generation.pipelineRunId,
-        versionId: generation.versionId,
-      },
-      source: "WORKER_ZIP",
-      reason: null,
+      reasonCode: null,
     };
   }
 
@@ -197,21 +209,24 @@ export async function resolveStoreValidationBinding(input: {
       binding: null,
       source: null,
       reason: "최신 지식데이터 생성이 아직 완료되지 않았습니다.",
+      reasonCode: "BINDING_NOT_READY",
     };
   }
-  if (docling.status === "STALE" || latestZipPass) {
+  if (docling.status === "STALE") {
     return {
       status: "STALE",
       binding: null,
       source: null,
-      reason: "최신 지식데이터 기준 validation binding이 없습니다. 재검증이 필요합니다.",
+      reason: "최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다.",
+      reasonCode: "STALE_BINDING",
     };
   }
   return {
     status: "MISSING",
     binding: null,
     source: null,
-    reason: "validation binding이 없습니다. 최신 지식데이터 기준 검증이 필요합니다.",
+    reason: "최신 지식데이터 산출물 기준 binding을 찾을 수 없습니다.",
+    reasonCode: "BINDING_MISSING",
   };
 }
 
@@ -378,13 +393,14 @@ export async function resolveStoreServiceChannelGates(
 
   if (bindingResolved.status !== "CURRENT" || !bindingResolved.binding) {
     const reasonCode: StoreServiceChannelGateReasonCode =
-      bindingResolved.status === "NOT_READY"
+      bindingResolved.reasonCode ??
+      (bindingResolved.status === "NOT_READY"
         ? "BINDING_NOT_READY"
         : bindingResolved.status === "STALE"
           ? "STALE_BINDING"
-          : "BINDING_MISSING";
+          : "BINDING_MISSING");
     const reason =
-      bindingResolved.reason ?? "최신 지식데이터 기준 API/MCP/ZIP 검증이 필요합니다.";
+      bindingResolved.reason ?? "최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다.";
     return {
       ...failAllChannels(reason, reasonCode, bindingResolved.status, reason),
       bindingSource: bindingResolved.source,

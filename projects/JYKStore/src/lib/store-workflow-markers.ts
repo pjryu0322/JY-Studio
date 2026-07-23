@@ -379,18 +379,21 @@ export async function markAdminServiceValidationPassed(input: {
     const bindingHint =
       channelGates.bindingStatus !== "CURRENT"
         ? channelGates.bindingReason ??
-          "최신 지식데이터 기준 API/MCP/ZIP 검증이 필요합니다."
+          "최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다."
         : null;
+    const channelReason = channelGates.channels.find((c) => !c.passed)?.reasonCode;
     return {
       ok: false,
       error:
-        channelGates.bindingStatus === "MISSING"
-          ? "BINDING_MISSING"
-          : channelGates.bindingStatus === "STALE"
-            ? "STALE_BINDING"
-            : channelGates.bindingStatus === "NOT_READY"
-              ? "BINDING_NOT_READY"
-              : "SERVICE_CHANNELS_INCOMPLETE",
+        channelReason === "WORKER_ZIP_GENERATION_MISSING"
+          ? "WORKER_ZIP_GENERATION_MISSING"
+          : channelGates.bindingStatus === "MISSING"
+            ? "BINDING_MISSING"
+            : channelGates.bindingStatus === "STALE"
+              ? "STALE_BINDING"
+              : channelGates.bindingStatus === "NOT_READY"
+                ? "BINDING_NOT_READY"
+                : "SERVICE_CHANNELS_INCOMPLETE",
       message:
         bindingHint ??
         `API·MCP·ZIP/RAG Export 검증이 모두 통과해야 합니다. 미검증: ${channelGates.missingLabels.join(", ")}`,
