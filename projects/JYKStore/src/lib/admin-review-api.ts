@@ -554,7 +554,16 @@ export async function fetchAdminServiceChannelGates(
   packId: string,
 ): Promise<{
   allPassed: boolean;
-  channels: Array<{ channel: string; label: string; passed: boolean; reason: string | null }>;
+  serviceValidationReady: boolean;
+  bindingStatus: string;
+  bindingReason: string | null;
+  channels: Array<{
+    channel: string;
+    label: string;
+    passed: boolean;
+    reason: string | null;
+    reasonCode: string | null;
+  }>;
   missingLabels: string[];
 }> {
   const response = await fetch(
@@ -565,11 +574,15 @@ export async function fetchAdminServiceChannelGates(
     | {
         ok?: boolean;
         allPassed?: boolean;
+        serviceValidationReady?: boolean;
+        bindingStatus?: string;
+        bindingReason?: string | null;
         channels?: Array<{
           channel: string;
           label: string;
           passed: boolean;
           reason: string | null;
+          reasonCode?: string | null;
         }>;
         missingLabels?: string[];
         error?: string;
@@ -579,7 +592,13 @@ export async function fetchAdminServiceChannelGates(
   if (response.ok && data?.channels) {
     return {
       allPassed: Boolean(data.allPassed),
-      channels: data.channels,
+      serviceValidationReady: Boolean(data.serviceValidationReady ?? data.allPassed),
+      bindingStatus: data.bindingStatus ?? "MISSING",
+      bindingReason: data.bindingReason ?? null,
+      channels: data.channels.map((c) => ({
+        ...c,
+        reasonCode: c.reasonCode ?? null,
+      })),
       missingLabels: data.missingLabels ?? [],
     };
   }

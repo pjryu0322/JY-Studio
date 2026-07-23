@@ -149,7 +149,9 @@ function isFingerprintMismatchStale(
   runFingerprint: string | null | undefined,
   bindingFingerprint: string | null | undefined,
 ): boolean {
-  return Boolean(bindingFingerprint && runFingerprint && runFingerprint !== bindingFingerprint);
+  if (!bindingFingerprint) return false;
+  if (!runFingerprint) return true;
+  return runFingerprint !== bindingFingerprint;
 }
 
 /** Pure: the run's stored index generation no longer matches the current knowledge binding. */
@@ -157,11 +159,9 @@ function isIndexGenerationMismatchStale(
   runIndexGenerationId: string | null | undefined,
   bindingIndexGenerationId: string | null | undefined,
 ): boolean {
-  return Boolean(
-    bindingIndexGenerationId &&
-      runIndexGenerationId &&
-      runIndexGenerationId !== bindingIndexGenerationId,
-  );
+  if (!bindingIndexGenerationId) return false;
+  if (!runIndexGenerationId) return true;
+  return runIndexGenerationId !== bindingIndexGenerationId;
 }
 
 /** Pure: for API/MCP, the run's recorded ranking-policy version must match the expected current one. */

@@ -65,7 +65,16 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
   const [channelGates, setChannelGates] = useState<{
     allPassed: boolean;
-    channels: Array<{ channel: string; label: string; passed: boolean; reason: string | null }>;
+    serviceValidationReady?: boolean;
+    bindingStatus?: string;
+    bindingReason?: string | null;
+    channels: Array<{
+      channel: string;
+      label: string;
+      passed: boolean;
+      reason: string | null;
+      reasonCode?: string | null;
+    }>;
     missingLabels: string[];
   } | null>(null);
 
@@ -310,6 +319,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           {!providerConfirmed ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               제공자 확인이 완료되지 않아 서비스 검증 완료를 기록할 수 없습니다.
+            </p>
+          ) : null}
+          {providerConfirmed && channelGates && channelGates.bindingStatus !== "CURRENT" ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {channelGates.bindingReason ??
+                "최신 지식데이터 기준 API/MCP/ZIP 검증이 필요합니다."}
             </p>
           ) : null}
           {providerConfirmed && channelGates && !channelGates.allPassed ? (

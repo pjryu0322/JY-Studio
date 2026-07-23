@@ -376,10 +376,24 @@ export async function markAdminServiceValidationPassed(input: {
 
   const channelGates = await resolveStoreServiceChannelGates(packId, client);
   if (!channelGates.allPassed) {
+    const bindingHint =
+      channelGates.bindingStatus !== "CURRENT"
+        ? channelGates.bindingReason ??
+          "최신 지식데이터 기준 API/MCP/ZIP 검증이 필요합니다."
+        : null;
     return {
       ok: false,
-      error: "SERVICE_CHANNELS_INCOMPLETE",
-      message: `API·MCP·ZIP/RAG Export 검증이 모두 통과해야 합니다. 미검증: ${channelGates.missingLabels.join(", ")}`,
+      error:
+        channelGates.bindingStatus === "MISSING"
+          ? "BINDING_MISSING"
+          : channelGates.bindingStatus === "STALE"
+            ? "STALE_BINDING"
+            : channelGates.bindingStatus === "NOT_READY"
+              ? "BINDING_NOT_READY"
+              : "SERVICE_CHANNELS_INCOMPLETE",
+      message:
+        bindingHint ??
+        `API·MCP·ZIP/RAG Export 검증이 모두 통과해야 합니다. 미검증: ${channelGates.missingLabels.join(", ")}`,
       missingChannels: channelGates.missingLabels,
     };
   }
