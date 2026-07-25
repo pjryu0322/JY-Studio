@@ -104,6 +104,54 @@ export async function fetchProviderPack(packId: string): Promise<ProviderPackDet
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function fetchProviderChunkReviewDetailApi(
+  packId: string,
+  chunkId: string,
+): Promise<{
+  clientId: string;
+  chunk: import("@/lib/provider-pack/provider-chunk-review-detail-service").ProviderChunkReviewDetailDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/chunks/${encodeURIComponent(chunkId)}`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    chunk: import("@/lib/provider-pack/provider-chunk-review-detail-service").ProviderChunkReviewDetailDto;
+  };
+}
+
+export async function fetchProviderChunkReviewBatchApi(
+  packId: string,
+  chunkIds: readonly string[],
+): Promise<{
+  clientId: string;
+  chunks: import("@/lib/provider-pack/provider-chunk-review-detail-service").ProviderChunkReviewDetailDto[];
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/chunks/batch`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chunkIds }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    chunks: import("@/lib/provider-pack/provider-chunk-review-detail-service").ProviderChunkReviewDetailDto[];
+  };
+}
+
 export async function updateProviderPackApi(
   packId: string,
   input: Record<string, unknown>,

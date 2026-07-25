@@ -10,9 +10,10 @@ from typing import Any
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from ..zip_paths import artifact_output_path
+from ..section_merge import merge_heading_fragments
 
 PARSER_NAME = "html_api"
-PARSER_VERSION = "0.1.1"
+PARSER_VERSION = "0.1.2"
 
 HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 
@@ -199,12 +200,11 @@ def _should_keep_section(
         return True
     if len(content) >= 40:
         return True
-    # Keep meaningful member headings even if short description
-    if re.match(
-        r"^(Members|Methods|Events|Styles|Properties|Example|Examples|Returns:)",
-        heading,
-        re.I,
-    ):
+    # Keep short member/meta headings so the merge pass can fold them into the
+    # parent entity instead of dropping them entirely.
+    from ..section_merge import is_fragment_heading_name
+
+    if is_fragment_heading_name(heading):
         return True
     if len(content) >= 12 and not _is_generic_title(heading):
         return True
@@ -250,6 +250,8 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
                 "codeBlocks": _extract_code_blocks(root),
             }
         )
+
+    sections = merge_heading_fragments(sections)
 
     all_code = _extract_code_blocks(root)
     symbols = _extract_symbols(root, api_name)

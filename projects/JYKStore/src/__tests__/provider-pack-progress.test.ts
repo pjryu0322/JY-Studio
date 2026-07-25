@@ -205,11 +205,12 @@ describe("provider pack progress", () => {
     });
     assert.equal(progress.storeWorkflowStatus, "PROVIDER_REVIEW_REQUESTED");
     assert.equal(progress.currentStepLabel, "검토 요청");
-    assert.equal(progress.actions[0]?.label, "상세 검토하기");
-    assert.ok(progress.actions.some((a) => a.label === "상세 검토하기"));
+    assert.equal(progress.actions[0]?.label, "검토하기");
+    assert.ok(progress.actions.some((a) => a.label === "검토하기"));
     assert.ok(!progress.actions.some((a) => a.label === "확인 완료"));
     assert.ok(!progress.actions.some((a) => a.label === "생성 결과 검토"));
     assert.ok(!progress.actions.some((a) => a.label === "계속 작성"));
+    assert.ok(!progress.actions.some((a) => a.label === "상세 검토하기"));
   });
 
   it("shows 검수 상태 보기 after provider confirm", () => {
@@ -291,23 +292,65 @@ describe("provider center pack progress UX sources", () => {
     assert.ok(service.includes("buildProviderPacksStatusSummary"));
   });
 
-  it("surfaces provider review-request banner separately from admin reviewing wait", () => {
+  it("keeps review inbox without center banners for review/wait alerts", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
-    assert.ok(center.includes("검토 요청"));
+    const reviewsPage = readSource("src/app/(store)/provider/reviews/page.tsx");
+    assert.ok(center.includes("검토대상") || center.includes("검토 요청"));
     assert.ok(center.includes("providerReviewRequested"));
-    assert.ok(center.includes("관리자 검수 결과를 기다려 주세요."));
-    assert.ok(center.includes("생성·품질점검한 지식데이터를 검토해 주세요."));
-    assert.ok(center.includes("상세 검토하기") === false || center.includes("검토 요청"));
-    // list CTA comes from progress builder; center filters use 검토 요청 entry
-    assert.ok(center.includes('onClick={() => setFilter("providerReviewRequested")}'));
+    // Center page must not show the amber review/wait alert banners.
+    assert.ok(!center.includes("할 일 / 대기 알림"));
+    assert.ok(!center.includes("aria-label=\"검토대상 작업함\""));
+    assert.ok(!center.includes("관리자 검수 결과를 기다려 주세요."));
+    assert.ok(!center.includes("생성·품질점검한 지식데이터를 검토해 주세요."));
+    assert.ok(center.includes("검토하기") || center.includes("ProviderReviewTargetCard"));
+    assert.ok(center.includes('variant === "reviewInbox"') || center.includes("reviewInbox"));
+    assert.ok(reviewsPage.includes('variant="reviewInbox"'));
+    assert.ok(reviewsPage.includes('initialFilter="providerReviewRequested"'));
+    // Review inbox must stay a pure list — no status dashboard / register chrome.
+    assert.ok(center.includes("!reviewInbox"));
+    assert.ok(center.includes("ProviderReviewTargetCard"));
+    const inboxCard = readSource("src/components/ProviderReviewTargetCard.tsx");
+    assert.ok(inboxCard.includes("검토하기"));
+    assert.ok(inboxCard.includes("ProviderGenerationReviewPanel"));
+    assert.ok(!inboxCard.includes("상세 검토하기"));
   });
 
   it("keeps confirm and request-changes actions on generation review detail panel", () => {
     const panel = readSource("src/components/ProviderGenerationReviewPanel.tsx");
     assert.ok(panel.includes("확인 완료"));
     assert.ok(panel.includes("보완 요청 작성"));
+    assert.ok(panel.includes("다운로드"));
+    assert.ok(panel.includes("생성결과 내역"));
+    assert.ok(panel.includes("buildProviderGenerationReviewMarkdown"));
+    assert.ok(panel.includes("<table"));
     assert.ok(panel.includes("formatProviderReviewQualityLabel"));
     assert.ok(panel.includes("confirmProviderStoreReviewApi"));
-    assert.ok(!panel.includes("WARNING"));
+    assert.ok(panel.includes("IssueAlertIcon") || panel.includes("이슈"));
+    assert.ok(panel.includes("openIssueModal") || panel.includes("issueModalDocId"));
+    assert.ok(panel.includes('role="dialog"') || panel.includes("aria-modal"));
+    assert.ok(panel.includes("이슈 상세"));
+    assert.ok(!panel.includes("품질점검 이슈"));
+    assert.ok(panel.includes("blockingFail"));
+    assert.ok(panel.includes("주의 필요 항목이 남아 있습니다"));
+    assert.ok(panel.includes("원문과 생성 데이터를 확인한 뒤"));
+    assert.ok(!panel.includes('"WARNING"'));
+    assert.ok(panel.includes("검색 지식 단위 검토"));
+    assert.ok(panel.includes("상세 검토"));
+    assert.ok(panel.includes("DetailReviewIcon"));
+    assert.ok(panel.includes("보완 요청에 추가"));
+    assert.ok(panel.includes("chunkAttentionReviewed"));
+    assert.ok(panel.includes("setChunkReviewExpanded"));
+    assert.ok(panel.includes("toggleChunkSort"));
+    assert.ok(panel.includes("chunkFilterCounts"));
+    assert.ok(panel.includes("selectedChunkIds"));
+    assert.ok(panel.includes("downloadProviderChunkReviewPdf"));
+    assert.ok(panel.includes("PDF 저장"));
+    assert.ok(panel.includes("순번"));
+    assert.ok(panel.includes("ChevronIcon"));
+    assert.ok(!panel.includes("Chunk 샘플"));
+    assert.ok(!panel.includes("청킹 확인 필요"));
+    assert.ok(!panel.includes('font-semibold">조치'));
+    assert.ok(panel.includes("PROVIDER_CHUNK_REVIEW_CHECKLIST"));
+    assert.ok(panel.includes("fetchProviderChunkReviewDetailApi"));
   });
 });

@@ -59,18 +59,24 @@ describe("role-based account UX", () => {
     assert.ok(!nav.includes('"settings"'));
   });
 
-  it("shows provider center in bottom nav for knowledge providers", () => {
+  it("shows provider center and review-request rail for knowledge providers", () => {
     const nav = readSource("src/components/BottomTabNav.tsx");
     const routes = readSource("src/lib/routes.ts");
     assert.ok(routes.includes('key: "provider"'));
+    assert.ok(routes.includes('key: "providerReview"'));
     assert.ok(routes.includes('label: "제공자 센터"'));
+    assert.ok(routes.includes('label: "검토대상"'));
+    assert.ok(routes.includes("providerReviews"));
     assert.ok(nav.includes("isProviderAccountRole") || nav.includes("appRailTabsForRole"));
     assert.ok(nav.includes("appRailTabsForRole"));
-    assert.ok(nav.includes('tab.key === "provider"') || nav.includes('key === "provider"'));
+    assert.ok(nav.includes('"provider"'));
+    assert.ok(nav.includes('"providerReview"'));
+    assert.ok(nav.includes("providerReviewBadge") || nav.includes("providerReviewRequested"));
     assert.ok(nav.includes("RailEdgeArrow") || nav.includes("메뉴 감추기"));
     assert.ok(!nav.includes("PanelCollapseIcon"));
     const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
     assert.ok(!adminBlock.includes('"provider"'));
+    assert.ok(!adminBlock.includes('"providerReview"'));
   });
 });
 

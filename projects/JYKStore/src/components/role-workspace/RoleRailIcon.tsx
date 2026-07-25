@@ -85,6 +85,7 @@ export function RoleRailIcon({
           <path d="M7 12V8h6v4" />
         </svg>
       );
+    case "generationReview":
     case "reviewRequest":
     case "result":
     case "decision":

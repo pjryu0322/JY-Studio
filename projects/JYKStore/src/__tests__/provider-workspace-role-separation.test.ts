@@ -96,6 +96,8 @@ describe("one account one role UX", () => {
     assert.ok(nav.includes("appRailTabsForRole"));
     assert.ok(nav.includes('role === "PROVIDER"'));
     assert.ok(nav.includes('role === "ADMIN"'));
+    assert.ok(nav.includes('"provider"'));
+    assert.ok(nav.includes('"providerReview"'));
     assert.ok(nav.includes('key === "today"') || nav.includes('tab.key === "today"'));
     assert.ok(nav.includes("RailEdgeArrow") || nav.includes("translate-x-1/2"));
     assert.ok(!nav.includes("PanelCollapseIcon"));
@@ -109,6 +111,7 @@ describe("one account one role UX", () => {
     assert.ok(adminBlock.includes('"ops"'));
     assert.ok(!adminBlock.includes('"settings"'));
     assert.ok(!adminBlock.includes('"provider"'));
+    assert.ok(!adminBlock.includes('"providerReview"'));
     assert.ok(providerLayout.includes("isAdminAccountRole"));
     assert.ok(providerLayout.includes("ROUTES.admin"));
     assert.ok(copy.includes("별도 계정"));

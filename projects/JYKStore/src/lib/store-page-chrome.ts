@@ -71,6 +71,12 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
       description: PROVIDER_CENTER_TAGLINE,
     };
   }
+  if (pathname === ROUTES.providerReviews || pathname.startsWith(`${ROUTES.providerReviews}/`)) {
+    return {
+      title: "검토대상",
+      description: "관리자가 생성·품질점검한 지식데이터를 검토합니다.",
+    };
+  }
   if (pathname === ROUTES.providerPackNew) {
     return {
       title: "지식팩 등록",

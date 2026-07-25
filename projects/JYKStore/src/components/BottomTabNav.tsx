@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  isProviderAccountRole,
   parseAccountRole,
   type AccountRole,
 } from "@/lib/account-role";
@@ -11,6 +12,7 @@ import { accountRoleDisplayLabel } from "@/lib/account-menu";
 import { fetchAuthSession } from "@/lib/auth-api";
 import { useStoreLogout } from "@/hooks/useStoreLogout";
 import { BOTTOM_TABS, bottomTabActive, ROUTES, type BottomTabKey } from "@/lib/routes";
+import { fetchProviderPacks } from "@/lib/provider-center-api";
 
 const RAIL_COLLAPSED_KEY = "jykstore.app-rail.collapsed";
 
@@ -126,6 +128,14 @@ function AppNavIcon({ tabKey }: { readonly tabKey: BottomTabKey }) {
           <path d="M9 12h6M9 15h4" />
         </svg>
       );
+    case "providerReview":
+      return (
+        <svg {...common}>
+          <path d="M8 5h10a2 2 0 0 1 2 2v12H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+          <path d="m10 12 2 2 4-4" />
+          <path d="M10 17h5" />
+        </svg>
+      );
     case "admin":
       return (
         <svg {...common}>
@@ -186,7 +196,13 @@ export function appRailTabsForRole(role: AccountRole): typeof BOTTOM_TABS {
       .filter((tab): tab is (typeof BOTTOM_TABS)[number] => Boolean(tab));
   }
   if (role === "PROVIDER") {
-    return BOTTOM_TABS.filter((tab) => tab.key === "provider");
+    const order: Array<(typeof BOTTOM_TABS)[number]["key"]> = [
+      "provider",
+      "providerReview",
+    ];
+    return order
+      .map((key) => BOTTOM_TABS.find((tab) => tab.key === key))
+      .filter((tab): tab is (typeof BOTTOM_TABS)[number] => Boolean(tab));
   }
   return BOTTOM_TABS.filter(
     (tab) =>
@@ -209,6 +225,7 @@ export function BottomTabNav() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [accountRole, setAccountRole] = useState<AccountRole>("USER");
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [providerReviewBadge, setProviderReviewBadge] = useState<number>(0);
 
   useEffect(() => {
     try {
@@ -235,6 +252,7 @@ export function BottomTabNav() {
         setLoggedIn(false);
         setAccountRole("USER");
         setDisplayName(null);
+        setProviderReviewBadge(0);
         return;
       }
       setLoggedIn(true);
@@ -245,10 +263,21 @@ export function BottomTabNav() {
           session.user.name?.trim() ||
           null,
       );
+      if (isProviderAccountRole(role)) {
+        try {
+          const packsRes = await fetchProviderPacks();
+          setProviderReviewBadge(packsRes.summary?.providerReviewRequested ?? 0);
+        } catch {
+          setProviderReviewBadge(0);
+        }
+      } else {
+        setProviderReviewBadge(0);
+      }
     } catch {
       setLoggedIn(false);
       setAccountRole("USER");
       setDisplayName(null);
+      setProviderReviewBadge(0);
     }
   }, []);
 
@@ -273,13 +302,21 @@ export function BottomTabNav() {
           <ul className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto px-1.5">
             {tabs.map((tab) => {
               const active = bottomTabActive(tab.key as BottomTabKey, pathname);
+              const badge =
+                tab.key === "providerReview" && providerReviewBadge > 0
+                  ? providerReviewBadge
+                  : null;
               return (
-                <li key={tab.key}>
+                <li key={tab.key} className="relative">
                   <Link
                     href={tab.href}
-                    title={tab.label}
-                    aria-label={tab.label}
-                    className={`flex h-[3.025rem] w-[3.025rem] items-center justify-center rounded-xl transition ${
+                    title={
+                      badge != null ? `${tab.label} ${badge}건` : tab.label
+                    }
+                    aria-label={
+                      badge != null ? `${tab.label}, ${badge}건` : tab.label
+                    }
+                    className={`relative flex h-[3.025rem] w-[3.025rem] items-center justify-center rounded-xl transition ${
                       active
                         ? "bg-store-accent text-white shadow-sm"
                         : "text-store-muted hover:bg-slate-50 hover:text-slate-800"
@@ -287,6 +324,14 @@ export function BottomTabNav() {
                     aria-current={active ? "page" : undefined}
                   >
                     <AppNavIcon tabKey={tab.key as BottomTabKey} />
+                    {badge != null ? (
+                      <span
+                        className="absolute -left-0.5 -top-0.5 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-white"
+                        aria-hidden
+                      >
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    ) : null}
                     <span className="sr-only">{tab.label}</span>
                   </Link>
                 </li>

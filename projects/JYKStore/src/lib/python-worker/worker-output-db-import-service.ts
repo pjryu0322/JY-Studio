@@ -327,6 +327,23 @@ export function buildWorkerOutputImportPlan(input: {
       searchIndexGenerationId,
       sourceTrace: trace ? { ...trace } : null,
     };
+    const chunkRecord = chunk as Record<string, unknown>;
+    if (typeof chunkRecord.entityKey === "string" && chunkRecord.entityKey.trim()) {
+      metadata.entityKey = chunkRecord.entityKey.trim();
+    }
+    if (Array.isArray(chunkRecord.sectionPath)) {
+      metadata.sectionPath = chunkRecord.sectionPath.filter(
+        (p): p is string => typeof p === "string" && p.trim().length > 0,
+      );
+    }
+    if (Array.isArray(chunkRecord.mergedHeadings)) {
+      metadata.mergedHeadings = chunkRecord.mergedHeadings.filter(
+        (p): p is string => typeof p === "string" && p.trim().length > 0,
+      );
+    }
+    if (typeof chunkRecord.mergeReason === "string" && chunkRecord.mergeReason.trim()) {
+      metadata.mergeReason = chunkRecord.mergeReason.trim();
+    }
     return {
       workerChunkId: chunk.chunkId,
       traceId: chunk.traceId,

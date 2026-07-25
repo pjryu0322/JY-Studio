@@ -66,6 +66,8 @@
     "@aws-sdk/s3-request-presigner": "^3.1086.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^6.16.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "next": "^15.1.0",
     "react": "^19.0.0",

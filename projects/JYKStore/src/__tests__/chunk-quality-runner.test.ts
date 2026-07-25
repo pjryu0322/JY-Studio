@@ -12,7 +12,7 @@ function baseChunk(overrides: Partial<Parameters<typeof runChunkQuality>[0]["chu
     chunkType: "TEXT",
     title: "Integration overview",
     content: "A".repeat(200),
-    section: "overview",
+    section: "main",
     tags: ["auth"],
     metadata: { sourceType: "API_SPEC" },
     isActive: true,
@@ -78,7 +78,7 @@ describe("chunk quality runner", () => {
   it("warns on short chunks", () => {
     const result = runChunkQuality({
       sources: [{ id: "doc-1", sourceType: "API_SPEC", validationStatus: "PASS" }],
-      chunks: [baseChunk({ content: "short text only" })],
+      chunks: [baseChunk({ content: "short text only", section: "main" })],
       structureSections: [],
     });
     assert.ok(result.shortChunkCount >= 1);
@@ -335,5 +335,68 @@ describe("chunk quality runner", () => {
   it("allows submit classification for WARNING status", () => {
     assert.equal(classifyChunkQualitySubmitAllowed("WARNING"), true);
     assert.equal(classifyChunkQualitySubmitAllowed("FAIL"), false);
+  });
+
+  it("does not warn SHORT_CHUNK for heading-fragment sections", () => {
+    const result = runChunkQuality({
+      sources: [{ id: "doc-1", sourceType: "API_SPEC", validationStatus: "PASS" }],
+      chunks: [
+        baseChunk({
+          id: "c-fragment",
+          title: "Widget",
+          section: "Returns",
+          content: "Widget\n\nReturns\n\nWidget",
+          metadata: { entityKey: "Widget", sourcePath: "Docs/api/Widget.html" },
+        }),
+        baseChunk({
+          id: "c-ok",
+          title: "Widget",
+          section: "Overview",
+          content: "A".repeat(200),
+          metadata: { entityKey: "Widget" },
+        }),
+      ],
+      structureSections: [],
+    });
+    assert.equal(
+      result.issues.some((i) => i.code === "SHORT_CHUNK" && i.field === "c-fragment"),
+      false,
+    );
+  });
+
+  it("does not near-duplicate same-entity sibling sections", () => {
+    const prefix = "Widget\n\n";
+    const bodyA = `${prefix}Overview of the Widget collection API used for grid binding. `.repeat(6);
+    const bodyB = `${prefix}Methods that mutate Widget length and sort order for clients. `.repeat(6);
+    const result = runChunkQuality({
+      sources: [{ id: "doc-1", sourceType: "API_SPEC", validationStatus: "PASS" }],
+      chunks: [
+        baseChunk({
+          id: "c-overview",
+          title: "Widget",
+          section: "Overview",
+          content: bodyA,
+          metadata: { entityKey: "Widget", sourcePath: "Docs/api/Widget.html" },
+        }),
+        baseChunk({
+          id: "c-methods",
+          title: "Widget",
+          section: "Methods",
+          content: bodyB,
+          metadata: { entityKey: "Widget", sourcePath: "Docs/api/Widget.html" },
+        }),
+      ],
+      structureSections: [],
+    });
+    assert.equal(
+      result.issues.some((i) =>
+        [
+          "CHUNK_DUPLICATE_NEAR",
+          "CHUNK_DUPLICATE_PREFIX_OVERLAP",
+          "CHUNK_DUPLICATE_TITLE_SECTION",
+        ].includes(i.code),
+      ),
+      false,
+    );
   });
 });

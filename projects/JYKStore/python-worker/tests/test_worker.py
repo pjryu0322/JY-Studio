@@ -153,6 +153,46 @@ class HtmlApiParserTests(unittest.TestCase):
         props = next(s for s in result["sections"] if s["heading"] == "Properties")
         self.assertNotIn("ArrayCollection Members length", props.get("content") or "")
 
+    def test_merges_short_heading_fragments_into_parent_entity(self):
+        """Same-entity Returns/Type/Events pieces must not become independent KUs."""
+        html = """
+        <html><head><title>Widget</title></head>
+        <body>
+          <div class="main">
+            <h1>Class: Widget</h1>
+            <p>Widget manages ordered collections for grid binding.</p>
+            <h2>Returns</h2>
+            <p>Widget</p>
+            <h2>Type</h2>
+            <p>Class</p>
+            <h2>Events</h2>
+            <p>change</p>
+            <h2>Properties</h2>
+            <p>length — number of items currently stored in the collection for binding.</p>
+            <p>Use length to check whether the collection has rows before refresh.</p>
+          </div>
+        </body></html>
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Widget.html"
+            path.write_text(html, encoding="utf-8")
+            result = html_api.parse_api_html(path, "Docs/api/Widget.html")
+        headings = [s["heading"] for s in result["sections"]]
+        self.assertNotIn("Returns", headings)
+        self.assertNotIn("Type", headings)
+        self.assertNotIn("Events", headings)
+        parents = [
+            s for s in result["sections"] if s.get("mergeReason") == "heading_fragment_merged"
+        ]
+        self.assertTrue(parents, msg=f"expected merged parent, got {result['sections']!r}")
+        parent = parents[0]
+        merged = parent.get("mergedHeadings") or []
+        self.assertTrue(any("Returns" in h for h in merged))
+        self.assertTrue(any("Type" in h for h in merged))
+        self.assertIn("Returns", parent.get("content") or "")
+        # Substantial Properties section remains independent.
+        self.assertTrue(any(s["heading"] == "Properties" for s in result["sections"]))
+
 
 class SampleHtmlParserTests(unittest.TestCase):
     def test_preserves_sample_name_and_code(self):

@@ -349,7 +349,7 @@ export function buildProviderPackProgress(
     nextActionLabel = "관리자가 생성·품질점검한 지식데이터를 검토해 주세요.";
     nextActionHref = detailHref(packId, "knowledge");
     actions = [
-      { label: "상세 검토하기", href: detailHref(packId, "knowledge") },
+      { label: "검토하기", href: detailHref(packId, "knowledge") },
     ];
     for (const step of steps) {
       if (step.key === "BASIC_INFO" || step.key === "SOURCE_MATERIALS") {

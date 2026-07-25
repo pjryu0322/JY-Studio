@@ -11,6 +11,7 @@ from src.embedding import (
     build_passage_text,
     estimate_embedding_token_count,
 )
+from src.section_merge import merge_heading_fragments
 
 # The E5 passage input has a hard 512-token gate in build_embeddings (matching
 # the Store policy). The chunker must never emit a chunk whose passage exceeds
@@ -197,6 +198,15 @@ def build_chunks_and_traces(
                     "codeBlocks": doc.get("codeBlocks") or [],
                 }
             ]
+        # Safety net: fold short Returns/Type/Events fragments even if the
+        # upstream parser did not (legacy artifacts / PDF-like structures).
+        sections = merge_heading_fragments(list(sections))
+
+        entity_key = (
+            (meta.get("apiName") or "").strip()
+            or (doc.get("title") or "").strip()
+            or source_path
+        )
 
         doc_code_attached = False
         section_no = 0
@@ -251,6 +261,9 @@ def build_chunks_and_traces(
             chunk_keywords = _fit_keywords(title, heading, keywords[:50])
             char_budget = _content_char_budget(title, heading, chunk_keywords)
             content_parts = _split_content(content[:20000], char_budget) or [""]
+            merged_headings = list(section.get("mergedHeadings") or [])
+            merge_reason = section.get("mergeReason")
+            section_path = [title, heading] if heading and heading != title else [title or heading]
 
             for part_index, part_content in enumerate(content_parts):
                 section_no += 1
@@ -268,6 +281,10 @@ def build_chunks_and_traces(
                     "sourceType": doc.get("sourceType"),
                     "sourcePath": source_path,
                     "section": heading,
+                    "sectionPath": section_path,
+                    "entityKey": entity_key,
+                    "mergedHeadings": merged_headings,
+                    "mergeReason": merge_reason,
                     "symbols": symbols[:50],
                     "keywords": chunk_keywords,
                     # Code block metadata rides on the first part only to avoid

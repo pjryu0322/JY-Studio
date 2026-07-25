@@ -16,8 +16,11 @@ export function formatProviderReviewQualityLabel(
   if (normalized === "FAIL" || normalized === "FAILED" || normalized === "ERROR") {
     return "실패";
   }
-  if (normalized === "PENDING" || normalized === "RUNNING") {
-    return "진행 중";
+  if (normalized === "PENDING") {
+    return "대기 중";
+  }
+  if (normalized === "RUNNING") {
+    return "처리 중";
   }
   if (normalized === "STALE") return "재검토 필요";
   return status!.trim();
@@ -46,7 +49,7 @@ export function overallProviderReviewQualityLabel(input: {
 
 export const PROVIDER_CHANGES_REQUEST_TYPES = [
   { value: "STRUCTURE", label: "구조화 오류" },
-  { value: "MISSING", label: "누락" },
+  { value: "MISSING", label: "원문 누락" },
   { value: "CHUNKING", label: "청킹 부적정" },
   { value: "RETRIEVAL", label: "검색 결과 부정확" },
   { value: "OTHER", label: "기타" },

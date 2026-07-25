@@ -24,6 +24,10 @@ export const MAX_NEAR_DUPLICATE_BUCKET_SIZE = 300;
 
 const SHORT_RELAX_SOURCE_TYPES = new Set(["ERROR_CODE_TABLE", "SAMPLE_CODE"]);
 
+/** API/member chrome headings that are not independent provider review targets. */
+const FRAGMENT_SECTION_RE =
+  /^(returns?:?|type|types|parameters?|arguments?|args|see\s*also|remarks?|notes?|inherits?(?:\s+from)?|constructor|signature|overview|description|default|read-?only|value|syntax|throws?|exceptions?|events?|properties|methods|members|styles|examples?|반환(?:\s*값)?|타입|매개변수|인수|비고|설명|기본값|속성|메서드|이벤트|멤버|스타일|예제)$/i;
+
 export type NearDuplicateReason = "EXACT" | "JACCARD" | "PREFIX_OVERLAP" | "TITLE_SECTION";
 
 function clampScore(value: number): number {
@@ -34,6 +38,20 @@ function clampScore(value: number): number {
 
 function tokenEstimate(content: string): number {
   return Math.ceil(content.length / 4);
+}
+
+/** Persist a short preview + section into issue.hint for provider review UX. */
+function buildChunkIssueHint(
+  chunk: ChunkQualityChunkInput,
+  content: string,
+): string {
+  const section = chunk.section?.trim();
+  const preview = content.trim().slice(0, 180);
+  const parts = [
+    section ? `섹션: ${section}` : null,
+    preview ? `미리보기: ${preview}${content.trim().length > 180 ? "…" : ""}` : null,
+  ].filter(Boolean);
+  return parts.join(" | ") || `chunk:${chunk.id}`;
 }
 
 function normalizeContent(content: string): string {
@@ -139,6 +157,12 @@ export function isNearDuplicateChunk(
   }
 
   if (onlyExactDuplicateAllowed(a, b)) {
+    return { duplicate: false, reason: null, score: 0 };
+  }
+
+  // Same-entity sibling chunks (e.g. class overview vs Methods) share a title
+  // prefix by design — do not raise near-duplicate provider warnings.
+  if (isSameEntitySiblingChunk(a, b)) {
     return { duplicate: false, reason: null, score: 0 };
   }
 
@@ -353,6 +377,69 @@ function chunkRelaxesShortSize(
   return doc ? SHORT_RELAX_SOURCE_TYPES.has(doc.sourceType) : false;
 }
 
+function sectionTail(section: string | null | undefined): string {
+  const raw = (section ?? "").trim();
+  if (!raw) return "";
+  if (raw.includes(" > ")) {
+    return raw.split(" > ").pop()?.trim() ?? raw;
+  }
+  return raw;
+}
+
+/** Heading-only / member-chrome fragments should not raise provider SHORT_CHUNK. */
+export function isHeadingFragmentSection(section: string | null | undefined): boolean {
+  const tail = sectionTail(section);
+  return Boolean(tail && FRAGMENT_SECTION_RE.test(tail));
+}
+
+function metadataString(meta: Record<string, unknown> | null | undefined, key: string): string {
+  const value = meta?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function entityKeyForChunk(chunk: ChunkQualityChunkInput): string {
+  const fromMeta = metadataString(chunk.metadata, "entityKey");
+  if (fromMeta) return fromMeta.toLowerCase();
+  const title = chunk.title?.trim();
+  if (title) return title.toLowerCase();
+  const path = metadataString(chunk.metadata, "sourcePath");
+  return path.toLowerCase();
+}
+
+/**
+ * Same API/class entity under one source document — sibling member chunks are
+ * normal hierarchy, not cross-unit duplicates.
+ */
+export function isSameEntitySiblingChunk(
+  a: ChunkQualityChunkInput,
+  b: ChunkQualityChunkInput,
+): boolean {
+  if (!a.sourceDocumentId || a.sourceDocumentId !== b.sourceDocumentId) return false;
+  const keyA = entityKeyForChunk(a);
+  const keyB = entityKeyForChunk(b);
+  if (!keyA || !keyB || keyA !== keyB) return false;
+  const sectionA = normalizeContent(a.section ?? "");
+  const sectionB = normalizeContent(b.section ?? "");
+  // Identical section + identical entity is handled by TITLE_SECTION / EXACT.
+  // Sibling exemption applies when sections differ (e.g. Overview vs Methods).
+  return sectionA !== sectionB;
+}
+
+function chunkSkipsProviderShortWarning(
+  chunk: ChunkQualityChunkInput,
+  sourceById: Map<string, ChunkQualitySourceDocumentInput>,
+): boolean {
+  if (chunkRelaxesShortSize(chunk, sourceById)) return true;
+  if (isHeadingFragmentSection(chunk.section)) return true;
+  const mergeReason = metadataString(chunk.metadata, "mergeReason");
+  if (mergeReason === "heading_fragment_merged") {
+    // Parent that absorbed fragments may still be short; only skip when the
+    // section itself is still fragment chrome.
+    return isHeadingFragmentSection(chunk.section);
+  }
+  return false;
+}
+
 function chunkAlignsWithSection(
   chunk: ChunkQualityChunkInput,
   section: ChunkQualityStructureSectionInput,
@@ -483,6 +570,7 @@ export function runChunkQuality(input: {
           code: "EMPTY_CHUNK",
           message: "내용이 비어 있는 chunk가 있습니다.",
           field: chunk.id,
+          hint: buildChunkIssueHint(chunk, trimmed || chunk.title || ""),
         });
       }
       if (!chunk.title.trim()) {
@@ -495,15 +583,16 @@ export function runChunkQuality(input: {
         });
       }
     } else {
-      const relaxShort = chunkRelaxesShortSize(chunk, sourceById);
+      const relaxShort = chunkSkipsProviderShortWarning(chunk, sourceById);
       if (!relaxShort && len < MIN_CHUNK_CHARS) {
         shortChunkCount += 1;
         chunkIssues.push("SHORT_CHUNK");
         issues.push({
           severity: "WARNING",
           code: "SHORT_CHUNK",
-          message: "내용이 짧은 chunk가 있습니다.",
+          message: "독립 지식단위인데 본문이 짧아 검색 답변 근거로 부족할 수 있습니다.",
           field: chunk.id,
+          hint: buildChunkIssueHint(chunk, trimmed),
         });
       }
       if (len > MAX_CHUNK_CHARS) {
@@ -514,6 +603,7 @@ export function runChunkQuality(input: {
           code: "LONG_CHUNK",
           message: "내용이 긴 chunk가 있습니다.",
           field: chunk.id,
+          hint: buildChunkIssueHint(chunk, trimmed),
         });
       }
       const tokens = tokenEstimate(trimmed);

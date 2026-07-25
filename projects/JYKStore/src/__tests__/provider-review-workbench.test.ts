@@ -13,6 +13,8 @@ describe("provider review workbench labels", () => {
     assert.equal(formatProviderReviewQualityLabel("WARNING"), "주의 필요");
     assert.equal(formatProviderReviewQualityLabel("PASS"), "통과");
     assert.equal(formatProviderReviewQualityLabel("FAIL"), "실패");
+    assert.equal(formatProviderReviewQualityLabel("PENDING"), "대기 중");
+    assert.equal(formatProviderReviewQualityLabel("RUNNING"), "처리 중");
     assert.equal(
       overallProviderReviewQualityLabel({
         structure: "PASS",

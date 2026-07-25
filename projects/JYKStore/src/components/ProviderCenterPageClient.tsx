@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
+import { ProviderReviewTargetCard } from "@/components/ProviderReviewTargetCard";
 import type { ProviderPackListItemDto } from "@/lib/provider-pack-dto";
 import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
 import {
@@ -74,7 +75,7 @@ function ProviderStatusDashboard({
     { key: "draft", label: "초안", value: summary.draft },
     {
       key: "providerReviewRequested",
-      label: "검토 요청",
+      label: "검토대상",
       value: summary.providerReviewRequested,
     },
     { key: "reviewing", label: "검수 중", value: summary.reviewing },
@@ -111,15 +112,21 @@ function ProviderStatusDashboard({
   );
 }
 
-function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) {
+function ProviderPackCard({
+  pack,
+  reviewInbox = false,
+}: {
+  readonly pack: ProviderPackListItemDto;
+  readonly reviewInbox?: boolean;
+}) {
   const detail = providerPackDetailPath(pack.packId);
   const progress = pack.progress;
   const reviewRequested =
     progress?.storeWorkflowStatus === "PROVIDER_REVIEW_REQUESTED" ||
     progress?.currentStep === "PROVIDER_REVIEW_REQUESTED";
-  const actions = progress?.actions?.slice(0, 2) ?? [
-    { label: "상세 보기", href: detail },
-  ];
+  const actions = reviewRequested
+    ? [{ label: "검토하기", href: `${detail}?tab=knowledge` }]
+    : (progress?.actions?.slice(0, 2) ?? [{ label: "상세 보기", href: detail }]);
 
   const versionLabel =
     progress?.workingVersion &&
@@ -132,7 +139,7 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
           : null;
 
   const metaParts = reviewRequested
-    ? ["상태 검토 요청", versionLabel].filter(Boolean)
+    ? [versionLabel, "품질 요약은 상세 검토에서 확인"].filter(Boolean)
     : [
         versionLabel,
         progress?.currentStepLabel ? `단계 ${progress.currentStepLabel}` : null,
@@ -142,12 +149,12 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
   return (
     <li className="rounded-xl border border-store-border bg-white px-3 py-2 shadow-sm">
       <div className="flex items-start gap-2">
-        <Link href={detail} className="min-w-0 flex-1">
+        <Link href={reviewRequested ? `${detail}?tab=knowledge` : detail} className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="min-w-0 truncate text-sm font-semibold text-slate-900">{pack.name}</p>
             {reviewRequested ? (
               <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
-                검토 요청
+                {reviewInbox ? "검토대상" : "검토 요청"}
               </span>
             ) : (
               <ProviderPackStatusBadge status={pack.status} />
@@ -175,7 +182,14 @@ function ProviderPackCard({ pack }: { readonly pack: ProviderPackListItemDto }) 
   );
 }
 
-export function ProviderCenterPageClient() {
+export function ProviderCenterPageClient({
+  initialFilter = "all",
+  variant = "center",
+}: {
+  readonly initialFilter?: StatusFilter;
+  readonly variant?: "center" | "reviewInbox";
+}) {
+  const reviewInbox = variant === "reviewInbox";
   const [view, setView] = useState<ViewState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProviderProfileDto | null>(null);
@@ -183,7 +197,9 @@ export function ProviderCenterPageClient() {
   const [summary, setSummary] = useState<ProviderPacksStatusSummary>(
     buildProviderPacksStatusSummary([]),
   );
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [filter, setFilter] = useState<StatusFilter>(
+    reviewInbox ? "providerReviewRequested" : initialFilter,
+  );
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -279,87 +295,80 @@ export function ProviderCenterPageClient() {
         </div>
       ) : null}
 
-      {packs.length > 0 ? (
+      {!reviewInbox && packs.length > 0 ? (
         <ProviderStatusDashboard summary={summary} filter={filter} onFilter={setFilter} />
-      ) : null}
-
-      {summary.providerReviewRequested > 0 ? (
-        <nav
-          aria-label="검토 요청 작업함"
-          className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3"
-        >
-          <button
-            type="button"
-            onClick={() => setFilter("providerReviewRequested")}
-            className="inline-flex min-h-[36px] items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-amber-950 ring-1 ring-amber-200"
-          >
-            검토 요청
-            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              {summary.providerReviewRequested}
-            </span>
-          </button>
-          <p className="text-xs text-amber-950">
-            관리자가 생성·품질점검한 지식데이터를 검토해 주세요.
-          </p>
-        </nav>
-      ) : null}
-
-      {summary.changesRequested > 0 || summary.reviewing > 0 ? (
-        <section
-          aria-label="검수/보완 알림"
-          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-        >
-          <p className="font-bold">할 일 / 대기 알림</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs">
-            {summary.changesRequested > 0 ? (
-              <li>보완 요청 {summary.changesRequested}건 — 의견을 확인하고 수정 후 재요청하세요.</li>
-            ) : null}
-            {summary.reviewing > 0 ? (
-              <li>검수 중 {summary.reviewing}건 — 관리자 검수 결과를 기다려 주세요.</li>
-            ) : null}
-          </ul>
-        </section>
       ) : null}
 
       <section
         id="provider-packs"
-        className="scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card"
+        className={
+          reviewInbox
+            ? "scroll-mt-24"
+            : "scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card"
+        }
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-900">내가 등록한 지식팩</h2>
-            {profile ? (
-              <p className="mt-0.5 text-[11px] text-store-muted">
-                {PROVIDER_PACK_REGISTER_HINT}
-              </p>
-            ) : null}
-          </div>
-          <Link
-            href={ROUTES.providerPackNew}
-            className="inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
-          >
-            {PROVIDER_PACK_REGISTER_CTA}
-          </Link>
-        </div>
-
-        {packs.length === 0 ? (
-          <div className="mt-4 rounded-xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
-            <p className="text-sm font-semibold text-slate-900">{PROVIDER_PACK_EMPTY_TITLE}</p>
-            <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_EMPTY_BODY}</p>
+        {!reviewInbox ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-slate-900">내가 등록한 지식팩</h2>
+              {profile ? (
+                <p className="mt-0.5 text-[11px] text-store-muted">
+                  {PROVIDER_PACK_REGISTER_HINT}
+                </p>
+              ) : null}
+            </div>
             <Link
               href={ROUTES.providerPackNew}
-              className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
+              className="inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
             >
               {PROVIDER_PACK_REGISTER_CTA}
             </Link>
           </div>
+        ) : null}
+
+        {packs.length === 0 ? (
+          <div
+            className={`${reviewInbox ? "" : "mt-4 "}rounded-xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center`}
+          >
+            {reviewInbox ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">검토대상이 없습니다</p>
+                <p className="mt-1 text-xs text-store-muted">
+                  관리자가 생성 결과 검토를 요청하면 여기에 표시됩니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-slate-900">{PROVIDER_PACK_EMPTY_TITLE}</p>
+                <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_EMPTY_BODY}</p>
+                <Link
+                  href={ROUTES.providerPackNew}
+                  className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
+                >
+                  {PROVIDER_PACK_REGISTER_CTA}
+                </Link>
+              </>
+            )}
+          </div>
         ) : filteredPacks.length === 0 ? (
-          <p className="mt-4 text-sm text-store-muted">선택한 상태의 지식팩이 없습니다.</p>
+          <p className={`${reviewInbox ? "" : "mt-4 "}text-sm text-store-muted`}>
+            {reviewInbox
+              ? "현재 대기 중인 검토대상이 없습니다."
+              : "선택한 상태의 지식팩이 없습니다."}
+          </p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
-            {filteredPacks.map((pack) => (
-              <ProviderPackCard key={pack.packId} pack={pack} />
-            ))}
+          <ul className={`${reviewInbox ? "" : "mt-2 "}space-y-1.5`}>
+            {filteredPacks.map((pack) =>
+              reviewInbox ? (
+                <ProviderReviewTargetCard
+                  key={pack.packId}
+                  pack={pack}
+                  onChanged={refresh}
+                />
+              ) : (
+                <ProviderPackCard key={pack.packId} pack={pack} />
+              ),
+            )}
           </ul>
         )}
       </section>

@@ -12,6 +12,8 @@ export const ROUTES = {
   apiKeys: "/api-keys",
   packs: "/packs",
   provider: "/provider",
+  /** Provider inbox for generation-result review requests. */
+  providerReviews: "/provider/reviews",
   providerPackNew: "/provider/packs/new",
   admin: "/admin",
   /** @deprecated Use `login`. Kept as alias so old links resolve to the shared login page. */
@@ -80,6 +82,7 @@ export type BottomTabKey =
   | "categories"
   | "myPacks"
   | "provider"
+  | "providerReview"
   | "admin"
   | "account"
   | "opsUsage"
@@ -98,6 +101,7 @@ export const BOTTOM_TABS: readonly {
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
   { key: "admin", href: ROUTES.admin, label: "할 일", icon: "☑" },
   { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
+  { key: "providerReview", href: ROUTES.providerReviews, label: "검토대상", icon: "☑" },
   { key: "account", href: ROUTES.account, label: "계정", icon: "👤" },
   { key: "opsUsage", href: ROUTES.adminOpsUsage, label: "운영 사용량", icon: "📊" },
   { key: "opsAudit", href: ROUTES.adminOpsAudit, label: "AuditLog", icon: "📋" },
@@ -119,7 +123,16 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "myPacks":
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "provider":
-      return pathname === ROUTES.provider || pathname.startsWith(`${ROUTES.provider}/`);
+      return (
+        pathname === ROUTES.provider ||
+        (pathname.startsWith(`${ROUTES.provider}/`) &&
+          !pathname.startsWith(ROUTES.providerReviews))
+      );
+    case "providerReview":
+      return (
+        pathname === ROUTES.providerReviews ||
+        pathname.startsWith(`${ROUTES.providerReviews}/`)
+      );
     case "admin":
       // Only the work inbox — detail/reviews pages should not keep this icon active.
       return pathname === ROUTES.admin;
