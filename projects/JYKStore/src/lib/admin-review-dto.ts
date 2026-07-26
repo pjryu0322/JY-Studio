@@ -5,6 +5,10 @@ import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-d
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
 import { toPackLanguageCode } from "@/lib/pack-language";
+import type {
+  StoreProviderReviewPhase,
+  StoreServiceValidationPhase,
+} from "@/lib/store-workflow-status";
 import {
   getReleaseGateApprovalMessage,
   meetsReleaseGateForApproval,
@@ -44,6 +48,9 @@ export type AdminReviewListItemDto = {
   updatedAt: string;
   versionCount: number;
   sourceDocumentCount: number;
+  /** Store workflow marker — used by admin work inbox phase split. */
+  providerReviewPhase: StoreProviderReviewPhase;
+  serviceValidationPhase: StoreServiceValidationPhase;
 };
 
 export type AdminReviewDetailDto = {
@@ -265,6 +272,12 @@ export function toAdminReviewListItem(
     versions: { sourceDocuments: unknown[] }[];
     reviews: { createdAt: Date; status: string }[];
   },
+  options?: {
+    readonly workflowMarkers?: {
+      providerReviewPhase?: StoreProviderReviewPhase | null;
+      serviceValidationPhase?: StoreServiceValidationPhase | null;
+    } | null;
+  },
 ): AdminReviewListItemDto {
   const versionCount = pack.versions.length;
   const sourceDocumentCount = pack.versions.reduce(
@@ -273,6 +286,7 @@ export function toAdminReviewListItem(
   );
   const latestReview = pack.reviews[0];
   const submittedAt = latestReview?.createdAt.toISOString() ?? pack.updatedAt.toISOString();
+  const markers = options?.workflowMarkers;
 
   return {
     packId: pack.packId,
@@ -287,6 +301,8 @@ export function toAdminReviewListItem(
     updatedAt: pack.updatedAt.toISOString(),
     versionCount,
     sourceDocumentCount,
+    providerReviewPhase: markers?.providerReviewPhase ?? "NONE",
+    serviceValidationPhase: markers?.serviceValidationPhase ?? "NONE",
   };
 }
 

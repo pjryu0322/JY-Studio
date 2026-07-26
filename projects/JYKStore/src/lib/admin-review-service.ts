@@ -37,7 +37,7 @@ import {
   isDoclingBundleReviewSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
-import { resolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
+import { resolveStoreWorkflowMarkers, batchResolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
 import {
   assertDoclingReviewIntegrityOrThrow,
   summarizeDoclingReviewIntegrity,
@@ -100,8 +100,16 @@ export async function listReviewingPacks() {
     orderBy: { updatedAt: "desc" },
   });
 
+  const markersByPackId = await batchResolveStoreWorkflowMarkers(
+    packs.map((pack) => pack.packId),
+  );
+
   return packs
-    .map(toAdminReviewListItem)
+    .map((pack) =>
+      toAdminReviewListItem(pack, {
+        workflowMarkers: markersByPackId.get(pack.packId) ?? null,
+      }),
+    )
     .filter((item) => {
       if (item.status === "PUBLISHED" || item.status === "VERIFIED") return false;
       if (!item.reviewStatus) return false;

@@ -4,6 +4,7 @@ import {
   buildAdminWorkInboxItemViewModel,
   countAdminWorkInboxWaiting,
   mergeAdminWorkInboxViewModels,
+  partitionAdminReviewRequiredByServicePhase,
 } from "../lib/admin-work-inbox-view-model.ts";
 
 describe("admin work inbox view model", () => {
@@ -63,24 +64,40 @@ describe("admin work inbox view model", () => {
     assert.equal(view.ctaLabel, "승인·게시");
   });
 
-  it("maps reviewing + pending to admin review required", () => {
+  it("maps reviewing + pending without service pass to 서비스 검증 대기", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pack-3",
       packName: "Review pending",
       packStatus: "REVIEWING",
       packReviewStatus: "PENDING",
     });
-    assert.equal(view.displayStatus, "승인·게시 대기");
-    assert.equal(view.ctaLabel, "승인·게시");
+    assert.equal(view.displayStatus, "서비스 검증 대기");
+    assert.equal(view.ctaLabel, "서비스 검증");
+    assert.equal(view.serviceValidationPhase, "NONE");
     assert.equal(view.isWaitingForAdmin, true);
   });
 
-  it("maps reviewing + in_review to admin review in progress", () => {
+  it("maps reviewing + pending + service PASSED to 승인·게시 대기", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "pack-3b",
+      packName: "Ready to approve",
+      packStatus: "REVIEWING",
+      packReviewStatus: "PENDING",
+      serviceValidationPhase: "PASSED",
+      providerReviewPhase: "CONFIRMED",
+    });
+    assert.equal(view.displayStatus, "승인·게시 대기");
+    assert.equal(view.ctaLabel, "승인·게시");
+    assert.equal(view.adminQueueGroup, "ADMIN_REVIEW_REQUIRED");
+  });
+
+  it("maps reviewing + in_review to admin review in progress when service passed", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pack-4",
       packName: "In review",
       packStatus: "REVIEWING",
       packReviewStatus: "IN_REVIEW",
+      serviceValidationPhase: "PASSED",
     });
     assert.equal(view.displayStatus, "승인·게시 진행 중");
     assert.equal(view.ctaLabel, "검수 계속하기");
@@ -167,8 +184,41 @@ describe("admin work inbox view model", () => {
         packName: "D",
         packStatus: "REVIEWING",
         packReviewStatus: "PENDING",
+        serviceValidationPhase: "PASSED",
       }),
     ]);
     assert.equal(countAdminWorkInboxWaiting(items), 2);
+  });
+
+  it("partitions ADMIN_REVIEW_REQUIRED by serviceValidationPhase", () => {
+    const items = [
+      buildAdminWorkInboxItemViewModel({
+        packId: "sv",
+        packName: "Need SV",
+        packStatus: "REVIEWING",
+        packReviewStatus: "PENDING",
+        serviceValidationPhase: "NONE",
+        providerReviewPhase: "CONFIRMED",
+      }),
+      buildAdminWorkInboxItemViewModel({
+        packId: "ap",
+        packName: "Need Approve",
+        packStatus: "REVIEWING",
+        packReviewStatus: "PENDING",
+        serviceValidationPhase: "PASSED",
+        providerReviewPhase: "CONFIRMED",
+      }),
+    ];
+    const parts = partitionAdminReviewRequiredByServicePhase(items);
+    assert.deepEqual(
+      parts.serviceValidationWaiting.map((i) => i.packId),
+      ["sv"],
+    );
+    assert.deepEqual(
+      parts.approvalWaiting.map((i) => i.packId),
+      ["ap"],
+    );
+    assert.equal(parts.serviceValidationWaiting[0]?.displayStatus, "서비스 검증 대기");
+    assert.equal(parts.approvalWaiting[0]?.displayStatus, "승인·게시 대기");
   });
 });

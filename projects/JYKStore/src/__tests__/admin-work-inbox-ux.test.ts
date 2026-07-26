@@ -25,6 +25,7 @@ describe("admin work inbox UX", () => {
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_GENERATE_TITLE"));
     assert.ok(!inbox.includes("ADMIN_WORK_SECTION_QUALITY_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE"));
+    assert.ok(inbox.includes("partitionAdminReviewRequiredByServicePhase"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_RETURNED_TITLE"));

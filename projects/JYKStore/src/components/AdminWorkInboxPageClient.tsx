@@ -15,6 +15,7 @@ import {
   countAdminWorkInboxWaiting,
   filterAdminWorkInboxByQueueGroup,
   mergeAdminWorkInboxViewModels,
+  partitionAdminReviewRequiredByServicePhase,
   type AdminWorkInboxItemViewModel,
   type AdminWorkInboxQueueGroup,
 } from "@/lib/admin-work-inbox-view-model";
@@ -237,6 +238,8 @@ function reviewItemToViewModel(item: AdminReviewListItemDto): AdminWorkInboxItem
     packStatus: item.status,
     sourceKind: "REVIEW",
     packReviewStatus: item.reviewStatus,
+    providerReviewPhase: item.providerReviewPhase ?? "NONE",
+    serviceValidationPhase: item.serviceValidationPhase ?? "NONE",
     categoryId: item.categoryId,
     categoryName: item.categoryName,
     providerName: item.providerName,
@@ -389,12 +392,8 @@ export function AdminWorkInboxPageClient() {
     filteredViewItems,
     "ADMIN_REVIEW_REQUIRED",
   );
-  const serviceValidationItems = adminReviewRequiredItems.filter(
-    (item) => item.serviceValidationPhase !== "PASSED",
-  );
-  const packReviewRequiredItems = adminReviewRequiredItems.filter(
-    (item) => item.serviceValidationPhase === "PASSED",
-  );
+  const { serviceValidationWaiting: serviceValidationItems, approvalWaiting: packReviewRequiredItems } =
+    partitionAdminReviewRequiredByServicePhase(adminReviewRequiredItems);
   const packReviewInProgressItems = filterAdminWorkInboxByQueueGroup(
     filteredViewItems,
     "ADMIN_REVIEW_IN_PROGRESS",

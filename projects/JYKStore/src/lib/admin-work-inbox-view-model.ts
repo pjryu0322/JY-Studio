@@ -164,6 +164,15 @@ function mapQueuePresentation(input: {
   }
 
   if (input.packStatus === "REVIEWING") {
+    // Service validation must complete before final approval — even while REVIEWING.
+    if (input.serviceValidationPhase !== "PASSED") {
+      return {
+        adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
+        displayStatus: "서비스 검증 대기",
+        ctaLabel: "서비스 검증",
+        isWaitingForAdmin: true,
+      };
+    }
     if (input.packReviewStatus === PackReviewStatus.IN_REVIEW) {
       return {
         adminQueueGroup: "ADMIN_REVIEW_IN_PROGRESS",
@@ -314,4 +323,20 @@ export function filterAdminWorkInboxByQueueGroup(
   group: AdminWorkInboxQueueGroup,
 ): AdminWorkInboxItemViewModel[] {
   return items.filter((item) => item.adminQueueGroup === group);
+}
+
+/** Split ADMIN_REVIEW_REQUIRED by Store service-validation marker. */
+export function partitionAdminReviewRequiredByServicePhase(
+  items: readonly AdminWorkInboxItemViewModel[],
+): {
+  serviceValidationWaiting: AdminWorkInboxItemViewModel[];
+  approvalWaiting: AdminWorkInboxItemViewModel[];
+} {
+  const required = items.filter((item) => item.adminQueueGroup === "ADMIN_REVIEW_REQUIRED");
+  return {
+    serviceValidationWaiting: required.filter(
+      (item) => item.serviceValidationPhase !== "PASSED",
+    ),
+    approvalWaiting: required.filter((item) => item.serviceValidationPhase === "PASSED"),
+  };
 }
