@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  acceptAdminWorkerZipRequest,
   cancelAdminWorkerZipRejection,
   fetchAdminReviewDetail,
   fetchAdminWorkerZipRequestState,
@@ -72,7 +71,6 @@ export function AdminWorkerZipGenerationCard({
 }) {
   const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
   const [running, setRunning] = useState(false);
-  const [accepting, setAccepting] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [cancellingRejection, setCancellingRejection] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,20 +134,6 @@ export function AdminWorkerZipGenerationCard({
     const el = document.getElementById("admin-quality-section");
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [preferQualitySection]);
-
-  const onAccept = async () => {
-    if (accepting || running || rejecting) return;
-    setAccepting(true);
-    setError(null);
-    try {
-      await acceptAdminWorkerZipRequest(packId);
-      await loadState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "접수에 실패했습니다.");
-    } finally {
-      setAccepting(false);
-    }
-  };
 
   const onReject = async () => {
     if (rejecting || running) return;
@@ -408,14 +392,16 @@ export function AdminWorkerZipGenerationCard({
         ) : null}
 
         {canAccept ? (
-          <button
-            type="button"
-            onClick={() => void onAccept()}
-            disabled={accepting || running || rejecting}
-            className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
-          >
-            {accepting ? "접수 중…" : "생성 요청 접수"}
-          </button>
+          <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
+            아직 자료 접수가 되지 않았습니다.{" "}
+            <a
+              href={`/admin/reviews/${encodeURIComponent(packId)}?step=queue`}
+              className="font-semibold underline"
+            >
+              자료 접수
+            </a>{" "}
+            단계에서 먼저 접수하세요. 이 단계에서는 생성 실행만 진행합니다.
+          </p>
         ) : null}
 
         <div className="flex gap-2">
@@ -427,14 +413,14 @@ export function AdminWorkerZipGenerationCard({
           >
             {running ? "생성 실행 중…" : "지식데이터 생성 실행"}
           </button>
-          {canReject ? (
+          {canReject && !canAccept ? (
             <button
               type="button"
               onClick={() => {
                 setShowRejectForm((v) => !v);
                 setError(null);
               }}
-              disabled={rejecting || running || accepting}
+              disabled={rejecting || running}
               className="min-h-[44px] rounded-xl border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 disabled:opacity-60"
             >
               자료 반려
@@ -479,11 +465,6 @@ export function AdminWorkerZipGenerationCard({
           </div>
         ) : null}
 
-        {canAccept ? (
-          <p className="text-[11px] text-slate-500">
-            먼저 “생성 요청 접수”를 하면 제공자가 자료를 회수할 수 없으며, 이후 생성을 실행할 수 있습니다.
-          </p>
-        ) : null}
         {isAccepted ? (
           <p className="text-[11px] text-indigo-700">접수완료 — 제공자는 더 이상 요청을 회수할 수 없습니다.</p>
         ) : null}

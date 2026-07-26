@@ -241,20 +241,11 @@ function mapQueuePresentation(input: {
     };
   }
 
-  if (input.workerZipPhase === "COMPLETED") {
-    return {
-      adminQueueGroup: "QUALITY_CHECK_REQUIRED",
-      displayStatus: "품질점검 대기",
-      ctaLabel: "품질 점검 후 검토 요청",
-      isWaitingForAdmin: true,
-    };
-  }
-
-  if (input.workerZipPhase === "ACCEPTED") {
+  if (input.workerZipPhase === "COMPLETED" || input.workerZipPhase === "ACCEPTED") {
     return {
       adminQueueGroup: "GENERATE_REQUIRED",
-      displayStatus: "생성 실행 대기",
-      ctaLabel: "생성 실행하기",
+      displayStatus: "생성·품질보정 대기",
+      ctaLabel: "생성·품질보정",
       isWaitingForAdmin: true,
     };
   }
@@ -263,7 +254,7 @@ function mapQueuePresentation(input: {
     return {
       adminQueueGroup: "ACCEPT_REQUIRED",
       displayStatus: "접수 대기",
-      ctaLabel: "접수하기",
+      ctaLabel: "자료 접수",
       isWaitingForAdmin: true,
     };
   }

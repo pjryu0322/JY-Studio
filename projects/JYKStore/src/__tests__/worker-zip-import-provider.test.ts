@@ -565,9 +565,10 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const src = readSrc("components/AdminWorkerZipGenerationCard.tsx");
     assert.match(src, /runAdminWorkerZipGeneration/);
     assert.match(src, /지식데이터 생성 실행/);
-    // 접수(accept) action before execution.
-    assert.match(src, /acceptAdminWorkerZipRequest/);
-    assert.match(src, /생성 요청 접수/);
+    assert.doesNotMatch(src, /acceptAdminWorkerZipRequest/);
+    const acceptance = readSrc("components/AdminMaterialAcceptancePanel.tsx");
+    assert.match(acceptance, /acceptAdminWorkerZipRequest/);
+    assert.match(acceptance, /자료 접수/);
   });
 
   it("admin request-queue route lists pending requests for admins only", () => {
@@ -580,7 +581,7 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const inbox = readSrc("components/AdminWorkInboxPageClient.tsx");
     assert.match(inbox, /fetchAdminWorkerZipRequests/);
     assert.match(inbox, /ADMIN_WORK_SECTION_ACCEPT_TITLE/);
-    assert.match(inbox, /ADMIN_WORK_SECTION_QUALITY_TITLE/);
+    assert.match(inbox, /ADMIN_WORK_SECTION_GENERATE_TITLE/);
     assert.match(inbox, /ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE/);
     assert.match(inbox, /ADMIN_WORK_SECTION_PACK_REVIEW_TITLE/);
     assert.match(inbox, /buildAdminWorkInboxItemViewModel|countAdminWorkInboxWaiting/);
@@ -591,7 +592,7 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(queue, /fetchAdminWorkerZipRequests/);
     assert.match(queue, /item\.displayStatus/);
     assert.match(queue, /item\.ctaLabel/);
-    assert.match(queue, /품질 점검 후 검토 요청/);
+    assert.match(queue, /자료 접수|생성·품질보정/);
   });
 });
 

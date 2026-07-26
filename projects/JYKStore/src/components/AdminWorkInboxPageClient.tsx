@@ -42,8 +42,6 @@ import {
   ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE,
   ADMIN_WORK_SECTION_PUBLISHED_BODY,
   ADMIN_WORK_SECTION_PUBLISHED_TITLE,
-  ADMIN_WORK_SECTION_QUALITY_BODY,
-  ADMIN_WORK_SECTION_QUALITY_TITLE,
   ADMIN_WORK_SECTION_RETURNED_BODY,
   ADMIN_WORK_SECTION_RETURNED_TITLE,
   ADMIN_WORK_SUMMARY_LABEL,
@@ -63,8 +61,8 @@ type WorkStatusFilter =
 const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | null> = {
   all: null,
   accept: ["ACCEPT_REQUIRED"],
-  generate: ["GENERATE_REQUIRED"],
-  quality: ["QUALITY_CHECK_REQUIRED"],
+  generate: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
+  quality: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
   provider_review: ["PROVIDER_REVIEW_IN_PROGRESS"],
   pack_review: ["ADMIN_REVIEW_REQUIRED"],
   pack_review_in_progress: ["ADMIN_REVIEW_IN_PROGRESS"],
@@ -133,14 +131,16 @@ function DisplayStatusBadge({
 function WorkInboxCard({
   item,
   metaLine,
+  href,
 }: {
   readonly item: AdminWorkInboxItemViewModel;
   readonly metaLine?: string | null;
+  readonly href?: string;
 }) {
   return (
     <li>
       <Link
-        href={adminReviewDetailPath(item.packId)}
+        href={href ?? adminReviewDetailPath(item.packId)}
         className="flex items-center gap-2 rounded-xl border border-store-border bg-white px-3 py-2.5 transition hover:bg-slate-50"
       >
         <div className="min-w-0 flex-1">
@@ -339,11 +339,10 @@ export function AdminWorkInboxPageClient() {
   }, [allViewItems, categoryFilter, statusFilter]);
 
   const acceptItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "ACCEPT_REQUIRED");
-  const generateItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "GENERATE_REQUIRED");
-  const qualityItems = filterAdminWorkInboxByQueueGroup(
-    filteredViewItems,
-    "QUALITY_CHECK_REQUIRED",
-  );
+  const generateItems = [
+    ...filterAdminWorkInboxByQueueGroup(filteredViewItems, "GENERATE_REQUIRED"),
+    ...filterAdminWorkInboxByQueueGroup(filteredViewItems, "QUALITY_CHECK_REQUIRED"),
+  ];
   const providerReviewInProgressItems = filterAdminWorkInboxByQueueGroup(
     filteredViewItems,
     "PROVIDER_REVIEW_IN_PROGRESS",
@@ -380,7 +379,6 @@ export function AdminWorkInboxPageClient() {
   const visibleCount =
     acceptItems.length +
     generateItems.length +
-    qualityItems.length +
     providerReviewInProgressItems.length +
     packReviewRequiredItems.length +
     packReviewInProgressItems.length +
@@ -467,7 +465,11 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {acceptItems.map((item) => (
-                <WorkInboxCard key={item.packId} item={item} />
+                <WorkInboxCard
+                  key={item.packId}
+                  item={item}
+                  href={`${adminReviewDetailPath(item.packId)}?step=queue`}
+                />
               ))}
             </ul>
           </WorkSection>
@@ -480,20 +482,11 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {generateItems.map((item) => (
-                <WorkInboxCard key={item.packId} item={item} />
-              ))}
-            </ul>
-          </WorkSection>
-
-          <WorkSection
-            title={ADMIN_WORK_SECTION_QUALITY_TITLE}
-            body={ADMIN_WORK_SECTION_QUALITY_BODY}
-            count={qualityItems.length}
-            accentClass="bg-amber-100 text-amber-900"
-          >
-            <ul className="space-y-1.5">
-              {qualityItems.map((item) => (
-                <WorkInboxCard key={item.packId} item={item} />
+                <WorkInboxCard
+                  key={item.packId}
+                  item={item}
+                  href={`${adminReviewDetailPath(item.packId)}?step=generation`}
+                />
               ))}
             </ul>
           </WorkSection>

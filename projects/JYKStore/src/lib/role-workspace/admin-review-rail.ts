@@ -337,17 +337,17 @@ export function getAdminReviewRailState(input: {
 
   const highlight = activeStep;
   const items: RoleRailItem[] = [
-    mk("queue", "접수", `${detailPath}?step=queue`),
-    mk("generation", "지식데이터 생성", `${detailPath}?step=generation`),
+    mk("queue", "자료 접수", `${detailPath}?step=queue`),
+    mk("generation", "생성·품질보정", `${detailPath}?step=generation`),
     {
-      ...mk("quality", "품질 점검", `${detailPath}?step=quality`),
+      ...mk("quality", "생성·품질보정", `${detailPath}?step=quality`),
       badge: qualityWarning ? "WARNING" : undefined,
       status: statusFor("quality", highlight, completedThrough, blockedNext, qualityWarning),
     },
     {
       ...mk(
         "providerConfirm",
-        providerWaiting ? "제공자 확인 대기" : "제공자 확인 요청",
+        providerWaiting ? "제공자 검토 대기" : "제공자 검토",
         `${detailPath}?step=providerConfirm`,
       ),
       status: statusFor("providerConfirm", highlight, completedThrough, blockedNext, false),
@@ -369,7 +369,7 @@ export function getAdminReviewRailState(input: {
             : undefined,
     },
     {
-      ...mk("decision", "최종 검수 판단", `${detailPath}?step=decision`),
+      ...    mk("decision", "승인·게시", `${detailPath}?step=decision`),
       status:
         providerReviewPhase !== "CONFIRMED" || !serviceDone
           ? ("blocked" as const)
@@ -377,12 +377,12 @@ export function getAdminReviewRailState(input: {
       blockedReason: blockedNext
         ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
         : providerReviewPhase !== "CONFIRMED"
-          ? "제공자 확인을 먼저 완료하세요."
+          ? "제공자 검토를 먼저 완료하세요."
           : !serviceDone
             ? "서비스 검증을 먼저 완료하세요."
             : undefined,
     },
-    mk("publish", "게시 관리", `${detailPath}?step=publish`),
+    mk("publish", "승인·게시", `${detailPath}?step=publish`),
     {
       id: "ops",
       label: "운영 로그",

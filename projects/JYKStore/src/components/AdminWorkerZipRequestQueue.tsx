@@ -41,7 +41,7 @@ export function AdminWorkerZipRequestQueue() {
   return (
     <section className="space-y-3">
       <div className="px-1">
-        <h2 className="text-sm font-bold text-slate-900">지식데이터 생성 요청</h2>
+        <h2 className="text-sm font-bold text-slate-900">자료 접수 대기</h2>
         <p className="mt-1 text-xs text-store-muted">
           제공자가 ZIP 자료로 생성을 요청한 DRAFT 지식팩입니다. 접수·생성·품질 점검까지 이
           목록에서 이어서 열 수 있습니다.
@@ -100,11 +100,10 @@ export function AdminWorkerZipRequestQueue() {
 function fallbackCtaLabel(phase: AdminWorkerZipRequestListItem["phase"]): string {
   switch (phase) {
     case "COMPLETED":
-      return "품질 점검 후 검토 요청";
     case "ACCEPTED":
-      return "생성 실행하기";
+      return "생성·품질보정";
     default:
-      return "접수하기";
+      return "자료 접수";
   }
 }
 

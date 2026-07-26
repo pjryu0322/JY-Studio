@@ -1,0 +1,102 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import {
+  ADMIN_WORK_SECTION_ACCEPT_CTA,
+  ADMIN_WORK_SECTION_ACCEPT_TITLE,
+  ADMIN_WORK_SECTION_GENERATE_CTA,
+  ADMIN_WORK_SECTION_GENERATE_TITLE,
+} from "../lib/role-based-ux-copy.ts";
+import { buildAdminWorkInboxItemViewModel } from "../lib/admin-work-inbox-view-model.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(here, "..", "..");
+
+function readSource(relativePath: string): string {
+  return readFileSync(join(projectRoot, relativePath), "utf8");
+}
+
+describe("admin material acceptance (workbench step1)", () => {
+  it("uses 자료 접수 / 생성·품질보정 copy for inbox sections", () => {
+    assert.equal(ADMIN_WORK_SECTION_ACCEPT_TITLE, "자료 접수 대기");
+    assert.equal(ADMIN_WORK_SECTION_ACCEPT_CTA, "자료 접수");
+    assert.equal(ADMIN_WORK_SECTION_GENERATE_TITLE, "생성·품질보정 대기");
+    assert.equal(ADMIN_WORK_SECTION_GENERATE_CTA, "생성·품질보정");
+  });
+
+  it("maps REQUESTED to accept queue with 자료 접수 CTA", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "toast",
+      packName: "TOAST UI Grid",
+      packStatus: "DRAFT",
+      workerZipPhase: "REQUESTED",
+    });
+    assert.equal(view.adminQueueGroup, "ACCEPT_REQUIRED");
+    assert.equal(view.displayStatus, "접수 대기");
+    assert.equal(view.ctaLabel, "자료 접수");
+    assert.equal(view.isWaitingForAdmin, true);
+  });
+
+  it("maps ACCEPTED and COMPLETED into 생성·품질보정 (not provider review)", () => {
+    const accepted = buildAdminWorkInboxItemViewModel({
+      packId: "a",
+      packName: "A",
+      packStatus: "DRAFT",
+      workerZipPhase: "ACCEPTED",
+    });
+    assert.equal(accepted.adminQueueGroup, "GENERATE_REQUIRED");
+    assert.equal(accepted.ctaLabel, "생성·품질보정");
+
+    const completed = buildAdminWorkInboxItemViewModel({
+      packId: "c",
+      packName: "C",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "NONE",
+    });
+    assert.equal(completed.adminQueueGroup, "GENERATE_REQUIRED");
+    assert.equal(completed.displayStatus, "생성·품질보정 대기");
+    assert.notEqual(completed.adminQueueGroup, "PROVIDER_REVIEW_IN_PROGRESS");
+  });
+
+  it("keeps PUBLISHED out of accept/generate waiting queues", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "pub",
+      packName: "Published",
+      packStatus: "PUBLISHED",
+      workerZipPhase: "COMPLETED",
+    });
+    assert.equal(view.adminQueueGroup, "PUBLISHED");
+    assert.equal(view.isWaitingForAdmin, false);
+  });
+
+  it("queue step renders acceptance panel and not generation card", () => {
+    const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    assert.ok(detail.includes("AdminMaterialAcceptancePanel"));
+    assert.ok(detail.includes('activeStep === "queue"'));
+    assert.ok(detail.includes("showAcceptance"));
+    assert.match(
+      detail,
+      /showGeneration\s*=\s*[\s\S]*activeStep === "generation"/,
+    );
+    assert.ok(!detail.includes('activeStep === "queue" ||'));
+    const panel = readSource("src/components/AdminMaterialAcceptancePanel.tsx");
+    assert.ok(panel.includes("자료 접수"));
+    assert.ok(panel.includes("자료 반려"));
+    assert.ok(panel.includes("생성·품질보정으로 이동"));
+    assert.ok(panel.includes("acceptAdminWorkerZipRequest"));
+    assert.ok(!panel.includes("runAdminWorkerZipGeneration"));
+  });
+
+  it("rail labels follow 5-step workbench naming without changing step ids", () => {
+    const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
+    assert.ok(rail.includes('mk("queue", "자료 접수"'));
+    assert.ok(rail.includes('mk("generation", "생성·품질보정"'));
+    assert.ok(rail.includes('mk("quality", "생성·품질보정"'));
+    assert.ok(rail.includes("providerConfirm"));
+    assert.ok(rail.includes("searchValidation"));
+    assert.ok(rail.includes('?step=queue'));
+  });
+});

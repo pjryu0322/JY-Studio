@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
 import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
+import { AdminMaterialAcceptancePanel } from "@/components/AdminMaterialAcceptancePanel";
 import { AdminProviderSupplementPanel } from "@/components/AdminProviderSupplementPanel";
 import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
 import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
@@ -159,8 +160,8 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     return <p className="text-sm text-red-700">{error ?? "지식팩을 찾을 수 없습니다."}</p>;
   }
 
+  const showAcceptance = activeStep === "queue";
   const showGeneration =
-    activeStep === "queue" ||
     activeStep === "generation" ||
     activeStep === "quality" ||
     activeStep === "providerConfirm";
@@ -190,7 +191,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         <AdminProviderSupplementPanel
           packId={packId}
           state={supplementState}
-          providerName={detail.providerName}
+          providerName={detail.pack.providerName}
           onChanged={refreshSilently}
         />
       ) : null}
@@ -230,7 +231,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         </nav>
       </div>
 
-      {nextAction.kind !== "NONE" || nextAction.message ? (
+      {activeStep !== "queue" && (nextAction.kind !== "NONE" || nextAction.message) ? (
         <NextActionPanel
           action={nextAction}
           onPrimary={() => {
@@ -258,6 +259,16 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
               goStep("generation");
             }
           }}
+        />
+      ) : null}
+
+      {showAcceptance ? (
+        <AdminMaterialAcceptancePanel
+          packId={packId}
+          detail={detail}
+          onPhaseChange={setWorkerZipPhase}
+          onChanged={refreshSilently}
+          onGoGeneration={() => goStep("generation")}
         />
       ) : null}
 

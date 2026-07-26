@@ -19,11 +19,11 @@ describe("admin work inbox UX", () => {
     assert.ok(readSource("src/app/(store)/admin/page.tsx").includes("AdminWorkInboxPageClient"));
   });
 
-  it("orders admin work by accept, generate, quality, provider review, pack review, returned", () => {
+  it("orders admin work by accept, generate, provider review, pack review, returned", () => {
     const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_ACCEPT_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_GENERATE_TITLE"));
-    assert.ok(inbox.includes("ADMIN_WORK_SECTION_QUALITY_TITLE"));
+    assert.ok(!inbox.includes("ADMIN_WORK_SECTION_QUALITY_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_RETURNED_TITLE"));
@@ -33,15 +33,15 @@ describe("admin work inbox UX", () => {
     assert.ok(inbox.includes("countAdminWorkInboxWaiting"));
     assert.ok(!inbox.includes("생성 완료"));
     assert.ok(!inbox.includes('phase === "COMPLETED"'));
+    assert.ok(inbox.includes("step=queue"));
+    assert.ok(inbox.includes("step=generation"));
     const acceptAt = inbox.indexOf("title={ADMIN_WORK_SECTION_ACCEPT_TITLE}");
     const generateAt = inbox.indexOf("title={ADMIN_WORK_SECTION_GENERATE_TITLE}");
-    const qualityAt = inbox.indexOf("title={ADMIN_WORK_SECTION_QUALITY_TITLE}");
     const providerAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE}");
     const packAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PACK_REVIEW_TITLE}");
     const returnedAt = inbox.indexOf("title={ADMIN_WORK_SECTION_RETURNED_TITLE}");
     assert.ok(acceptAt > 0 && acceptAt < generateAt);
-    assert.ok(generateAt < qualityAt);
-    assert.ok(qualityAt < providerAt);
+    assert.ok(generateAt < providerAt);
     assert.ok(providerAt < packAt);
     assert.ok(packAt < returnedAt);
   });

@@ -7,7 +7,7 @@ import {
 } from "../lib/admin-work-inbox-view-model.ts";
 
 describe("admin work inbox view model", () => {
-  it("maps worker completed before provider review to quality check waiting", () => {
+  it("maps worker completed before provider review to 생성·품질보정 waiting", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pack-1",
       packName: "Sample Pack",
@@ -15,9 +15,9 @@ describe("admin work inbox view model", () => {
       workerZipPhase: "COMPLETED",
       providerReviewPhase: "NONE",
     });
-    assert.equal(view.displayStatus, "품질점검 대기");
-    assert.equal(view.ctaLabel, "품질 점검 후 검토 요청");
-    assert.equal(view.adminQueueGroup, "QUALITY_CHECK_REQUIRED");
+    assert.equal(view.displayStatus, "생성·품질보정 대기");
+    assert.equal(view.ctaLabel, "생성·품질보정");
+    assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
     assert.equal(view.isWaitingForAdmin, true);
     assert.notEqual(view.displayStatus, "생성 완료");
   });

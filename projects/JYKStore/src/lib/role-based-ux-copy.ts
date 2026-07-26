@@ -192,20 +192,21 @@ export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 �
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
 export const ADMIN_WORK_INBOX_TITLE = "오늘 처리할 일";
 export const ADMIN_WORK_INBOX_DESCRIPTION =
-  "접수·생성·품질점검·제공자 검토·검수 순으로 확인하세요.";
-export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "접수해야 할 지식팩";
+  "자료 접수 → 생성·품질보정 → 제공자 검토 → 최종 검수 순으로 확인하세요.";
+export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "자료 접수 대기";
 export const ADMIN_WORK_SECTION_ACCEPT_BODY =
-  "제공자가 ZIP 자료 생성을 요청했습니다. 접수한 뒤 생성을 진행하세요.";
-export const ADMIN_WORK_SECTION_ACCEPT_CTA = "접수하기";
-export const ADMIN_WORK_SECTION_GENERATE_TITLE = "생성 실행이 필요한 지식팩";
+  "제공자가 ZIP/원본 자료를 제출했습니다. 자료를 확인한 뒤 접수하거나 반려하세요.";
+export const ADMIN_WORK_SECTION_ACCEPT_CTA = "자료 접수";
+export const ADMIN_WORK_SECTION_GENERATE_TITLE = "생성·품질보정 대기";
 export const ADMIN_WORK_SECTION_GENERATE_BODY =
-  "접수는 끝났습니다. 지식데이터 생성을 실행하세요.";
-export const ADMIN_WORK_SECTION_GENERATE_CTA = "생성 실행하기";
-export const ADMIN_WORK_SECTION_QUALITY_TITLE = "품질점검이 필요한 지식팩";
+  "접수가 끝난 지식팩입니다. 생성 실행과 품질보정을 진행하세요.";
+export const ADMIN_WORK_SECTION_GENERATE_CTA = "생성·품질보정";
+/** @deprecated Step1 workbench folds quality into 생성·품질보정. Kept for filter compat. */
+export const ADMIN_WORK_SECTION_QUALITY_TITLE = "생성·품질보정 대기";
 export const ADMIN_WORK_SECTION_QUALITY_BODY =
-  "생성이 끝났습니다. 품질을 점검한 뒤 제공자에게 검토를 요청하세요.";
-export const ADMIN_WORK_SECTION_QUALITY_CTA = "품질 점검 후 검토 요청";
-export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 검토 진행";
+  "접수가 끝난 지식팩입니다. 생성 실행과 품질보정을 진행하세요.";
+export const ADMIN_WORK_SECTION_QUALITY_CTA = "생성·품질보정";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 검토";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY =
   "제공자가 생성 결과를 확인 중입니다. 관리자 조치 대기가 아닙니다.";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA = "검토 요청 내역 보기";
@@ -227,10 +228,10 @@ export const ADMIN_WORK_SECTION_RETURNED_BODY =
 export const ADMIN_WORK_SECTION_RETURNED_CTA = "요청사항 확인";
 export const ADMIN_WORK_FILTER_CATEGORY_ALL = "전체 카테고리";
 export const ADMIN_WORK_FILTER_STATUS_ALL = "전체 상태";
-export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "접수 대기";
-export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성 실행";
-export const ADMIN_WORK_FILTER_STATUS_QUALITY = "품질점검 대기";
-export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토 중";
+export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "자료 접수 대기";
+export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성·품질보정";
+export const ADMIN_WORK_FILTER_STATUS_QUALITY = "생성·품질보정";
+export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 접수";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "검수 진행 중";
 export const ADMIN_WORK_FILTER_STATUS_RETURNED = "제공자 보완요청";
