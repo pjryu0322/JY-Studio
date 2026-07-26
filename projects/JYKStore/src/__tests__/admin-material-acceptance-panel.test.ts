@@ -77,9 +77,12 @@ describe("admin material acceptance (workbench step1)", () => {
     assert.ok(detail.includes("AdminMaterialAcceptancePanel"));
     assert.ok(detail.includes("AdminKnowledgeGenerationPanel"));
     assert.ok(detail.includes("AdminKnowledgeCorrectionPanel"));
+    assert.ok(detail.includes("AdminProviderReviewPanel"));
+    assert.ok(detail.includes("AdminQualityCheckPanel"));
     assert.ok(detail.includes('activeStep === "queue"'));
     assert.ok(detail.includes("showAcceptance"));
     assert.ok(detail.includes("showGenerationWorkbench"));
+    assert.ok(detail.includes("parseAdminReviewStep"));
     const panel = readSource("src/components/AdminMaterialAcceptancePanel.tsx");
     assert.ok(panel.includes("자료 접수"));
     assert.ok(panel.includes("자료 반려"));

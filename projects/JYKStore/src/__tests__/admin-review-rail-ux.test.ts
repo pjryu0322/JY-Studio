@@ -92,4 +92,70 @@ describe("admin review rail UX (workbench 5-stage)", () => {
       assert.ok(railSrc.includes(`"${step}"`) || railSrc.includes(`?step=${step}`));
     }
   });
+
+  it("defaults REQUESTED worker zip to queue (not generation)", () => {
+    const rail = getAdminReviewRailState({
+      packId: "p1",
+      workerZipPhase: "REQUESTED",
+      quality: buildAdminQualityGateSnapshot(null),
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
+      detail: null,
+      activeStep: "queue",
+    });
+    assert.equal(rail.currentStep, "queue");
+    const currentLabels = rail.items.filter((i) => i.status === "current").map((i) => i.id);
+    assert.deepEqual(currentLabels, ["queue"]);
+  });
+
+  it("marks only one display stage as current when activeStep differs from workflow", () => {
+    const quality = {
+      ...buildAdminQualityGateSnapshot(null),
+      completed: true,
+      hasBlockers: false,
+      failCount: 0,
+    };
+    const rail = getAdminReviewRailState({
+      packId: "p1",
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
+      detail: null,
+      activeStep: "queue",
+    });
+    assert.equal(rail.currentStep, "providerConfirm");
+    const currents = rail.items.filter((i) => i.status === "current");
+    assert.equal(currents.length, 1);
+    assert.equal(currents[0]?.id, "queue");
+    const provider = rail.items.find((i) => i.id === "providerConfirm");
+    assert.equal(provider?.status, "next");
+  });
+
+  it("shows 보완요청 badge and blocks service validation while supplement is open", () => {
+    const quality = {
+      ...buildAdminQualityGateSnapshot(null),
+      completed: true,
+      hasBlockers: false,
+      failCount: 0,
+    };
+    const rail = getAdminReviewRailState({
+      packId: "p1",
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "WITHDRAWN",
+      serviceValidationPhase: "NONE",
+      providerSupplementPhase: "PENDING",
+      detail: null,
+      activeStep: "providerConfirm",
+    });
+    assert.equal(rail.currentStep, "providerConfirm");
+    const provider = rail.items.find((i) => i.id === "providerConfirm");
+    assert.equal(provider?.label, "제공자 보완요청");
+    assert.equal(provider?.badge, "보완요청");
+    assert.ok(provider?.status === "warning" || provider?.status === "current");
+    const search = rail.items.find((i) => i.id === "searchValidation");
+    assert.equal(search?.status, "blocked");
+    assert.match(search?.blockedReason ?? "", /보완요청/);
+  });
 });

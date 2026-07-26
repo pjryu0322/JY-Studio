@@ -238,6 +238,8 @@ export function getAdminReviewRailState(input: {
   quality: AdminQualityGateSnapshot;
   providerReviewPhase: StoreProviderReviewPhase;
   serviceValidationPhase: StoreServiceValidationPhase;
+  /** Open provider supplement phases block service validation. */
+  providerSupplementPhase?: string | null;
   /** @deprecated prefer serviceValidationPhase */
   searchValidationDone?: boolean;
   detail: AdminReviewDetailDto | null;
@@ -255,6 +257,12 @@ export function getAdminReviewRailState(input: {
   const serviceDone =
     serviceValidationPhase === "PASSED" || Boolean(input.searchValidationDone);
   const detailPath = adminReviewDetailPath(packId);
+  const supplementPhase = input.providerSupplementPhase ?? "NONE";
+  const openSupplement =
+    supplementPhase === "PENDING" ||
+    supplementPhase === "ACCEPTED" ||
+    supplementPhase === "CLARIFY" ||
+    supplementPhase === "RESOLVED";
 
   let completedThrough: AdminReviewWorkflowStep | null = null;
   let current: AdminReviewWorkflowStep = "queue";
@@ -273,6 +281,9 @@ export function getAdminReviewRailState(input: {
   } else if (quality.completed && quality.hasBlockers) {
     completedThrough = "generation";
     current = "quality";
+  } else if (openSupplement) {
+    completedThrough = "quality";
+    current = "providerConfirm";
   } else if (
     quality.completed &&
     workerZipPhase === "COMPLETED" &&
@@ -281,10 +292,9 @@ export function getAdminReviewRailState(input: {
     completedThrough = "quality";
     current = "providerConfirm";
   } else if (quality.completed && providerReviewPhase === "NONE") {
-    // Quality may look complete from legacy data, but generation must finish first.
     completedThrough = "generation";
     current = "quality";
-  } else if (providerReviewPhase === "REQUESTED") {
+  } else if (providerReviewPhase === "REQUESTED" || providerReviewPhase === "WITHDRAWN") {
     completedThrough = "quality";
     current = "providerConfirm";
   } else if (providerReviewPhase === "CONFIRMED" && !serviceDone) {
@@ -302,16 +312,19 @@ export function getAdminReviewRailState(input: {
   const blockedNext = quality.hasBlockers || quality.failCount > 0 || workerZipPhase === "FAILED";
   const qualityWarning = quality.completed && quality.hasWarnings && !quality.hasBlockers;
   const providerWaiting = providerReviewPhase === "REQUESTED";
+  const providerSupplementAttention = openSupplement;
 
   const foldStageStatus = (
     members: readonly AdminReviewWorkflowStep[],
     warning = false,
   ): RoleRailItem["status"] => {
+    // Only the stage matching activeStep is "current" — avoids dual current when
+    // the user deep-links to a different step than workflow progress.
     if (members.includes(activeStep)) {
       return warning ? "warning" : "current";
     }
     if (members.includes(current)) {
-      return warning ? "warning" : "current";
+      return warning ? "warning" : "next";
     }
     const memberMax = Math.max(...members.map((m) => STEP_ORDER.indexOf(m)));
     const memberMin = Math.min(...members.map((m) => STEP_ORDER.indexOf(m)));
@@ -347,12 +360,17 @@ export function getAdminReviewRailState(input: {
     },
     {
       id: "providerConfirm",
-      label: providerWaiting ? "제공자 검토 대기" : "제공자 검토",
+      label: providerSupplementAttention
+        ? "제공자 보완요청"
+        : providerWaiting
+          ? "제공자 검토 대기"
+          : "제공자 검토",
       href: `${detailPath}?step=providerConfirm`,
       status:
         !quality.completed || blockedNext
           ? "blocked"
-          : foldStageStatus(["providerConfirm"]),
+          : foldStageStatus(["providerConfirm"], providerSupplementAttention),
+      badge: providerSupplementAttention ? "보완요청" : undefined,
       blockedReason:
         !quality.completed || blockedNext
           ? "품질 점검을 먼저 통과하세요."
@@ -363,11 +381,12 @@ export function getAdminReviewRailState(input: {
       label: "서비스 검증",
       href: `${detailPath}?step=searchValidation`,
       status:
-        providerReviewPhase !== "CONFIRMED"
+        providerReviewPhase !== "CONFIRMED" || openSupplement
           ? "blocked"
           : foldStageStatus(["searchValidation"]),
-      blockedReason:
-        providerReviewPhase !== "CONFIRMED"
+      blockedReason: openSupplement
+        ? "제공자 보완요청을 먼저 처리하세요."
+        : providerReviewPhase !== "CONFIRMED"
           ? "제공자 확인 완료 후에만 서비스 검증을 진행할 수 있습니다."
           : blockedNext
             ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
@@ -381,10 +400,12 @@ export function getAdminReviewRailState(input: {
           ? `${detailPath}?step=publish`
           : `${detailPath}?step=decision`,
       status:
-        providerReviewPhase !== "CONFIRMED" || !serviceDone
+        providerReviewPhase !== "CONFIRMED" || !serviceDone || openSupplement
           ? "blocked"
           : foldStageStatus(decisionPublishMembers),
-      blockedReason: blockedNext
+      blockedReason: openSupplement
+        ? "제공자 보완요청을 먼저 처리하세요."
+        : blockedNext
         ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
         : providerReviewPhase !== "CONFIRMED"
           ? "제공자 검토를 먼저 완료하세요."

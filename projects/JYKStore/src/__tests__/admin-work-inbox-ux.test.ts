@@ -35,6 +35,10 @@ describe("admin work inbox UX", () => {
     assert.ok(!inbox.includes('phase === "COMPLETED"'));
     assert.ok(inbox.includes("step=queue"));
     assert.ok(inbox.includes("step=generation"));
+    assert.ok(inbox.includes("step=providerConfirm"));
+    assert.ok(inbox.includes("step=searchValidation"));
+    assert.ok(inbox.includes("step=decision"));
+    assert.ok(inbox.includes("adminWorkInboxDetailHref"));
     const acceptAt = inbox.indexOf("title={ADMIN_WORK_SECTION_ACCEPT_TITLE}");
     const generateAt = inbox.indexOf("title={ADMIN_WORK_SECTION_GENERATE_TITLE}");
     const providerAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE}");

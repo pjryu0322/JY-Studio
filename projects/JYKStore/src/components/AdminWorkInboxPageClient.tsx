@@ -128,6 +128,27 @@ function DisplayStatusBadge({
   );
 }
 
+function adminWorkInboxDetailHref(item: AdminWorkInboxItemViewModel): string {
+  const base = adminReviewDetailPath(item.packId);
+  switch (item.adminQueueGroup) {
+    case "ACCEPT_REQUIRED":
+      return `${base}?step=queue`;
+    case "GENERATE_REQUIRED":
+    case "QUALITY_CHECK_REQUIRED":
+      return `${base}?step=generation`;
+    case "PROVIDER_REVIEW_IN_PROGRESS":
+    case "PROVIDER_SUPPLEMENT_REQUIRED":
+    case "RETURNED_OR_REJECTED":
+      return `${base}?step=providerConfirm`;
+    case "ADMIN_REVIEW_REQUIRED":
+      return `${base}?step=searchValidation`;
+    case "ADMIN_REVIEW_IN_PROGRESS":
+      return `${base}?step=decision`;
+    default:
+      return base;
+  }
+}
+
 function WorkInboxCard({
   item,
   metaLine,
@@ -140,7 +161,7 @@ function WorkInboxCard({
   return (
     <li>
       <Link
-        href={href ?? adminReviewDetailPath(item.packId)}
+        href={href ?? adminWorkInboxDetailHref(item)}
         className="flex items-center gap-2 rounded-xl border border-store-border bg-white px-3 py-2.5 transition hover:bg-slate-50"
       >
         <div className="min-w-0 flex-1">
@@ -465,11 +486,7 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {acceptItems.map((item) => (
-                <WorkInboxCard
-                  key={item.packId}
-                  item={item}
-                  href={`${adminReviewDetailPath(item.packId)}?step=queue`}
-                />
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>
@@ -482,11 +499,7 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {generateItems.map((item) => (
-                <WorkInboxCard
-                  key={item.packId}
-                  item={item}
-                  href={`${adminReviewDetailPath(item.packId)}?step=generation`}
-                />
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>

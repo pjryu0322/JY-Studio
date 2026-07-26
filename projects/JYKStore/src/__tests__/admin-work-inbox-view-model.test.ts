@@ -102,6 +102,20 @@ describe("admin work inbox view model", () => {
     assert.equal(view.workflowStatus, "PROVIDER_WITHDRAWN");
   });
 
+  it("keeps pre-request COMPLETED packs in 생성·품질보정 (not provider waiting)", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "pre-request",
+      packName: "Pre",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "NONE",
+      providerSupplementPhase: "NONE",
+    });
+    assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
+    assert.equal(view.displayStatus, "생성·품질보정 대기");
+    assert.notEqual(view.adminQueueGroup, "PROVIDER_REVIEW_IN_PROGRESS");
+  });
+
   it("maps plain WITHDRAWN without supplement out of admin waiting", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "plain-withdraw",
