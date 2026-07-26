@@ -7,6 +7,7 @@ import type { AdminReviewListItemDto } from "@/lib/admin-review-dto";
 import {
   fetchAdminReviewItems,
   fetchAdminWorkerZipRequests,
+  type AdminProviderReturnedPackListItem,
   type AdminWorkerZipRequestListItem,
 } from "@/lib/admin-review-api";
 import {
@@ -28,6 +29,7 @@ import {
   ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS,
   ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW,
   ADMIN_WORK_FILTER_STATUS_QUALITY,
+  ADMIN_WORK_FILTER_STATUS_RETURNED,
   ADMIN_WORK_SECTION_ACCEPT_BODY,
   ADMIN_WORK_SECTION_ACCEPT_TITLE,
   ADMIN_WORK_SECTION_GENERATE_BODY,
@@ -42,6 +44,8 @@ import {
   ADMIN_WORK_SECTION_PUBLISHED_TITLE,
   ADMIN_WORK_SECTION_QUALITY_BODY,
   ADMIN_WORK_SECTION_QUALITY_TITLE,
+  ADMIN_WORK_SECTION_RETURNED_BODY,
+  ADMIN_WORK_SECTION_RETURNED_TITLE,
   ADMIN_WORK_SUMMARY_LABEL,
 } from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
@@ -53,7 +57,8 @@ type WorkStatusFilter =
   | "quality"
   | "provider_review"
   | "pack_review"
-  | "pack_review_in_progress";
+  | "pack_review_in_progress"
+  | "returned";
 
 const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | null> = {
   all: null,
@@ -63,6 +68,7 @@ const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | nu
   provider_review: ["PROVIDER_REVIEW_IN_PROGRESS"],
   pack_review: ["ADMIN_REVIEW_REQUIRED"],
   pack_review_in_progress: ["ADMIN_REVIEW_IN_PROGRESS"],
+  returned: ["PROVIDER_SUPPLEMENT_REQUIRED", "RETURNED_OR_REJECTED"],
 };
 
 type WorkSectionProps = {
@@ -107,11 +113,14 @@ function DisplayStatusBadge({
         ? "bg-violet-100 text-violet-900"
         : queueGroup === "QUALITY_CHECK_REQUIRED"
           ? "bg-amber-100 text-amber-900"
-          : queueGroup === "ADMIN_REVIEW_REQUIRED" || queueGroup === "ADMIN_REVIEW_IN_PROGRESS"
-            ? "bg-orange-100 text-orange-900"
-            : queueGroup === "GENERATE_REQUIRED"
-              ? "bg-sky-100 text-sky-900"
-              : "bg-indigo-100 text-indigo-900";
+          : queueGroup === "PROVIDER_SUPPLEMENT_REQUIRED" ||
+              queueGroup === "RETURNED_OR_REJECTED"
+            ? "bg-rose-100 text-rose-900"
+            : queueGroup === "ADMIN_REVIEW_REQUIRED" || queueGroup === "ADMIN_REVIEW_IN_PROGRESS"
+              ? "bg-orange-100 text-orange-900"
+              : queueGroup === "GENERATE_REQUIRED"
+                ? "bg-sky-100 text-sky-900"
+                : "bg-indigo-100 text-indigo-900";
   return (
     <span
       className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${className}`}
@@ -121,7 +130,13 @@ function DisplayStatusBadge({
   );
 }
 
-function WorkInboxCard({ item }: { readonly item: AdminWorkInboxItemViewModel }) {
+function WorkInboxCard({
+  item,
+  metaLine,
+}: {
+  readonly item: AdminWorkInboxItemViewModel;
+  readonly metaLine?: string | null;
+}) {
   return (
     <li>
       <Link
@@ -137,9 +152,10 @@ function WorkInboxCard({ item }: { readonly item: AdminWorkInboxItemViewModel })
             />
           </div>
           <p className="mt-0.5 truncate text-[11px] text-store-muted">
-            {[item.categoryName, item.providerName, item.versionLabel]
-              .filter(Boolean)
-              .join(" · ")}
+            {metaLine?.trim() ||
+              [item.categoryName, item.providerName, item.versionLabel]
+                .filter(Boolean)
+                .join(" · ")}
           </p>
         </div>
         <span className="shrink-0 rounded-lg bg-store-accent px-2.5 py-1.5 text-[11px] font-bold text-white">
@@ -170,6 +186,7 @@ function zipItemToViewModel(item: AdminWorkerZipRequestListItem): AdminWorkInbox
       categoryName: item.categoryName,
       providerName: item.providerName,
       versionLabel: item.versionLabel,
+      providerSupplementPhase: "NONE",
     };
   }
   return buildAdminWorkInboxItemViewModel({
@@ -200,6 +217,60 @@ function reviewItemToViewModel(item: AdminReviewListItemDto): AdminWorkInboxItem
   });
 }
 
+function returnedItemToViewModel(
+  item: AdminProviderReturnedPackListItem,
+): AdminWorkInboxItemViewModel & { metaLine?: string } {
+  const submitted = item.withdrawnAt
+    ? new Date(item.withdrawnAt).toLocaleString("ko-KR", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const metaLine = [
+    item.providerName,
+    item.changeTypeLabel,
+    (item.targetCount ?? 0) > 0 ? `대상 ${item.targetCount}건` : null,
+    item.changesRequest?.details
+      ? item.changesRequest.details.length > 40
+        ? `${item.changesRequest.details.slice(0, 40)}…`
+        : item.changesRequest.details
+      : null,
+    submitted ? `제출 ${submitted}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const base = buildAdminWorkInboxItemViewModel({
+    packId: item.packId,
+    packName: item.packName,
+    packStatus: item.packStatus ?? "DRAFT",
+    sourceKind: "OTHER",
+    providerReviewPhase: "WITHDRAWN",
+    providerSupplementPhase: (item.providerSupplementPhase ??
+      "PENDING") as import("@/lib/provider-supplement-request").ProviderSupplementAdminPhase,
+    serviceValidationPhase: item.serviceValidationPhase ?? "NONE",
+    categoryId: item.categoryId,
+    categoryName: item.categoryName,
+    providerName: item.providerName,
+    versionLabel: item.versionLabel,
+  });
+
+  return {
+    ...base,
+    displayStatus: item.displayStatus || base.displayStatus,
+    ctaLabel: item.ctaLabel || base.ctaLabel,
+    adminQueueGroup:
+      (item.adminQueueGroup as AdminWorkInboxQueueGroup) || base.adminQueueGroup,
+    isWaitingForAdmin:
+      item.isWaitingForAdmin !== undefined
+        ? Boolean(item.isWaitingForAdmin)
+        : base.isWaitingForAdmin,
+    metaLine,
+  };
+}
+
 /**
  * Admin first screen — work inbox ordered by what the admin must do next.
  */
@@ -207,6 +278,9 @@ export function AdminWorkInboxPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [zipItems, setZipItems] = useState<AdminWorkerZipRequestListItem[]>([]);
+  const [returnedItems, setReturnedItems] = useState<AdminProviderReturnedPackListItem[]>(
+    [],
+  );
   const [reviewItems, setReviewItems] = useState<AdminReviewListItemDto[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<WorkStatusFilter>("all");
@@ -220,6 +294,7 @@ export function AdminWorkInboxPageClient() {
         fetchAdminReviewItems(),
       ]);
       setZipItems(zip.items);
+      setReturnedItems(zip.returnedItems ?? []);
       setReviewItems(reviews.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "작업 목록을 불러오지 못했습니다.");
@@ -236,9 +311,10 @@ export function AdminWorkInboxPageClient() {
     () =>
       mergeAdminWorkInboxViewModels([
         ...zipItems.map(zipItemToViewModel),
+        ...returnedItems.map(returnedItemToViewModel),
         ...reviewItems.map(reviewItemToViewModel),
       ]),
-    [zipItems, reviewItems],
+    [zipItems, returnedItems, reviewItems],
   );
 
   const categoryOptions = useMemo(() => {
@@ -280,7 +356,24 @@ export function AdminWorkInboxPageClient() {
     filteredViewItems,
     "ADMIN_REVIEW_IN_PROGRESS",
   );
+  const returnedOrRejectedItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "PROVIDER_SUPPLEMENT_REQUIRED",
+  );
+  const legacyReturnedItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "RETURNED_OR_REJECTED",
+  );
   const publishedItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "PUBLISHED");
+
+  const returnedMetaByPack = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of returnedItems) {
+      const vm = returnedItemToViewModel(item);
+      if (vm.metaLine) map.set(item.packId, vm.metaLine);
+    }
+    return map;
+  }, [returnedItems]);
 
   const totalWaiting = countAdminWorkInboxWaiting(filteredViewItems);
   const rawTotal = allViewItems.length;
@@ -291,6 +384,8 @@ export function AdminWorkInboxPageClient() {
     providerReviewInProgressItems.length +
     packReviewRequiredItems.length +
     packReviewInProgressItems.length +
+    returnedOrRejectedItems.length +
+    legacyReturnedItems.length +
     publishedItems.length;
 
   return (
@@ -341,6 +436,7 @@ export function AdminWorkInboxPageClient() {
             <option value="pack_review_in_progress">
               {ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS}
             </option>
+            <option value="returned">{ADMIN_WORK_FILTER_STATUS_RETURNED}</option>
           </select>
         </div>
       </div>
@@ -437,6 +533,23 @@ export function AdminWorkInboxPageClient() {
             <ul className="space-y-1.5">
               {packReviewInProgressItems.map((item) => (
                 <WorkInboxCard key={item.packId} item={item} />
+              ))}
+            </ul>
+          </WorkSection>
+
+          <WorkSection
+            title={ADMIN_WORK_SECTION_RETURNED_TITLE}
+            body={ADMIN_WORK_SECTION_RETURNED_BODY}
+            count={returnedOrRejectedItems.length + legacyReturnedItems.length}
+            accentClass="bg-rose-100 text-rose-900"
+          >
+            <ul className="space-y-1.5">
+              {[...returnedOrRejectedItems, ...legacyReturnedItems].map((item) => (
+                <WorkInboxCard
+                  key={item.packId}
+                  item={item}
+                  metaLine={returnedMetaByPack.get(item.packId)}
+                />
               ))}
             </ul>
           </WorkSection>

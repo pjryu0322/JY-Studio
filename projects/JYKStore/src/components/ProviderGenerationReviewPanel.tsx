@@ -6,7 +6,9 @@ import {
   confirmProviderStoreReviewApi,
   fetchProviderChunkReviewBatchApi,
   fetchProviderChunkReviewDetailApi,
+  addProviderSupplementNoteApi,
   withdrawProviderStoreReviewApi,
+  withdrawProviderSupplementRequestApi,
 } from "@/lib/provider-center-api";
 import {
   buildProviderChunkReviewItems,
@@ -50,6 +52,20 @@ import {
   type ProviderChangesRequestTarget,
   type ProviderChangesRequestType,
 } from "@/lib/provider-review-workbench";
+import {
+  buildProviderSupplementRequestViewModel,
+  changeTypeLabel,
+  targetKindLabel,
+} from "@/lib/provider-supplement-request";
+import {
+  PROVIDER_REVIEW_SUPPLEMENT_ADD_NOTE,
+  PROVIDER_REVIEW_SUPPLEMENT_ADMIN_WAITING,
+  PROVIDER_REVIEW_SUPPLEMENT_VIEW,
+  PROVIDER_REVIEW_SUPPLEMENT_WITHDRAW,
+  PROVIDER_REVIEW_WITHDRAWN_BODY,
+  PROVIDER_REVIEW_WITHDRAWN_GO_MATERIALS,
+  PROVIDER_REVIEW_WITHDRAWN_TITLE,
+} from "@/lib/role-based-ux-copy";
 
 function IconButton({
   label,
@@ -158,6 +174,207 @@ function SortMark({
   );
 }
 
+function ProviderSupplementWaitingPanel({
+  packId,
+  pack,
+  onChanged,
+  onGoToPayload,
+}: {
+  readonly packId: string;
+  readonly pack: ProviderPackDetailDto | null;
+  readonly onChanged: () => Promise<void> | void;
+  readonly onGoToPayload?: () => void;
+}) {
+  const supplement = pack?.providerSupplement ?? null;
+  const vm = buildProviderSupplementRequestViewModel(supplement);
+  const changes = pack?.providerChangesRequest ?? null;
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [localBusy, setLocalBusy] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+
+  const headline = vm?.headline ?? PROVIDER_REVIEW_WITHDRAWN_TITLE;
+  const guidance = vm?.guidance ?? PROVIDER_REVIEW_WITHDRAWN_BODY;
+  const adminState = vm?.adminProcessingState ?? PROVIDER_REVIEW_SUPPLEMENT_ADMIN_WAITING;
+
+  const onAddNote = async () => {
+    setLocalBusy("note");
+    setLocalError(null);
+    try {
+      await addProviderSupplementNoteApi(packId, noteText);
+      setNoteText("");
+      setNoteOpen(false);
+      setLocalMessage("추가 의견을 남겼습니다.");
+      await onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "의견 저장에 실패했습니다.");
+    } finally {
+      setLocalBusy(null);
+    }
+  };
+
+  const onWithdraw = async () => {
+    if (!window.confirm("접수 대기 중인 보완 요청을 철회할까요?")) return;
+    setLocalBusy("withdraw");
+    setLocalError(null);
+    try {
+      await withdrawProviderSupplementRequestApi(packId);
+      setLocalMessage("보완 요청을 철회했습니다.");
+      await onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "철회에 실패했습니다.");
+    } finally {
+      setLocalBusy(null);
+    }
+  };
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-950">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-bold">
+          {vm?.displayStatus ?? PROVIDER_REVIEW_WITHDRAWN_TITLE}
+        </h2>
+        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+          {adminState}
+        </span>
+      </div>
+      <p className="text-xs text-sky-900/90">{headline}</p>
+      <p className="text-xs text-sky-900/80">{guidance}</p>
+
+      {(supplement || changes) && detailsOpen ? (
+        <div className="rounded-xl border border-sky-200/80 bg-white/80 px-3 py-2.5 text-xs text-slate-800">
+          <p className="font-semibold text-slate-900">요청 내용</p>
+          {supplement ? (
+            <p className="mt-1 text-[11px] text-store-muted">
+              제출 {new Date(supplement.submittedAt).toLocaleString("ko-KR")}
+            </p>
+          ) : null}
+          <p className="mt-1 text-store-muted">
+            {[
+              changeTypeLabel(supplement?.changeType ?? changes?.changeType ?? ""),
+              targetKindLabel(supplement?.targetKind ?? changes?.targetKind ?? ""),
+              supplement?.targetLabel ?? changes?.targetLabel,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-slate-800">
+            {supplement?.details ?? changes?.details}
+          </p>
+          {supplement?.clarifyMessage ? (
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-950">
+              관리자 추가 확인: {supplement.clarifyMessage}
+            </p>
+          ) : null}
+          {supplement?.rejectionReason ? (
+            <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-red-900">
+              반려 사유: {supplement.rejectionReason}
+            </p>
+          ) : null}
+          {supplement?.resolutionNote ? (
+            <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-900">
+              처리 결과: {supplement.resolutionNote}
+            </p>
+          ) : null}
+          {supplement && supplement.history.length > 0 ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer font-semibold">처리 이력</summary>
+              <ul className="mt-1 space-y-0.5 text-[11px] text-store-muted">
+                {supplement.history.map((h) => (
+                  <li key={`${h.at}-${h.action}`}>
+                    {new Date(h.at).toLocaleString("ko-KR")} · {h.action}
+                    {h.note ? ` — ${h.note}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
+      {noteOpen ? (
+        <div className="space-y-2 rounded-xl border border-sky-200 bg-white/80 px-3 py-2.5">
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            rows={3}
+            className="w-full rounded-lg border border-store-border px-2.5 py-2 text-xs"
+            placeholder="추가 의견을 입력하세요"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={localBusy != null}
+              onClick={() => void onAddNote()}
+              className="rounded-lg bg-store-accent px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {localBusy === "note" ? "저장 중…" : "의견 제출"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setNoteOpen(false)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {localError ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          {localError}
+        </p>
+      ) : null}
+      {localMessage ? (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          {localMessage}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((v) => !v)}
+          className="min-h-[40px] rounded-xl bg-store-accent px-3 py-2 text-xs font-bold text-white"
+        >
+          {PROVIDER_REVIEW_SUPPLEMENT_VIEW}
+        </button>
+        {vm?.canAddNote !== false ? (
+          <button
+            type="button"
+            onClick={() => setNoteOpen(true)}
+            className="min-h-[40px] rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-950"
+          >
+            {PROVIDER_REVIEW_SUPPLEMENT_ADD_NOTE}
+          </button>
+        ) : null}
+        {vm?.canWithdraw ? (
+          <button
+            type="button"
+            disabled={localBusy != null}
+            onClick={() => void onWithdraw()}
+            className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {localBusy === "withdraw" ? "철회 중…" : PROVIDER_REVIEW_SUPPLEMENT_WITHDRAW}
+          </button>
+        ) : null}
+        {vm?.showMaterialsLink ? (
+          <button
+            type="button"
+            onClick={() => onGoToPayload?.()}
+            className="min-h-[40px] rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600"
+          >
+            {PROVIDER_REVIEW_WITHDRAWN_GO_MATERIALS}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 /**
  * Provider generation-result review workbench (detail only).
  * List cards must not expose 확인 완료 — only "검토하기" entry.
@@ -167,11 +384,13 @@ export function ProviderGenerationReviewPanel({
   pack,
   phase,
   onChanged,
+  onGoToPayload,
 }: {
   readonly packId: string;
   readonly pack: ProviderPackDetailDto | null;
   readonly phase: "REQUESTED" | "CONFIRMED" | "WITHDRAWN" | "NONE";
   readonly onChanged: () => Promise<void> | void;
+  readonly onGoToPayload?: () => void;
 }) {
   const [busy, setBusy] = useState<"confirm" | "withdraw" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -552,6 +771,17 @@ export function ProviderGenerationReviewPanel({
       cancelled = true;
     };
   }, [chunkDetailItem, packId]);
+
+  if (phase === "WITHDRAWN") {
+    return (
+      <ProviderSupplementWaitingPanel
+        packId={packId}
+        pack={pack}
+        onChanged={onChanged}
+        onGoToPayload={onGoToPayload}
+      />
+    );
+  }
 
   if (phase !== "REQUESTED" && phase !== "CONFIRMED") {
     return null;

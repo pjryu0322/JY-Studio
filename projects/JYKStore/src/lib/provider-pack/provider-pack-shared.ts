@@ -123,5 +123,8 @@ export async function mapProviderPackDetailWithValidation(
     latestReviewStatus: latestOpenReview?.status ?? null,
     adminGenerationHold,
     providerReviewPhase: workflowMarkers.providerReviewPhase,
+    providerChangesRequest: workflowMarkers.providerChangesRequest,
+    providerSupplement: workflowMarkers.providerSupplement,
+    providerSupplementPhase: workflowMarkers.providerSupplementPhase,
   });
 }

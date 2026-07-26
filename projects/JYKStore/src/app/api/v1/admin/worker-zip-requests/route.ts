@@ -5,10 +5,13 @@
  * REVIEWING review list). This queue surfaces them to Admins, who open the pack and
  * execute generation via /api/v1/admin/packs/[packId]/worker-zip. Gated by
  * requireAdminSession.
+ *
+ * Also returns provider 보완요청 / WITHDRAWN packs (ZIP markers cleared on withdraw).
  */
 import { NextRequest } from "next/server";
 import { requireAdminSession } from "@/lib/admin-route-guard";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { listAdminProviderReturnedPacks } from "@/lib/store-workflow-markers";
 import { listAdminWorkerZipRequests } from "@/lib/python-worker/worker-zip-import-provider-service";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
@@ -24,8 +27,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const items = await listAdminWorkerZipRequests();
-    return jsonWithClientIdCookie({ clientId, items }, clientId, { status: 200 });
+    const [items, returnedItems] = await Promise.all([
+      listAdminWorkerZipRequests(),
+      listAdminProviderReturnedPacks(),
+    ]);
+    return jsonWithClientIdCookie({ clientId, items, returnedItems }, clientId, {
+      status: 200,
+    });
   } catch (error) {
     logSafeRouteError({
       scope: "admin/worker-zip-requests",

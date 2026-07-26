@@ -1567,6 +1567,7 @@ export async function listAdminWorkerZipRequests(input?: {
       sourceKind: "WORKER_ZIP",
       workerZipPhase: item.phase,
       providerReviewPhase,
+      providerSupplementPhase: markers?.providerSupplementPhase ?? "NONE",
       serviceValidationPhase,
       categoryId: item.categoryId,
       categoryName: item.categoryName,

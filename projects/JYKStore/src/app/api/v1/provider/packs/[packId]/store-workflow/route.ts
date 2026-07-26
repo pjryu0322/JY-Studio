@@ -2,9 +2,11 @@ import { NextRequest } from "next/server";
 import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import {
+  addProviderSupplementNote,
   confirmProviderStoreReview,
   resolveStoreWorkflowMarkers,
   withdrawProviderStoreReview,
+  withdrawProviderSupplementRequest,
 } from "@/lib/store-workflow-markers";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { getProviderPackForClient } from "@/lib/provider-pack/provider-pack-query-service";
@@ -46,6 +48,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const body = (await request.json().catch(() => null)) as {
       action?: string;
+      note?: string;
       changesRequest?: {
         changeType?: string;
         targetKind?: string;
@@ -124,8 +127,64 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (action === "supplement_note") {
+      const result = await addProviderSupplementNote({
+        packId: trimmed,
+        clientId,
+        note: body?.note ?? "",
+      });
+      if (!result.ok) {
+        return jsonWithClientIdCookie(
+          { ok: false, error: result.error, message: result.message },
+          clientId,
+          { status: 409 },
+        );
+      }
+      return jsonWithClientIdCookie(
+        {
+          ok: true,
+          clientId,
+          packId: trimmed,
+          providerSupplement: result.state,
+          providerSupplementPhase: result.state.adminPhase,
+        },
+        clientId,
+        { status: 200 },
+      );
+    }
+
+    if (action === "supplement_withdraw") {
+      const result = await withdrawProviderSupplementRequest({
+        packId: trimmed,
+        clientId,
+      });
+      if (!result.ok) {
+        return jsonWithClientIdCookie(
+          { ok: false, error: result.error, message: result.message },
+          clientId,
+          { status: 409 },
+        );
+      }
+      return jsonWithClientIdCookie(
+        {
+          ok: true,
+          clientId,
+          packId: trimmed,
+          providerSupplement: result.state,
+          providerSupplementPhase: result.state.adminPhase,
+        },
+        clientId,
+        { status: 200 },
+      );
+    }
+
     return jsonWithClientIdCookie(
-      { ok: false, error: "INVALID_ACTION", message: "action은 confirm 또는 withdraw 입니다." },
+      {
+        ok: false,
+        error: "INVALID_ACTION",
+        message:
+          "action은 confirm, withdraw, supplement_note, supplement_withdraw 입니다.",
+      },
       clientId,
       { status: 400 },
     );

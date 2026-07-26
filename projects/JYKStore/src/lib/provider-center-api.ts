@@ -1138,3 +1138,40 @@ export async function withdrawProviderStoreReviewApi(
   if (response.ok && data?.ok === true) return;
   throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
 }
+
+export async function addProviderSupplementNoteApi(
+  packId: string,
+  note: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/store-workflow`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "supplement_note", note }),
+    },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string; message?: string }
+    | null;
+  if (response.ok && data?.ok === true) return;
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+export async function withdrawProviderSupplementRequestApi(packId: string): Promise<void> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/store-workflow`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "supplement_withdraw" }),
+    },
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string; message?: string }
+    | null;
+  if (response.ok && data?.ok === true) return;
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}

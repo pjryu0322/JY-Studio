@@ -87,6 +87,33 @@ describe("admin work inbox view model", () => {
     assert.equal(view.isWaitingForAdmin, false);
   });
 
+  it("maps provider WITHDRAWN / 보완요청 into supplement queue as waiting", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "rmategridh5webv60",
+      packName: "리아모어",
+      packStatus: "DRAFT",
+      providerReviewPhase: "WITHDRAWN",
+      providerSupplementPhase: "PENDING",
+    });
+    assert.equal(view.displayStatus, "보완요청 접수 대기");
+    assert.equal(view.ctaLabel, "요청사항 확인");
+    assert.equal(view.adminQueueGroup, "PROVIDER_SUPPLEMENT_REQUIRED");
+    assert.equal(view.isWaitingForAdmin, true);
+    assert.equal(view.workflowStatus, "PROVIDER_WITHDRAWN");
+  });
+
+  it("maps plain WITHDRAWN without supplement out of admin waiting", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "plain-withdraw",
+      packName: "Plain",
+      packStatus: "DRAFT",
+      providerReviewPhase: "WITHDRAWN",
+      providerSupplementPhase: "NONE",
+    });
+    assert.equal(view.adminQueueGroup, "OTHER");
+    assert.equal(view.isWaitingForAdmin, false);
+  });
+
   it("excludes provider-review and published from waiting count", () => {
     const items = mergeAdminWorkInboxViewModels([
       buildAdminWorkInboxItemViewModel({

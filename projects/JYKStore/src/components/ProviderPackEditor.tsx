@@ -71,6 +71,7 @@ import {
   PROVIDER_PACK_LOCKED_ADMIN_GENERATION,
   PROVIDER_PACK_LOCKED_GENERATION_REVIEW,
   PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE,
+  PROVIDER_PACK_LOCKED_PROVIDER_WITHDRAWN,
   PROVIDER_PACK_LOCKED_REJECTION,
   PROVIDER_PACK_LOCKED_REVIEWING,
   PROVIDER_PACK_SAVE_DRAFT_SUCCESS,
@@ -131,6 +132,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     latestReviewStatus: pack?.latestReviewStatus,
     adminGenerationHold,
     providerReviewPhase,
+    providerSupplementPhase: pack?.providerSupplementPhase ?? "NONE",
   });
   const isReviewing =
     pack?.status === "REVIEWING" ||
@@ -637,8 +639,17 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
         {!awaitingRejectionAck &&
         !isReviewing &&
+        providerReviewPhase === "WITHDRAWN" ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+            {PROVIDER_PACK_LOCKED_PROVIDER_WITHDRAWN}
+          </div>
+        ) : null}
+
+        {!awaitingRejectionAck &&
+        !isReviewing &&
         providerReviewPhase !== "REQUESTED" &&
         providerReviewPhase !== "CONFIRMED" &&
+        providerReviewPhase !== "WITHDRAWN" &&
         lockedByAdminGeneration ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             {PROVIDER_PACK_LOCKED_ADMIN_GENERATION}
@@ -650,7 +661,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         !awaitingRejectionAck &&
         !lockedByAdminGeneration &&
         providerReviewPhase !== "REQUESTED" &&
-        providerReviewPhase !== "CONFIRMED" ? (
+        providerReviewPhase !== "CONFIRMED" &&
+        providerReviewPhase !== "WITHDRAWN" ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
             {PROVIDER_PACK_LOCKED_REJECTION}
           </div>
@@ -789,8 +801,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 : "NONE"
             }
             onChanged={load}
+            onGoToPayload={() => selectTab("payload")}
           />
-          {providerReviewPhase === "REQUESTED" ? null : (
+          {providerReviewPhase === "REQUESTED" ||
+          providerReviewPhase === "WITHDRAWN" ? null : (
             <ProviderKnowledgeGenerationTab
               packId={packId}
               editable={editable}

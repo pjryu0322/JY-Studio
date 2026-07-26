@@ -11,12 +11,17 @@ import {
   type StoreServiceValidationPhase,
   type StoreWorkflowStatus,
 } from "@/lib/store-workflow-status";
+import {
+  buildAdminSupplementQueueDisplay,
+  type ProviderSupplementAdminPhase,
+} from "@/lib/provider-supplement-request";
 
 export const ADMIN_WORK_INBOX_QUEUE_GROUPS = [
   "ACCEPT_REQUIRED",
   "GENERATE_REQUIRED",
   "QUALITY_CHECK_REQUIRED",
   "PROVIDER_REVIEW_IN_PROGRESS",
+  "PROVIDER_SUPPLEMENT_REQUIRED",
   "ADMIN_REVIEW_REQUIRED",
   "ADMIN_REVIEW_IN_PROGRESS",
   "PUBLISHED",
@@ -35,6 +40,7 @@ export type AdminWorkInboxItemSource = {
   sourceKind?: AdminWorkInboxSourceKind;
   workerZipPhase?: "REQUESTED" | "ACCEPTED" | "COMPLETED" | null;
   providerReviewPhase?: StoreProviderReviewPhase | null;
+  providerSupplementPhase?: ProviderSupplementAdminPhase | "NONE" | null;
   serviceValidationPhase?: StoreServiceValidationPhase | null;
   /** Latest PackReview.status when available. */
   packReviewStatus?: string | null;
@@ -55,6 +61,7 @@ export type AdminWorkInboxItemViewModel = {
   workflowStatus: StoreWorkflowStatus;
   workerZipPhase: "REQUESTED" | "ACCEPTED" | "COMPLETED" | null;
   providerReviewPhase: StoreProviderReviewPhase;
+  providerSupplementPhase: ProviderSupplementAdminPhase | "NONE";
   serviceValidationPhase: StoreServiceValidationPhase;
   packReviewStatus: string | null;
   adminQueueGroup: AdminWorkInboxQueueGroup;
@@ -73,6 +80,7 @@ export function buildAdminWorkInboxItemViewModel(
   const packStatus = String(input.packStatus ?? "DRAFT");
   const workerZipPhase = input.workerZipPhase ?? null;
   const providerReviewPhase = input.providerReviewPhase ?? "NONE";
+  const providerSupplementPhase = input.providerSupplementPhase ?? "NONE";
   const serviceValidationPhase = input.serviceValidationPhase ?? "NONE";
   const packReviewStatus = input.packReviewStatus?.trim() || null;
 
@@ -95,6 +103,7 @@ export function buildAdminWorkInboxItemViewModel(
     workflowStatus,
     workerZipPhase,
     providerReviewPhase,
+    providerSupplementPhase,
     packReviewStatus,
   });
 
@@ -116,6 +125,7 @@ export function buildAdminWorkInboxItemViewModel(
     workflowStatus,
     workerZipPhase,
     providerReviewPhase,
+    providerSupplementPhase,
     serviceValidationPhase,
     packReviewStatus,
     adminQueueGroup: mapped.adminQueueGroup,
@@ -134,6 +144,7 @@ function mapQueuePresentation(input: {
   workflowStatus: StoreWorkflowStatus;
   workerZipPhase: "REQUESTED" | "ACCEPTED" | "COMPLETED" | null;
   providerReviewPhase: StoreProviderReviewPhase;
+  providerSupplementPhase: ProviderSupplementAdminPhase | "NONE";
   packReviewStatus: string | null;
 }): {
   adminQueueGroup: AdminWorkInboxQueueGroup;
@@ -173,11 +184,41 @@ function mapQueuePresentation(input: {
     }
   }
 
+  // Provider structured 보완요청 — highest priority among DRAFT overlays.
+  if (
+    input.providerSupplementPhase === "PENDING" ||
+    input.providerSupplementPhase === "ACCEPTED" ||
+    input.providerSupplementPhase === "CLARIFY" ||
+    input.providerSupplementPhase === "RESOLVED" ||
+    input.providerSupplementPhase === "REJECTED"
+  ) {
+    const display = buildAdminSupplementQueueDisplay(input.providerSupplementPhase);
+    return {
+      adminQueueGroup: "PROVIDER_SUPPLEMENT_REQUIRED",
+      displayStatus: display.displayStatus,
+      ctaLabel: display.ctaLabel,
+      isWaitingForAdmin: display.isWaitingForAdmin,
+    };
+  }
+
   if (input.workflowStatus === "REJECTED") {
     return {
       adminQueueGroup: "RETURNED_OR_REJECTED",
       displayStatus: "보완 요청",
       ctaLabel: "보완 내역 보기",
+      isWaitingForAdmin: false,
+    };
+  }
+
+  if (
+    input.workflowStatus === "PROVIDER_WITHDRAWN" ||
+    input.providerReviewPhase === "WITHDRAWN"
+  ) {
+    // Plain withdraw (no structured supplement) — provider re-registers materials.
+    return {
+      adminQueueGroup: "OTHER",
+      displayStatus: "제공자 회수",
+      ctaLabel: "상세 보기",
       isWaitingForAdmin: false,
     };
   }
@@ -241,14 +282,15 @@ export function mergeAdminWorkInboxViewModels(
 ): AdminWorkInboxItemViewModel[] {
   const rank: Record<AdminWorkInboxQueueGroup, number> = {
     ADMIN_REVIEW_IN_PROGRESS: 0,
-    ADMIN_REVIEW_REQUIRED: 1,
-    QUALITY_CHECK_REQUIRED: 2,
-    GENERATE_REQUIRED: 3,
-    ACCEPT_REQUIRED: 4,
-    PROVIDER_REVIEW_IN_PROGRESS: 5,
-    RETURNED_OR_REJECTED: 6,
-    PUBLISHED: 7,
-    OTHER: 8,
+    PROVIDER_SUPPLEMENT_REQUIRED: 1,
+    ADMIN_REVIEW_REQUIRED: 2,
+    QUALITY_CHECK_REQUIRED: 3,
+    GENERATE_REQUIRED: 4,
+    ACCEPT_REQUIRED: 5,
+    PROVIDER_REVIEW_IN_PROGRESS: 6,
+    RETURNED_OR_REJECTED: 7,
+    PUBLISHED: 8,
+    OTHER: 9,
   };
   const byPack = new Map<string, AdminWorkInboxItemViewModel>();
   for (const item of items) {

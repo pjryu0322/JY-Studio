@@ -56,6 +56,7 @@ export function isProviderPackContentEditable(input: {
   latestReviewStatus?: string | null;
   adminGenerationHold?: string | null;
   providerReviewPhase?: string | null;
+  providerSupplementPhase?: string | null;
 }): boolean {
   if (input.status !== "DRAFT") return false;
   if (input.latestReviewStatus && isOpenPackReviewStatus(input.latestReviewStatus)) {
@@ -67,6 +68,14 @@ export function isProviderPackContentEditable(input: {
   if (
     input.providerReviewPhase === "REQUESTED" ||
     input.providerReviewPhase === "CONFIRMED"
+  ) {
+    return false;
+  }
+  // Structured 보완요청: lock while admin is reviewing / processing.
+  if (
+    input.providerSupplementPhase === "PENDING" ||
+    input.providerSupplementPhase === "ACCEPTED" ||
+    input.providerSupplementPhase === "RESOLVED"
   ) {
     return false;
   }

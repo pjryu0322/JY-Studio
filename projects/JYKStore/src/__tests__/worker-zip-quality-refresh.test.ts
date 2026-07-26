@@ -78,9 +78,8 @@ describe("worker source document content (quality-gate wiring)", () => {
       "utf8",
     );
     assert.match(card, /runAdminWorkerZipQualityRefresh/);
-    assert.match(card, /판단 근거 품질 점검/);
+    assert.match(card, /품질 점검/);
     assert.match(card, /QualityPipelineProgress/);
-    assert.match(card, /품질점검 내역/);
     assert.match(card, /QualityCheckHistoryCard/);
     assert.match(card, /buildQualitySnapshotFromDetail/);
     assert.match(card, /buildQualityCheckHistoryMarkdown/);

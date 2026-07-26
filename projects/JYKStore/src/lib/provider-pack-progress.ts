@@ -231,6 +231,13 @@ export function buildProviderPacksStatusSummary(
       summary.changesRequested += 1;
       continue;
     }
+    if (
+      pack.storeWorkflowStatus === "PROVIDER_WITHDRAWN" ||
+      pack.providerReviewPhase === "WITHDRAWN"
+    ) {
+      summary.changesRequested += 1;
+      continue;
+    }
     if (pack.status === "DRAFT") {
       summary.draft += 1;
     }
@@ -419,11 +426,10 @@ export function buildProviderPackProgress(
   } else if (storeWorkflowStatus === "PROVIDER_WITHDRAWN") {
     currentStep = "PROVIDER_WITHDRAWN";
     currentStepLabel = workflowLabel.providerStatusLabel;
-    nextActionLabel = "원본 자료를 다시 등록하고 처리 요청하세요.";
-    nextActionHref = detailHref(packId, "payload");
+    nextActionLabel = "관리자가 보완 요청을 확인·처리할 때까지 기다려 주세요.";
+    nextActionHref = detailHref(packId, "knowledge");
     actions = [
-      { label: "자료등록", href: detailHref(packId, "payload") },
-      { label: "기본정보 수정", href: detailHref(packId, "basic") },
+      { label: "요청 상태 보기", href: detailHref(packId, "knowledge") },
     ];
   } else {
     // Authoring path — derive next action from readiness current step.

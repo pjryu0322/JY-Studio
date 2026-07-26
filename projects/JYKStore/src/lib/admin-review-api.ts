@@ -93,10 +93,38 @@ export type AdminWorkerZipRequestListItem = {
   isWaitingForAdmin: boolean;
 };
 
-/** List DRAFT packs with open or completed ZIP generation requests. */
+export type AdminProviderReturnedPackListItem = {
+  packId: string;
+  packName: string;
+  providerName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  versionLabel: string | null;
+  withdrawnAt: string;
+  packStatus: string;
+  providerReviewPhase: "WITHDRAWN" | "NONE" | "REQUESTED" | "CONFIRMED";
+  serviceValidationPhase: "NONE" | "PASSED";
+  providerSupplementPhase?: string;
+  changesRequest: {
+    changeType: string;
+    targetKind: string;
+    targetLabel?: string;
+    details: string;
+  } | null;
+  changeTypeLabel?: string | null;
+  targetCount?: number;
+  workflowStatus: string;
+  displayStatus: string;
+  adminQueueGroup: string;
+  ctaLabel: string;
+  isWaitingForAdmin: boolean;
+};
+
+/** List DRAFT packs with open/completed ZIP requests, plus provider 보완요청 returns. */
 export async function fetchAdminWorkerZipRequests(): Promise<{
   clientId: string;
   items: AdminWorkerZipRequestListItem[];
+  returnedItems: AdminProviderReturnedPackListItem[];
 }> {
   const response = await fetch("/api/v1/admin/worker-zip-requests", {
     method: "GET",
@@ -105,9 +133,15 @@ export async function fetchAdminWorkerZipRequests(): Promise<{
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
   }
-  return (await response.json()) as {
+  const data = (await response.json()) as {
     clientId: string;
     items: AdminWorkerZipRequestListItem[];
+    returnedItems?: AdminProviderReturnedPackListItem[];
+  };
+  return {
+    clientId: data.clientId,
+    items: data.items ?? [],
+    returnedItems: data.returnedItems ?? [],
   };
 }
 
@@ -510,6 +544,8 @@ export type AdminStoreWorkflowMarkers = {
   providerReviewRequestedAt: string | null;
   providerReviewConfirmedAt: string | null;
   serviceValidationPassedAt: string | null;
+  providerSupplementPhase?: string;
+  providerSupplement?: import("@/lib/provider-supplement-request").ProviderSupplementRequestState | null;
 };
 
 export async function fetchAdminStoreWorkflowMarkers(
@@ -529,6 +565,51 @@ export async function fetchAdminStoreWorkflowMarkers(
       providerReviewRequestedAt: data.providerReviewRequestedAt,
       providerReviewConfirmedAt: data.providerReviewConfirmedAt,
       serviceValidationPassedAt: data.serviceValidationPassedAt,
+      providerSupplementPhase: data.providerSupplementPhase,
+      providerSupplement: data.providerSupplement ?? null,
+    };
+  }
+  throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+export async function postAdminProviderSupplementAction(
+  packId: string,
+  input: {
+    action:
+      | "ACCEPT"
+      | "RESOLVE"
+      | "REJECT"
+      | "CLARIFY"
+      | "REQUEST_PROVIDER_REVIEW_AGAIN";
+    resolutionNote?: string;
+    rejectionReason?: string;
+    clarifyMessage?: string;
+    nextAdminStep?: "NONE" | "WORKER_REPROCESS" | "QUALITY_RECHECK";
+  },
+): Promise<{
+  providerSupplementPhase: string;
+  providerSupplement: import("@/lib/provider-supplement-request").ProviderSupplementRequestState;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/provider-supplement`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  const data = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: string;
+    message?: string;
+    providerSupplementPhase?: string;
+    providerSupplement?: import("@/lib/provider-supplement-request").ProviderSupplementRequestState;
+  } | null;
+  if (response.ok && data?.ok === true && data.providerSupplement) {
+    return {
+      providerSupplementPhase: data.providerSupplementPhase ?? data.providerSupplement.adminPhase,
+      providerSupplement: data.providerSupplement,
     };
   }
   throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);

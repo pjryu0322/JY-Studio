@@ -105,8 +105,8 @@ const LABELS: Record<StoreWorkflowStatus, { label: string; providerStatusLabel: 
     providerStatusLabel: "관리자 서비스 검증 대기",
   },
   PROVIDER_WITHDRAWN: {
-    label: "제공자 회수",
-    providerStatusLabel: "자료 재등록 필요",
+    label: "보완 요청",
+    providerStatusLabel: "보완 요청 제출됨 — 관리자 확인 대기",
   },
   SERVICE_VALIDATING: {
     label: "서비스 검증 중",

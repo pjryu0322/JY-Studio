@@ -169,8 +169,18 @@ export const PROVIDER_PACK_LOCKED_GENERATION_REVIEW =
   "관리자가 생성·품질점검한 지식데이터를 검토해 주세요. 아래 상세 검토에서 확인 완료하거나 보완 요청을 작성하세요.";
 export const PROVIDER_PACK_LOCKED_WAITING_ADMIN_SERVICE =
   "생성 결과 확인이 완료되었습니다. 관리자 서비스 검증·최종 검수 결과를 기다려 주세요.";
+export const PROVIDER_PACK_LOCKED_PROVIDER_WITHDRAWN =
+  "관리자에게 보완 요청이 제출되었습니다. 관리자 확인·처리가 끝날 때까지 기다려 주세요.";
 export const PROVIDER_PACK_LOCKED_REJECTION =
   "검수 반려 사유를 확인한 뒤에 수정을 시작할 수 있습니다.";
+export const PROVIDER_REVIEW_WITHDRAWN_TITLE = "보완 요청 제출됨";
+export const PROVIDER_REVIEW_WITHDRAWN_BODY =
+  "관리자에게 보완 요청이 제출되었습니다. 관리자가 요청 내용을 확인한 뒤 보완 처리, 반려 또는 추가 확인 요청을 진행합니다.";
+export const PROVIDER_REVIEW_WITHDRAWN_GO_MATERIALS = "자료등록으로 이동";
+export const PROVIDER_REVIEW_SUPPLEMENT_VIEW = "요청 내용 보기";
+export const PROVIDER_REVIEW_SUPPLEMENT_ADD_NOTE = "추가 의견 남기기";
+export const PROVIDER_REVIEW_SUPPLEMENT_WITHDRAW = "요청 철회";
+export const PROVIDER_REVIEW_SUPPLEMENT_ADMIN_WAITING = "관리자 확인 대기";
 export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
   "개발자 테스트: 관리자 콘솔에서 검수 대기 목록을 확인하세요.";
 
@@ -211,6 +221,10 @@ export const ADMIN_WORK_SECTION_PUBLISHED_TITLE = "공개 지식팩";
 export const ADMIN_WORK_SECTION_PUBLISHED_BODY =
   "이미 공개된 지식팩입니다. 대기 업무가 아닙니다.";
 export const ADMIN_WORK_SECTION_PUBLISHED_CTA = "공개 상세 보기";
+export const ADMIN_WORK_SECTION_RETURNED_TITLE = "제공자 보완요청";
+export const ADMIN_WORK_SECTION_RETURNED_BODY =
+  "제공자가 생성 결과에 대해 보완을 요청한 지식팩입니다. 요청사항을 확인한 뒤 접수·보완 처리·반려·추가 확인을 진행하세요.";
+export const ADMIN_WORK_SECTION_RETURNED_CTA = "요청사항 확인";
 export const ADMIN_WORK_FILTER_CATEGORY_ALL = "전체 카테고리";
 export const ADMIN_WORK_FILTER_STATUS_ALL = "전체 상태";
 export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "접수 대기";
@@ -219,6 +233,7 @@ export const ADMIN_WORK_FILTER_STATUS_QUALITY = "품질점검 대기";
 export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토 중";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 접수";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "검수 진행 중";
+export const ADMIN_WORK_FILTER_STATUS_RETURNED = "제공자 보완요청";
 export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
 export const ADMIN_WORK_EMPTY = "지금 처리할 작업이 없습니다.";
 export const ADMIN_WORK_SUMMARY_LABEL = "대기";

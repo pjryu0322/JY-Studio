@@ -60,4 +60,15 @@ describe("deriveStoreWorkflowStatus", () => {
     });
     assert.equal(status, "SERVICE_VALIDATING");
   });
+
+  it("maps provider WITHDRAWN to PROVIDER_WITHDRAWN with 보완 요청 labels", () => {
+    const status = deriveStoreWorkflowStatus({
+      packStatus: "DRAFT",
+      providerReviewPhase: "WITHDRAWN",
+    });
+    assert.equal(status, "PROVIDER_WITHDRAWN");
+    const labels = describeStoreWorkflowStatus(status);
+    assert.equal(labels.label, "보완 요청");
+    assert.match(labels.providerStatusLabel, /관리자 확인 대기/);
+  });
 });

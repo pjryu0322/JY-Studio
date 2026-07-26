@@ -11,6 +11,11 @@ import type {
 } from "@/lib/provider-pack-progress";
 import type { StoreWorkflowStatus } from "@/lib/store-workflow-status";
 import type { StoreProviderReviewPhase } from "@/lib/store-workflow-status";
+import type { ProviderChangesRequestPayload } from "@/lib/provider-review-workbench";
+import type {
+  ProviderSupplementAdminPhase,
+  ProviderSupplementRequestState,
+} from "@/lib/provider-supplement-request";
 
 export type ProviderPackListProgressDto = {
   currentStep: ProviderPackCurrentStep;
@@ -138,6 +143,11 @@ export type ProviderPackDetailDto = {
   adminGenerationHold: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
   /** Persisted provider-review handoff phase (PipelineRun marker). */
   providerReviewPhase: StoreProviderReviewPhase;
+  /** Parsed 보완요청 when provider withdrew with a structured changes request. */
+  providerChangesRequest: ProviderChangesRequestPayload | null;
+  /** Admin-processing state for structured provider 보완요청. */
+  providerSupplement: ProviderSupplementRequestState | null;
+  providerSupplementPhase: ProviderSupplementAdminPhase | "NONE";
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -195,6 +205,9 @@ export function toProviderPackDetail(
     latestReviewStatus?: string | null;
     adminGenerationHold?: "ACCEPTED" | "PROCESSING" | "COMPLETED" | null;
     providerReviewPhase?: StoreProviderReviewPhase | null;
+    providerChangesRequest?: ProviderChangesRequestPayload | null;
+    providerSupplement?: ProviderSupplementRequestState | null;
+    providerSupplementPhase?: ProviderSupplementAdminPhase | "NONE" | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -220,6 +233,9 @@ export function toProviderPackDetail(
     latestReviewStatus: options?.latestReviewStatus ?? null,
     adminGenerationHold: options?.adminGenerationHold ?? null,
     providerReviewPhase: options?.providerReviewPhase ?? "NONE",
+    providerChangesRequest: options?.providerChangesRequest ?? null,
+    providerSupplement: options?.providerSupplement ?? null,
+    providerSupplementPhase: options?.providerSupplementPhase ?? "NONE",
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

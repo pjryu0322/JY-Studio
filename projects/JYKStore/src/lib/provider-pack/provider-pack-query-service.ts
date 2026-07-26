@@ -280,6 +280,13 @@ export async function assertProviderPackEditableForClient(
   ) {
     return { ok: false, error: "NOT_EDITABLE", status: pack.status };
   }
+  if (
+    markers.providerSupplementPhase === "PENDING" ||
+    markers.providerSupplementPhase === "ACCEPTED" ||
+    markers.providerSupplementPhase === "RESOLVED"
+  ) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
 
   const latestRejected = await prisma.packReview.findFirst({
     where: { packId: pack.packId, decision: "REJECT" },

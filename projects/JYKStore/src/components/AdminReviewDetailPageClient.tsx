@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
 import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
+import { AdminProviderSupplementPanel } from "@/components/AdminProviderSupplementPanel";
 import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
 import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
@@ -18,6 +19,7 @@ import {
   requestAdminProviderReviewApi,
   type AdminStoreWorkflowMarkers,
 } from "@/lib/admin-review-api";
+import type { ProviderSupplementRequestState } from "@/lib/provider-supplement-request";
 import { isReviewAccepted } from "@/lib/admin-review-tabs";
 import {
   buildAdminQualityGateSnapshot,
@@ -60,7 +62,11 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     providerReviewRequestedAt: null,
     providerReviewConfirmedAt: null,
     serviceValidationPassedAt: null,
+    providerSupplementPhase: "NONE",
+    providerSupplement: null,
   });
+  const [supplementState, setSupplementState] =
+    useState<ProviderSupplementRequestState | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
   const [channelGates, setChannelGates] = useState<{
@@ -90,7 +96,10 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       ]);
       setDetail(data.detail);
       if (zip?.requestStatus) setWorkerZipPhase(zip.requestStatus as AdminWorkerZipPhase);
-      if (markers) setWorkflowMarkers(markers);
+      if (markers) {
+        setWorkflowMarkers(markers);
+        setSupplementState(markers.providerSupplement ?? null);
+      }
       if (gates) setChannelGates(gates);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
@@ -176,6 +185,15 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       ) : null}
 
       <AdminReviewPageHeader detail={detail} />
+
+      {supplementState ? (
+        <AdminProviderSupplementPanel
+          packId={packId}
+          state={supplementState}
+          providerName={detail.providerName}
+          onChanged={refreshSilently}
+        />
+      ) : null}
 
       <div className="rounded-2xl border border-store-border bg-white px-4 py-3 text-xs text-slate-700 shadow-card">
         <p>
