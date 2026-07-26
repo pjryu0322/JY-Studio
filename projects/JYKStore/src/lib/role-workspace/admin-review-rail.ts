@@ -8,7 +8,6 @@ import { isReviewAccepted, isPendingAdminReview } from "@/lib/admin-review-tabs"
 import type {
   NextReviewAction,
   RoleRailItem,
-  RoleRailStepStatus,
 } from "@/lib/role-workspace/types";
 import { ROUTES, adminReviewDetailPath } from "@/lib/routes";
 import type {
@@ -233,24 +232,6 @@ export function getNextReviewAction(input: {
   };
 }
 
-function statusFor(
-  step: AdminReviewWorkflowStep,
-  current: AdminReviewWorkflowStep,
-  completedThrough: AdminReviewWorkflowStep | null,
-  blocked: boolean,
-  warning: boolean,
-): RoleRailStepStatus {
-  const stepIdx = STEP_ORDER.indexOf(step);
-  const currentIdx = STEP_ORDER.indexOf(current);
-  const doneIdx = completedThrough ? STEP_ORDER.indexOf(completedThrough) : -1;
-
-  if (blocked && stepIdx > currentIdx) return "blocked";
-  if (step === current) return warning && step === "quality" ? "warning" : "current";
-  if (stepIdx === currentIdx + 1 && !blocked) return "next";
-  if (stepIdx <= doneIdx) return warning && step === "quality" ? "warning" : "completed";
-  return "idle";
-}
-
 export function getAdminReviewRailState(input: {
   packId: string;
   workerZipPhase: AdminWorkerZipPhase;
@@ -322,45 +303,69 @@ export function getAdminReviewRailState(input: {
   const qualityWarning = quality.completed && quality.hasWarnings && !quality.hasBlockers;
   const providerWaiting = providerReviewPhase === "REQUESTED";
 
-  const mk = (
-    id: AdminReviewWorkflowStep,
-    label: string,
-    href: string,
-    extra?: Partial<RoleRailItem>,
-  ): RoleRailItem => ({
-    id,
-    label,
-    href,
-    status: statusFor(id, activeStep || current, completedThrough, blockedNext, qualityWarning),
-    ...extra,
-  });
+  const foldStageStatus = (
+    members: readonly AdminReviewWorkflowStep[],
+    warning = false,
+  ): RoleRailItem["status"] => {
+    if (members.includes(activeStep)) {
+      return warning ? "warning" : "current";
+    }
+    if (members.includes(current)) {
+      return warning ? "warning" : "current";
+    }
+    const memberMax = Math.max(...members.map((m) => STEP_ORDER.indexOf(m)));
+    const memberMin = Math.min(...members.map((m) => STEP_ORDER.indexOf(m)));
+    const doneIdx = completedThrough ? STEP_ORDER.indexOf(completedThrough) : -1;
+    if (doneIdx >= memberMax) return warning ? "warning" : "completed";
+    if (blockedNext && doneIdx >= 0 && memberMin > doneIdx) return "blocked";
+    return "idle";
+  };
 
-  const highlight = activeStep;
+  const genQualityMembers = ["generation", "quality"] as const satisfies readonly AdminReviewWorkflowStep[];
+  const decisionPublishMembers = ["decision", "publish"] as const satisfies readonly AdminReviewWorkflowStep[];
+
+  /** Visible 5-stage workbench rail. Internal step ids remain URL-compatible aliases. */
   const items: RoleRailItem[] = [
-    mk("queue", "자료 접수", `${detailPath}?step=queue`),
-    mk("generation", "생성·품질보정", `${detailPath}?step=generation`),
     {
-      ...mk("quality", "생성·품질보정", `${detailPath}?step=quality`),
-      badge: qualityWarning ? "WARNING" : undefined,
-      status: statusFor("quality", highlight, completedThrough, blockedNext, qualityWarning),
+      id: "queue",
+      label: "자료 접수",
+      href: `${detailPath}?step=queue`,
+      status: foldStageStatus(["queue"]),
     },
     {
-      ...mk(
-        "providerConfirm",
-        providerWaiting ? "제공자 검토 대기" : "제공자 검토",
-        `${detailPath}?step=providerConfirm`,
-      ),
-      status: statusFor("providerConfirm", highlight, completedThrough, blockedNext, false),
-      blockedReason: !quality.completed || blockedNext
-        ? "품질 점검을 먼저 통과하세요."
+      id: "generation",
+      label: "생성·품질보정",
+      href:
+        activeStep === "quality"
+          ? `${detailPath}?step=quality`
+          : `${detailPath}?step=generation`,
+      status: foldStageStatus(genQualityMembers, qualityWarning),
+      badge: qualityWarning ? "WARNING" : undefined,
+      blockedReason: blockedNext && foldStageStatus(genQualityMembers) === "blocked"
+        ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
         : undefined,
     },
     {
-      ...mk("searchValidation", "서비스 검증", `${detailPath}?step=searchValidation`),
+      id: "providerConfirm",
+      label: providerWaiting ? "제공자 검토 대기" : "제공자 검토",
+      href: `${detailPath}?step=providerConfirm`,
+      status:
+        !quality.completed || blockedNext
+          ? "blocked"
+          : foldStageStatus(["providerConfirm"]),
+      blockedReason:
+        !quality.completed || blockedNext
+          ? "품질 점검을 먼저 통과하세요."
+          : undefined,
+    },
+    {
+      id: "searchValidation",
+      label: "서비스 검증",
+      href: `${detailPath}?step=searchValidation`,
       status:
         providerReviewPhase !== "CONFIRMED"
-          ? ("blocked" as const)
-          : statusFor("searchValidation", highlight, completedThrough, blockedNext, false),
+          ? "blocked"
+          : foldStageStatus(["searchValidation"]),
       blockedReason:
         providerReviewPhase !== "CONFIRMED"
           ? "제공자 확인 완료 후에만 서비스 검증을 진행할 수 있습니다."
@@ -369,11 +374,16 @@ export function getAdminReviewRailState(input: {
             : undefined,
     },
     {
-      ...    mk("decision", "승인·게시", `${detailPath}?step=decision`),
+      id: "decision",
+      label: "승인·게시",
+      href:
+        activeStep === "publish"
+          ? `${detailPath}?step=publish`
+          : `${detailPath}?step=decision`,
       status:
         providerReviewPhase !== "CONFIRMED" || !serviceDone
-          ? ("blocked" as const)
-          : statusFor("decision", highlight, completedThrough, blockedNext, false),
+          ? "blocked"
+          : foldStageStatus(decisionPublishMembers),
       blockedReason: blockedNext
         ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
         : providerReviewPhase !== "CONFIRMED"
@@ -382,7 +392,6 @@ export function getAdminReviewRailState(input: {
             ? "서비스 검증을 먼저 완료하세요."
             : undefined,
     },
-    mk("publish", "승인·게시", `${detailPath}?step=publish`),
     {
       id: "ops",
       label: "운영 로그",
@@ -392,32 +401,24 @@ export function getAdminReviewRailState(input: {
   ];
 
   return {
-    items: items.map((item) => {
-      if (item.id === "ops") return item;
-      if (item.id === highlight) {
-        return {
-          ...item,
-          status:
-            item.status === "blocked"
-              ? "blocked"
-              : item.id === "quality" && qualityWarning
-                ? "warning"
-                : "current",
-        };
-      }
-      if (item.status === "current" && item.id !== highlight) {
-        const doneIdx = completedThrough ? STEP_ORDER.indexOf(completedThrough) : -1;
-        const idx = STEP_ORDER.indexOf(item.id as AdminReviewWorkflowStep);
-        return {
-          ...item,
-          status: idx <= doneIdx ? (item.badge ? "warning" : "completed") : "idle",
-        };
-      }
-      return item;
-    }),
+    items,
     currentStep: current,
   };
 }
+
+/**
+ * Internal step ids still accepted via `?step=` (aliased into the 5-stage display rail).
+ * Kept for deep-link / test compatibility — do not remove without a migration.
+ */
+export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = [
+  "queue",
+  "generation",
+  "quality",
+  "providerConfirm",
+  "searchValidation",
+  "decision",
+  "publish",
+] as const;
 
 /** Static admin console rail (list / ops pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {

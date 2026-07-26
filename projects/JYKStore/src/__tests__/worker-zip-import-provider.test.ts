@@ -566,9 +566,13 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(src, /runAdminWorkerZipGeneration/);
     assert.match(src, /지식데이터 생성 실행/);
     assert.doesNotMatch(src, /acceptAdminWorkerZipRequest/);
+    assert.doesNotMatch(src, /자료 반려/);
+    assert.doesNotMatch(src, /cancelAdminWorkerZipRejection/);
     const acceptance = readSrc("components/AdminMaterialAcceptancePanel.tsx");
     assert.match(acceptance, /acceptAdminWorkerZipRequest/);
     assert.match(acceptance, /자료 접수/);
+    assert.match(acceptance, /자료 반려/);
+    assert.match(acceptance, /cancelAdminWorkerZipRejection/);
   });
 
   it("admin request-queue route lists pending requests for admins only", () => {
@@ -1631,14 +1635,17 @@ describe("P7.5 admin worker operation UX (reject + progress + runs)", () => {
     const runsRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/runs/route.ts");
     assert.match(runsRoute, /listWorkerZipRuns/);
 
-    // Admin card wires reject form, live stepper polling, and the runs panel.
+    // Admin generation card keeps execute/progress/runs; reject lives on acceptance panel.
     const adminCard = read("src/components/AdminWorkerZipGenerationCard.tsx");
-    assert.match(adminCard, /자료 반려/);
-    assert.match(adminCard, /반려 취소/);
-    assert.match(adminCard, /cancelAdminWorkerZipRejection/);
+    assert.doesNotMatch(adminCard, /자료 반려/);
+    assert.doesNotMatch(adminCard, /cancelAdminWorkerZipRejection/);
     assert.match(adminCard, /fetchAdminWorkerZipStatus/);
     assert.match(adminCard, /setInterval/);
     assert.match(adminCard, /AdminWorkerZipRunsPanel/);
+    const acceptance = read("src/components/AdminMaterialAcceptancePanel.tsx");
+    assert.match(acceptance, /자료 반려/);
+    assert.match(acceptance, /반려 취소/);
+    assert.match(acceptance, /cancelAdminWorkerZipRejection/);
     const cancelRoute = read("src/app/api/v1/admin/packs/[packId]/worker-zip/reject/cancel/route.ts");
     assert.match(cancelRoute, /cancelAdminWorkerZipRejection/);
 

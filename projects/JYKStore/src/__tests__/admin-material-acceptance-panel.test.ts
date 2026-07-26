@@ -75,28 +75,26 @@ describe("admin material acceptance (workbench step1)", () => {
   it("queue step renders acceptance panel and not generation card", () => {
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
     assert.ok(detail.includes("AdminMaterialAcceptancePanel"));
+    assert.ok(detail.includes("AdminKnowledgeGenerationPanel"));
+    assert.ok(detail.includes("AdminKnowledgeCorrectionPanel"));
     assert.ok(detail.includes('activeStep === "queue"'));
     assert.ok(detail.includes("showAcceptance"));
-    assert.match(
-      detail,
-      /showGeneration\s*=\s*[\s\S]*activeStep === "generation"/,
-    );
-    assert.ok(!detail.includes('activeStep === "queue" ||'));
+    assert.ok(detail.includes("showGenerationWorkbench"));
     const panel = readSource("src/components/AdminMaterialAcceptancePanel.tsx");
     assert.ok(panel.includes("자료 접수"));
     assert.ok(panel.includes("자료 반려"));
+    assert.ok(panel.includes("cancelAdminWorkerZipRejection"));
     assert.ok(panel.includes("생성·품질보정으로 이동"));
     assert.ok(panel.includes("acceptAdminWorkerZipRequest"));
     assert.ok(!panel.includes("runAdminWorkerZipGeneration"));
   });
 
-  it("rail labels follow 5-step workbench naming without changing step ids", () => {
-    const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
-    assert.ok(rail.includes('mk("queue", "자료 접수"'));
-    assert.ok(rail.includes('mk("generation", "생성·품질보정"'));
-    assert.ok(rail.includes('mk("quality", "생성·품질보정"'));
-    assert.ok(rail.includes("providerConfirm"));
-    assert.ok(rail.includes("searchValidation"));
-    assert.ok(rail.includes('?step=queue'));
+  it("generation card no longer exposes 자료 반려 CTA", () => {
+    const card = readSource("src/components/AdminWorkerZipGenerationCard.tsx");
+    assert.ok(!card.includes(">자료 반려<") && !card.includes('"자료 반려"'));
+    assert.doesNotMatch(card, /rejectAdminWorkerZipRequest/);
+    assert.doesNotMatch(card, /cancelAdminWorkerZipRejection/);
+    assert.match(card, /지식데이터 생성 실행/);
+    assert.match(card, /품질 점검 실행/);
   });
 });

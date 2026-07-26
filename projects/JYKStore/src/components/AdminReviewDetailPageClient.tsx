@@ -6,9 +6,11 @@ import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
 import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
 import { AdminMaterialAcceptancePanel } from "@/components/AdminMaterialAcceptancePanel";
+import { AdminKnowledgeCorrectionPanel } from "@/components/AdminKnowledgeCorrectionPanel";
+import { AdminKnowledgeGenerationPanel } from "@/components/AdminKnowledgeGenerationPanel";
+import { AdminQualityCheckPanel } from "@/components/AdminQualityCheckPanel";
 import { AdminProviderSupplementPanel } from "@/components/AdminProviderSupplementPanel";
 import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
-import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
@@ -161,10 +163,8 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   }
 
   const showAcceptance = activeStep === "queue";
-  const showGeneration =
-    activeStep === "generation" ||
-    activeStep === "quality" ||
-    activeStep === "providerConfirm";
+  const showGenerationWorkbench =
+    activeStep === "generation" || activeStep === "quality";
   const showProviderConfirm = activeStep === "providerConfirm";
   const showSearch = activeStep === "searchValidation";
   const showDecision = activeStep === "decision" || activeStep === "publish";
@@ -272,14 +272,28 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         />
       ) : null}
 
-      {showGeneration ? (
-        <AdminWorkerZipGenerationCard
-          packId={packId}
-          onReviewDetailRefresh={refreshSilently}
-          onPhaseChange={setWorkerZipPhase}
-          qualityRefreshRequestKey={qualityRefreshKey}
-          preferQualitySection={activeStep === "quality"}
-        />
+      {showGenerationWorkbench ? (
+        <div className="space-y-3">
+          <AdminKnowledgeGenerationPanel
+            packId={packId}
+            onReviewDetailRefresh={refreshSilently}
+            onPhaseChange={setWorkerZipPhase}
+            qualityRefreshRequestKey={qualityRefreshKey}
+            preferQualitySection={activeStep === "quality"}
+          />
+          <AdminQualityCheckPanel />
+          <AdminKnowledgeCorrectionPanel
+            packId={packId}
+            workerZipPhase={workerZipPhase}
+            quality={quality}
+            onGoGeneration={() => goStep("generation")}
+            onRerunQuality={() => {
+              goStep("quality");
+              setQualityRefreshKey((k) => k + 1);
+            }}
+            onGoProviderReview={() => goStep("providerConfirm")}
+          />
+        </div>
       ) : null}
 
       {showProviderConfirm ? (

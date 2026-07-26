@@ -420,6 +420,8 @@ export async function markSearchGenerationFailed(
 
 /**
  * Mark a version's active DRAFT generations STALE. Never touches PRODUCTION.
+ * Also deactivates KnowledgeChunks bound to those generations so quality/search
+ * do not double-count prior Worker ZIP runs.
  * Returns the number of generations transitioned.
  */
 export async function markSearchGenerationStale(
@@ -427,16 +429,43 @@ export async function markSearchGenerationStale(
   client: SearchGenerationClient = prisma,
   options: { exceptId?: string } = {},
 ): Promise<number> {
-  const result = await client.searchIndexGeneration.updateMany({
-    where: {
-      versionId,
-      scope: "DRAFT",
-      status: { notIn: ["FAILED", "STALE", "RETIRED"] },
-      ...(options.exceptId ? { id: { not: options.exceptId } } : {}),
-    },
+  const where: Prisma.SearchIndexGenerationWhereInput = {
+    versionId,
+    scope: "DRAFT",
+    status: { notIn: ["FAILED", "STALE", "RETIRED"] },
+    ...(options.exceptId ? { id: { not: options.exceptId } } : {}),
+  };
+
+  const targets = await client.searchIndexGeneration.findMany({
+    where,
+    select: { id: true, chunkGenerationId: true },
+  });
+  if (targets.length === 0) return 0;
+
+  await client.searchIndexGeneration.updateMany({
+    where: { id: { in: targets.map((t) => t.id) } },
     data: { status: "STALE", staleAt: new Date() },
   });
-  return result.count;
+
+  const chunkGenerationIds = [
+    ...new Set(
+      targets
+        .map((t) => t.chunkGenerationId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (chunkGenerationIds.length > 0) {
+    await client.knowledgeChunk.updateMany({
+      where: {
+        versionId,
+        isActive: true,
+        chunkGenerationId: { in: chunkGenerationIds },
+      },
+      data: { isActive: false },
+    });
+  }
+
+  return targets.length;
 }
 
 /**

@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  cancelAdminWorkerZipRejection,
   fetchAdminReviewDetail,
   fetchAdminWorkerZipRequestState,
   fetchAdminWorkerZipStatus,
-  rejectAdminWorkerZipRequest,
   runAdminWorkerZipGeneration,
   runAdminWorkerZipQualityRefresh,
   type AdminWorkerZipGenerationResult,
@@ -39,12 +37,8 @@ const QUALITY_PIPELINE_STEPS = [
 ] as const;
 
 /**
- * P7.3/P7.5: Admin "지식데이터 생성 실행" area — the execution authority for the ZIP
- * path. The Provider only submits a ZIP request; the Admin 접수 / 반려 / 실행 here.
- *
- * P7.5 adds: 자료 반려(사유 입력), a live step-progress stepper polled while the run
- * is in flight, and a Worker 작업 내역 panel. The pack stays DRAFT throughout;
- * promotion to review is a separate admin step after verification.
+ * Workbench step2 — 지식데이터 생성 실행 + 품질점검.
+ * 자료 접수/반려는 AdminMaterialAcceptancePanel(queue)에서 처리한다.
  */
 export function AdminWorkerZipGenerationCard({
   packId,
@@ -71,13 +65,9 @@ export function AdminWorkerZipGenerationCard({
 }) {
   const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
   const [running, setRunning] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
-  const [cancellingRejection, setCancellingRejection] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AdminWorkerZipGenerationResult | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [showRejectForm, setShowRejectForm] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
   const [liveStatus, setLiveStatus] = useState<AdminWorkerZipStatus | null>(null);
   const [runsRefreshKey, setRunsRefreshKey] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -134,43 +124,6 @@ export function AdminWorkerZipGenerationCard({
     const el = document.getElementById("admin-quality-section");
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [preferQualitySection]);
-
-  const onReject = async () => {
-    if (rejecting || running) return;
-    const reason = rejectReason.trim();
-    if (!reason) {
-      setError("반려 사유를 입력해 주세요.");
-      return;
-    }
-    setRejecting(true);
-    setError(null);
-    try {
-      await rejectAdminWorkerZipRequest(packId, reason);
-      setShowRejectForm(false);
-      setRejectReason("");
-      await loadState();
-      setRunsRefreshKey((k) => k + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "반려에 실패했습니다.");
-    } finally {
-      setRejecting(false);
-    }
-  };
-
-  const onCancelRejection = async () => {
-    if (cancellingRejection || running || rejecting) return;
-    setCancellingRejection(true);
-    setError(null);
-    try {
-      await cancelAdminWorkerZipRejection(packId);
-      await loadState();
-      setRunsRefreshKey((k) => k + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "반려 취소에 실패했습니다.");
-    } finally {
-      setCancellingRejection(false);
-    }
-  };
 
   const onExecute = async () => {
     if (running) return;
@@ -284,19 +237,8 @@ export function AdminWorkerZipGenerationCard({
   const hasRequest = Boolean(request);
   const status = state?.requestStatus ?? "NONE";
   const inProgress = status === "PROCESSING" || running;
-  const isAccepted = status === "ACCEPTED";
   const isRejected = status === "REJECTED";
   const canAccept = status === "REQUESTED";
-  const canReject =
-    (status === "REQUESTED" ||
-      status === "ACCEPTED" ||
-      status === "COMPLETED" ||
-      status === "FAILED") &&
-    !running &&
-    !inProgress;
-  const rejection = request?.rejection ?? null;
-  const canCancelRejection =
-    isRejected && Boolean(rejection) && !rejection?.acknowledgedAt && !running && !inProgress;
   const completed = result?.ok === true && result.generationReady === true;
   const failed = result != null && result.ok === false;
   const generationDone = completed || status === "COMPLETED";
@@ -329,10 +271,9 @@ export function AdminWorkerZipGenerationCard({
     <div className="space-y-3">
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="space-y-1">
-          <h2 className="text-sm font-bold text-slate-900">지식데이터 생성 실행</h2>
+          <h2 className="text-sm font-bold text-slate-900">지식데이터 생성</h2>
           <p className="text-xs text-slate-600">
-            제공자가 등록한 자료(ZIP)를 확인한 뒤 지식데이터 생성을 실행합니다. 자료에 문제가 있으면
-            사유를 남겨 반려할 수 있습니다. 생성·검증이 끝나면 검수 단계로 승격하세요.
+            접수된 ZIP으로 지식데이터를 생성합니다. 생성 완료 후 아래에서 품질점검을 실행하세요.
           </p>
         </div>
 
@@ -357,38 +298,21 @@ export function AdminWorkerZipGenerationCard({
           </dl>
         ) : (
           <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            아직 접수된 생성 요청(ZIP 자료)이 없습니다. 제공자에게 자료 등록을 요청하세요.
+            아직 접수된 생성 요청(ZIP 자료)이 없습니다. 자료 접수 단계에서 먼저 접수하세요.
           </p>
         )}
 
         {isRejected ? (
-          <div className="space-y-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
-            <p className="font-semibold">이 요청은 반려되었습니다.</p>
-            {rejection?.reason ? (
-              <p className="whitespace-pre-wrap rounded-lg bg-white/70 px-2 py-1 text-red-900">
-                사유: {rejection.reason}
-              </p>
-            ) : null}
-            {rejection?.acknowledgedAt ? (
-              <p className="text-[11px] text-red-700">
-                제공자가 반려 사유를 확인했습니다. ({formatDateTime(rejection.acknowledgedAt)})
-              </p>
-            ) : (
-              <p className="text-[11px] text-red-700">
-                제공자가 반려 사유를 확인하기 전에는 반려를 취소할 수 있습니다.
-              </p>
-            )}
-            {canCancelRejection ? (
-              <button
-                type="button"
-                onClick={() => void onCancelRejection()}
-                disabled={cancellingRejection}
-                className="min-h-[36px] w-full rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 disabled:opacity-60"
-              >
-                {cancellingRejection ? "반려 취소 중…" : "반려 취소"}
-              </button>
-            ) : null}
-          </div>
+          <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
+            이 요청은 반려되었습니다. 반려 취소·재접수는{" "}
+            <a
+              href={`/admin/reviews/${encodeURIComponent(packId)}?step=queue`}
+              className="font-semibold underline"
+            >
+              자료 접수
+            </a>{" "}
+            단계에서 처리하세요.
+          </p>
         ) : null}
 
         {canAccept ? (
@@ -404,70 +328,18 @@ export function AdminWorkerZipGenerationCard({
           </p>
         ) : null}
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void onExecute()}
-            disabled={running || !hasRequest || inProgress || canAccept || isRejected}
-            className="min-h-[44px] flex-1 rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-60"
-          >
-            {running ? "생성 실행 중…" : "지식데이터 생성 실행"}
-          </button>
-          {canReject && !canAccept ? (
-            <button
-              type="button"
-              onClick={() => {
-                setShowRejectForm((v) => !v);
-                setError(null);
-              }}
-              disabled={rejecting || running}
-              className="min-h-[44px] rounded-xl border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 disabled:opacity-60"
-            >
-              자료 반려
-            </button>
-          ) : null}
-        </div>
-
-        {showRejectForm && canReject ? (
-          <div className="space-y-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2">
-            <p className="text-xs font-semibold text-red-900">생성 요청 반려</p>
-            <p className="text-[11px] text-red-800">
-              제공자가 ZIP을 수정해 다시 요청할 수 있도록 반려 사유를 입력해 주세요.
-            </p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              rows={3}
-              placeholder="예: 구조화 대상 문서가 부족합니다. 매뉴얼/샘플 문서를 포함해 다시 요청해 주세요."
-              className="w-full rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-slate-800"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void onReject()}
-                disabled={rejecting || !rejectReason.trim()}
-                className="min-h-[36px] flex-1 rounded-xl bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-60"
-              >
-                {rejecting ? "반려 처리 중…" : "반려 처리"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRejectForm(false);
-                  setRejectReason("");
-                }}
-                disabled={rejecting}
-                className="min-h-[36px] rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 disabled:opacity-60"
-              >
-                취소
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {isAccepted ? (
-          <p className="text-[11px] text-indigo-700">접수완료 — 제공자는 더 이상 요청을 회수할 수 없습니다.</p>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => void onExecute()}
+          disabled={running || !hasRequest || inProgress || canAccept || isRejected}
+          className="min-h-[44px] w-full rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-60"
+        >
+          {running
+            ? "생성 실행 중…"
+            : status === "FAILED" || failed
+              ? "재생성 실행"
+              : "지식데이터 생성 실행"}
+        </button>
 
         {running ? <GenerationProgress status={liveStatus} nowMs={nowTick} /> : null}
 
@@ -552,9 +424,8 @@ export function AdminWorkerZipGenerationCard({
         >
           <p className="text-sm font-bold text-slate-900">품질 점검</p>
           <p className="text-xs text-slate-600">
-            원천 문서 검증 → 구조/품질 → 청킹 품질 → 검색 품질 평가를 실제 데이터로 실행합니다.
-            결과는 아래 품질 점검 결과에 반영됩니다.
-            자료가 크면 수 분이 걸릴 수 있습니다.
+            생성 완료 후 원천 검증 → 구조/품질 → 청킹 품질 → 검색 평가를 실행합니다.
+            차단 이슈가 있으면 아래 보정 패널에서 재생성을 진행하세요.
           </p>
           <button
             type="button"

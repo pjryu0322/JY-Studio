@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   acceptAdminWorkerZipRequest,
+  cancelAdminWorkerZipRejection,
   fetchAdminWorkerZipRequestState,
   rejectAdminWorkerZipRequest,
   type AdminWorkerZipRequestState,
@@ -66,6 +67,7 @@ export function AdminMaterialAcceptancePanel({
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [cancellingRejection, setCancellingRejection] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -92,11 +94,10 @@ export function AdminMaterialAcceptancePanel({
   const request = state?.request ?? null;
   const badge = acceptanceStatusBadge(status);
   const canAccept = status === "REQUESTED";
-  const canReject =
-    status === "REQUESTED" ||
-    status === "ACCEPTED" ||
-    status === "COMPLETED" ||
-    status === "FAILED";
+  const canReject = status === "REQUESTED";
+  const rejection = request?.rejection ?? null;
+  const canCancelRejection =
+    status === "REJECTED" && Boolean(rejection) && !rejection?.acknowledgedAt;
   const showGoGeneration =
     status === "ACCEPTED" ||
     status === "PROCESSING" ||
@@ -138,6 +139,21 @@ export function AdminMaterialAcceptancePanel({
       setError(err instanceof Error ? err.message : "자료 반려에 실패했습니다.");
     } finally {
       setRejecting(false);
+    }
+  };
+
+  const onCancelRejection = async () => {
+    if (cancellingRejection) return;
+    setCancellingRejection(true);
+    setError(null);
+    try {
+      await cancelAdminWorkerZipRejection(packId);
+      await loadState();
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "반려 취소에 실패했습니다.");
+    } finally {
+      setCancellingRejection(false);
     }
   };
 
@@ -238,6 +254,15 @@ export function AdminMaterialAcceptancePanel({
             반려 사유: {request.rejection.reason}
           </p>
         ) : null}
+        {status === "REJECTED" && rejection?.acknowledgedAt ? (
+          <p className="mt-1 text-[11px] text-red-700">
+            제공자가 반려 사유를 확인했습니다. ({formatDateTime(rejection.acknowledgedAt)})
+          </p>
+        ) : status === "REJECTED" && canCancelRejection ? (
+          <p className="mt-1 text-[11px] text-red-700">
+            제공자가 반려 사유를 확인하기 전에는 반려를 취소할 수 있습니다.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
@@ -251,10 +276,21 @@ export function AdminMaterialAcceptancePanel({
           <button
             type="button"
             onClick={() => void onAccept()}
-            disabled={accepting || rejecting}
+            disabled={accepting || rejecting || cancellingRejection}
             className="min-h-[44px] w-full rounded-xl bg-store-accent px-3 text-sm font-bold text-white disabled:opacity-60"
           >
             {accepting ? "접수 중…" : "자료 접수"}
+          </button>
+        ) : null}
+
+        {canCancelRejection ? (
+          <button
+            type="button"
+            onClick={() => void onCancelRejection()}
+            disabled={cancellingRejection}
+            className="min-h-[44px] w-full rounded-xl border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 disabled:opacity-60"
+          >
+            {cancellingRejection ? "반려 취소 중…" : "반려 취소"}
           </button>
         ) : null}
 
