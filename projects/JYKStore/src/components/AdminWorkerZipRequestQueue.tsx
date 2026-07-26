@@ -67,7 +67,9 @@ export function AdminWorkerZipRequestQueue() {
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-card">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-900">{item.packName}</p>
-                  <PhaseBadge phase={item.phase} />
+                  <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800">
+                    {item.displayStatus || item.phase}
+                  </span>
                 </div>
                 {item.providerName ? (
                   <p className="mt-1 text-xs text-slate-700">제공자: {item.providerName}</p>
@@ -84,7 +86,7 @@ export function AdminWorkerZipRequestQueue() {
                   href={adminReviewDetailPath(item.packId)}
                   className="mt-3 flex min-h-[44px] items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
                 >
-                  {ctaLabel(item.phase)}
+                  {item.ctaLabel || fallbackCtaLabel(item.phase)}
                 </Link>
               </div>
             </li>
@@ -95,36 +97,14 @@ export function AdminWorkerZipRequestQueue() {
   );
 }
 
-function PhaseBadge({ phase }: { readonly phase: AdminWorkerZipRequestListItem["phase"] }) {
-  if (phase === "COMPLETED") {
-    return (
-      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
-        생성 완료
-      </span>
-    );
-  }
-  if (phase === "ACCEPTED") {
-    return (
-      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-900">
-        접수완료
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-900">
-      접수 대기
-    </span>
-  );
-}
-
-function ctaLabel(phase: AdminWorkerZipRequestListItem["phase"]): string {
+function fallbackCtaLabel(phase: AdminWorkerZipRequestListItem["phase"]): string {
   switch (phase) {
     case "COMPLETED":
-      return "품질 점검·계속하기";
+      return "품질 점검 후 검토 요청";
     case "ACCEPTED":
       return "생성 실행하기";
     default:
-      return "접수하고 생성 실행";
+      return "접수하기";
   }
 }
 

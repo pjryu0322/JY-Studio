@@ -182,7 +182,7 @@ export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 �
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
 export const ADMIN_WORK_INBOX_TITLE = "오늘 처리할 일";
 export const ADMIN_WORK_INBOX_DESCRIPTION =
-  "접수·생성·제공자 검토 요청·검수 요청 순으로 확인하세요.";
+  "접수·생성·품질점검·제공자 검토·검수 순으로 확인하세요.";
 export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "접수해야 할 지식팩";
 export const ADMIN_WORK_SECTION_ACCEPT_BODY =
   "제공자가 ZIP 자료 생성을 요청했습니다. 접수한 뒤 생성을 진행하세요.";
@@ -191,19 +191,34 @@ export const ADMIN_WORK_SECTION_GENERATE_TITLE = "생성 실행이 필요한 지
 export const ADMIN_WORK_SECTION_GENERATE_BODY =
   "접수는 끝났습니다. 지식데이터 생성을 실행하세요.";
 export const ADMIN_WORK_SECTION_GENERATE_CTA = "생성 실행하기";
-export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자에게 검토를 요청해야 할 지식팩";
+export const ADMIN_WORK_SECTION_QUALITY_TITLE = "품질점검이 필요한 지식팩";
+export const ADMIN_WORK_SECTION_QUALITY_BODY =
+  "생성이 끝났습니다. 품질을 점검한 뒤 제공자에게 검토를 요청하세요.";
+export const ADMIN_WORK_SECTION_QUALITY_CTA = "품질 점검 후 검토 요청";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 검토 진행";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY =
-  "생성은 끝났습니다. 품질을 확인한 뒤 제공자에게 검수 요청을 안내하세요.";
-export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA = "품질 점검·검토 요청";
-export const ADMIN_WORK_SECTION_PACK_REVIEW_TITLE = "제공자로부터 검수 요청을 받은 지식팩";
+  "제공자가 생성 결과를 확인 중입니다. 관리자 조치 대기가 아닙니다.";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA = "검토 요청 내역 보기";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_TITLE = "검수 요청 접수";
 export const ADMIN_WORK_SECTION_PACK_REVIEW_BODY =
-  "제공자가 검수 요청을 제출했습니다. 승인·반려를 판단하세요.";
+  "제공자 확인이 끝나 관리자 검수가 필요합니다.";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_CTA = "검수 시작";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_TITLE = "검수 진행 중";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_BODY =
+  "관리자가 검수를 시작한 지식팩입니다. 이어서 진행하세요.";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_CTA = "검수 계속하기";
+export const ADMIN_WORK_SECTION_PUBLISHED_TITLE = "공개 지식팩";
+export const ADMIN_WORK_SECTION_PUBLISHED_BODY =
+  "이미 공개된 지식팩입니다. 대기 업무가 아닙니다.";
+export const ADMIN_WORK_SECTION_PUBLISHED_CTA = "공개 상세 보기";
 export const ADMIN_WORK_FILTER_CATEGORY_ALL = "전체 카테고리";
 export const ADMIN_WORK_FILTER_STATUS_ALL = "전체 상태";
 export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "접수 대기";
 export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성 실행";
-export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토 요청";
-export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 수신";
+export const ADMIN_WORK_FILTER_STATUS_QUALITY = "품질점검 대기";
+export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토 중";
+export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 접수";
+export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "검수 진행 중";
 export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
 export const ADMIN_WORK_EMPTY = "지금 처리할 작업이 없습니다.";
 export const ADMIN_WORK_SUMMARY_LABEL = "대기";

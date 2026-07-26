@@ -62,6 +62,7 @@ import {
   OPEN_PACK_REVIEW_STATUSES,
   PackReviewStatus,
   isAdminReviewAccepted,
+  isOpenPackReviewStatus,
 } from "@/lib/pack-review-status";
 
 const listInclude = {
@@ -97,7 +98,13 @@ export async function listReviewingPacks() {
     orderBy: { updatedAt: "desc" },
   });
 
-  return packs.map(toAdminReviewListItem);
+  return packs
+    .map(toAdminReviewListItem)
+    .filter((item) => {
+      if (item.status === "PUBLISHED" || item.status === "VERIFIED") return false;
+      if (!item.reviewStatus) return false;
+      return isOpenPackReviewStatus(item.reviewStatus);
+    });
 }
 
 export async function getAdminReviewDetail(packId: string): Promise<AdminReviewDetailDto | null> {

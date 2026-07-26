@@ -45,6 +45,8 @@ import {
   type WorkerZipRequestMetadata,
 } from "@/lib/python-worker/worker-zip-request-storage";
 import type { WorkerZipLogicalStage } from "@/lib/python-worker/worker-zip-pipeline-stages";
+import { batchResolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
+import { buildAdminWorkInboxItemViewModel } from "@/lib/admin-work-inbox-view-model";
 import {
   markSearchGenerationEmbedding,
   markSearchGenerationFailed,
@@ -1436,6 +1438,15 @@ export type AdminWorkerZipRequestListItem = {
    * - COMPLETED: 생성 완료 (품질 점검 등 후속 작업, 아직 DRAFT)
    */
   phase: "REQUESTED" | "ACCEPTED" | "COMPLETED";
+  /** KnowledgePack.status — always DRAFT for this list today. */
+  packStatus: string;
+  providerReviewPhase: "NONE" | "REQUESTED" | "CONFIRMED" | "WITHDRAWN";
+  serviceValidationPhase: "NONE" | "PASSED";
+  workflowStatus: string;
+  displayStatus: string;
+  adminQueueGroup: string;
+  ctaLabel: string;
+  isWaitingForAdmin: boolean;
 };
 
 /**
@@ -1447,6 +1458,17 @@ export async function listAdminWorkerZipRequests(input?: {
   prismaClient?: typeof prisma;
   env?: NodeJS.ProcessEnv;
   getRequestMetadata?: typeof getWorkerZipRequestMetadata;
+  resolveWorkflowMarkers?: (
+    packIds: string[],
+  ) => Promise<
+    Map<
+      string,
+      {
+        providerReviewPhase: "NONE" | "REQUESTED" | "CONFIRMED" | "WITHDRAWN";
+        serviceValidationPhase: "NONE" | "PASSED";
+      }
+    >
+  >;
 }): Promise<AdminWorkerZipRequestListItem[]> {
   const client = input?.prismaClient ?? prisma;
   const getRequestMetadata = input?.getRequestMetadata ?? getWorkerZipRequestMetadata;
@@ -1464,6 +1486,7 @@ export async function listAdminWorkerZipRequests(input?: {
       status: true,
       pack: {
         select: {
+          status: true,
           name: true,
           categoryId: true,
           category: { select: { name: true } },
@@ -1479,7 +1502,19 @@ export async function listAdminWorkerZipRequests(input?: {
   });
 
   const seen = new Set<string>();
-  const items: AdminWorkerZipRequestListItem[] = [];
+  const draftItems: Array<{
+    packId: string;
+    packName: string;
+    providerName: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    versionLabel: string | null;
+    requestedAt: string;
+    originalFileName: string | null;
+    accepted: boolean;
+    phase: "REQUESTED" | "ACCEPTED" | "COMPLETED";
+    packStatus: string;
+  }> = [];
   for (const run of runs) {
     if (seen.has(run.packId)) continue;
     seen.add(run.packId);
@@ -1499,7 +1534,7 @@ export async function listAdminWorkerZipRequests(input?: {
         : run.status === WORKER_ZIP_REQUEST_ACCEPTED_STATUS
           ? ("ACCEPTED" as const)
           : ("REQUESTED" as const);
-    items.push({
+    draftItems.push({
       packId: run.packId,
       packName: run.pack?.name ?? run.packId,
       providerName: run.pack?.providerProfile?.displayName ?? null,
@@ -1510,7 +1545,43 @@ export async function listAdminWorkerZipRequests(input?: {
       originalFileName,
       accepted: phase === "ACCEPTED" || phase === "COMPLETED",
       phase,
+      packStatus: run.pack?.status ?? PackStatus.DRAFT,
     });
   }
-  return items;
+
+  const packIds = draftItems.map((item) => item.packId);
+  const markersByPack = input?.resolveWorkflowMarkers
+    ? await input.resolveWorkflowMarkers(packIds)
+    : input?.prismaClient
+      ? new Map()
+      : await batchResolveStoreWorkflowMarkers(packIds, client);
+
+  return draftItems.map((item) => {
+    const markers = markersByPack.get(item.packId);
+    const providerReviewPhase = markers?.providerReviewPhase ?? "NONE";
+    const serviceValidationPhase = markers?.serviceValidationPhase ?? "NONE";
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: item.packId,
+      packName: item.packName,
+      packStatus: item.packStatus,
+      sourceKind: "WORKER_ZIP",
+      workerZipPhase: item.phase,
+      providerReviewPhase,
+      serviceValidationPhase,
+      categoryId: item.categoryId,
+      categoryName: item.categoryName,
+      providerName: item.providerName,
+      versionLabel: item.versionLabel,
+    });
+    return {
+      ...item,
+      providerReviewPhase: view.providerReviewPhase,
+      serviceValidationPhase: view.serviceValidationPhase,
+      workflowStatus: view.workflowStatus,
+      displayStatus: view.displayStatus,
+      adminQueueGroup: view.adminQueueGroup,
+      ctaLabel: view.ctaLabel,
+      isWaitingForAdmin: view.isWaitingForAdmin,
+    };
+  });
 }

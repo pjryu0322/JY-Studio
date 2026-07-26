@@ -10,9 +10,14 @@ import {
   type AdminWorkerZipRequestListItem,
 } from "@/lib/admin-review-api";
 import {
-  ADMIN_REVIEWS_OPEN_DETAIL,
-  ADMIN_REVIEWS_STATUS_IN_REVIEW,
-  ADMIN_REVIEWS_STATUS_PENDING,
+  buildAdminWorkInboxItemViewModel,
+  countAdminWorkInboxWaiting,
+  filterAdminWorkInboxByQueueGroup,
+  mergeAdminWorkInboxViewModels,
+  type AdminWorkInboxItemViewModel,
+  type AdminWorkInboxQueueGroup,
+} from "@/lib/admin-work-inbox-view-model";
+import {
   ADMIN_WORK_EMPTY,
   ADMIN_WORK_FILTER_CATEGORY_ALL,
   ADMIN_WORK_FILTER_NO_MATCH,
@@ -20,18 +25,23 @@ import {
   ADMIN_WORK_FILTER_STATUS_ALL,
   ADMIN_WORK_FILTER_STATUS_GENERATE,
   ADMIN_WORK_FILTER_STATUS_PACK_REVIEW,
+  ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS,
   ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW,
+  ADMIN_WORK_FILTER_STATUS_QUALITY,
   ADMIN_WORK_SECTION_ACCEPT_BODY,
-  ADMIN_WORK_SECTION_ACCEPT_CTA,
   ADMIN_WORK_SECTION_ACCEPT_TITLE,
   ADMIN_WORK_SECTION_GENERATE_BODY,
-  ADMIN_WORK_SECTION_GENERATE_CTA,
   ADMIN_WORK_SECTION_GENERATE_TITLE,
   ADMIN_WORK_SECTION_PACK_REVIEW_BODY,
+  ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_BODY,
+  ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_TITLE,
   ADMIN_WORK_SECTION_PACK_REVIEW_TITLE,
   ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY,
-  ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA,
   ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE,
+  ADMIN_WORK_SECTION_PUBLISHED_BODY,
+  ADMIN_WORK_SECTION_PUBLISHED_TITLE,
+  ADMIN_WORK_SECTION_QUALITY_BODY,
+  ADMIN_WORK_SECTION_QUALITY_TITLE,
   ADMIN_WORK_SUMMARY_LABEL,
 } from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
@@ -40,8 +50,20 @@ type WorkStatusFilter =
   | "all"
   | "accept"
   | "generate"
+  | "quality"
   | "provider_review"
-  | "pack_review";
+  | "pack_review"
+  | "pack_review_in_progress";
+
+const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | null> = {
+  all: null,
+  accept: ["ACCEPT_REQUIRED"],
+  generate: ["GENERATE_REQUIRED"],
+  quality: ["QUALITY_CHECK_REQUIRED"],
+  provider_review: ["PROVIDER_REVIEW_IN_PROGRESS"],
+  pack_review: ["ADMIN_REVIEW_REQUIRED"],
+  pack_review_in_progress: ["ADMIN_REVIEW_IN_PROGRESS"],
+};
 
 type WorkSectionProps = {
   readonly title: string;
@@ -71,68 +93,35 @@ function WorkSection({ title, body, count, accentClass, children }: WorkSectionP
   );
 }
 
-function PhaseBadge({ phase }: { readonly phase: AdminWorkerZipRequestListItem["phase"] }) {
-  if (phase === "COMPLETED") {
-    return (
-      <span className="inline-flex shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-900">
-        생성 완료
-      </span>
-    );
-  }
-  if (phase === "ACCEPTED") {
-    return (
-      <span className="inline-flex shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-900">
-        접수완료
-      </span>
-    );
-  }
+function DisplayStatusBadge({
+  displayStatus,
+  queueGroup,
+}: {
+  readonly displayStatus: string;
+  readonly queueGroup: AdminWorkInboxQueueGroup;
+}) {
+  const className =
+    queueGroup === "PUBLISHED"
+      ? "bg-emerald-100 text-emerald-900"
+      : queueGroup === "PROVIDER_REVIEW_IN_PROGRESS"
+        ? "bg-violet-100 text-violet-900"
+        : queueGroup === "QUALITY_CHECK_REQUIRED"
+          ? "bg-amber-100 text-amber-900"
+          : queueGroup === "ADMIN_REVIEW_REQUIRED" || queueGroup === "ADMIN_REVIEW_IN_PROGRESS"
+            ? "bg-orange-100 text-orange-900"
+            : queueGroup === "GENERATE_REQUIRED"
+              ? "bg-sky-100 text-sky-900"
+              : "bg-indigo-100 text-indigo-900";
   return (
-    <span className="inline-flex shrink-0 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
-      접수 대기
+    <span
+      className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${className}`}
+    >
+      {displayStatus}
     </span>
   );
 }
 
-function ZipWorkCard({
-  item,
-  ctaLabel,
-}: {
-  readonly item: AdminWorkerZipRequestListItem;
-  readonly ctaLabel: string;
-}) {
-  return (
-    <li>
-      <Link
-        href={adminReviewDetailPath(item.packId)}
-        className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5 transition hover:bg-indigo-50"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-slate-900">{item.packName}</p>
-            <PhaseBadge phase={item.phase} />
-          </div>
-          <p className="mt-0.5 truncate text-[11px] text-store-muted">
-            {[item.categoryName, item.providerName, item.versionLabel]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        </div>
-        <span className="shrink-0 rounded-lg bg-store-accent px-2.5 py-1.5 text-[11px] font-bold text-white">
-          {ctaLabel}
-        </span>
-      </Link>
-    </li>
-  );
-}
-
-function ReviewWorkCard({ item }: { readonly item: AdminReviewListItemDto }) {
-  const reviewLabel =
-    item.reviewStatus === "IN_REVIEW"
-      ? ADMIN_REVIEWS_STATUS_IN_REVIEW
-      : item.reviewStatus === "PENDING"
-        ? ADMIN_REVIEWS_STATUS_PENDING
-        : null;
-
+function WorkInboxCard({ item }: { readonly item: AdminWorkInboxItemViewModel }) {
   return (
     <li>
       <Link
@@ -141,23 +130,74 @@ function ReviewWorkCard({ item }: { readonly item: AdminReviewListItemDto }) {
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
-            {reviewLabel ? (
-              <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-                {reviewLabel}
-              </span>
-            ) : null}
+            <p className="truncate text-sm font-semibold text-slate-900">{item.packName}</p>
+            <DisplayStatusBadge
+              displayStatus={item.displayStatus}
+              queueGroup={item.adminQueueGroup}
+            />
           </div>
           <p className="mt-0.5 truncate text-[11px] text-store-muted">
-            {[item.categoryName, item.providerName].filter(Boolean).join(" · ")}
+            {[item.categoryName, item.providerName, item.versionLabel]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
         <span className="shrink-0 rounded-lg bg-store-accent px-2.5 py-1.5 text-[11px] font-bold text-white">
-          {ADMIN_REVIEWS_OPEN_DETAIL}
+          {item.ctaLabel}
         </span>
       </Link>
     </li>
   );
+}
+
+function zipItemToViewModel(item: AdminWorkerZipRequestListItem): AdminWorkInboxItemViewModel {
+  if (item.displayStatus && item.adminQueueGroup && item.ctaLabel) {
+    return {
+      packId: item.packId,
+      packName: item.packName,
+      sourceKind: "WORKER_ZIP",
+      packStatus: item.packStatus ?? "DRAFT",
+      workflowStatus: (item.workflowStatus as AdminWorkInboxItemViewModel["workflowStatus"]) || "DRAFT",
+      workerZipPhase: item.phase,
+      providerReviewPhase: item.providerReviewPhase ?? "NONE",
+      serviceValidationPhase: item.serviceValidationPhase ?? "NONE",
+      packReviewStatus: null,
+      adminQueueGroup: item.adminQueueGroup as AdminWorkInboxQueueGroup,
+      displayStatus: item.displayStatus,
+      ctaLabel: item.ctaLabel,
+      isWaitingForAdmin: Boolean(item.isWaitingForAdmin),
+      categoryId: item.categoryId,
+      categoryName: item.categoryName,
+      providerName: item.providerName,
+      versionLabel: item.versionLabel,
+    };
+  }
+  return buildAdminWorkInboxItemViewModel({
+    packId: item.packId,
+    packName: item.packName,
+    packStatus: item.packStatus ?? "DRAFT",
+    sourceKind: "WORKER_ZIP",
+    workerZipPhase: item.phase,
+    providerReviewPhase: item.providerReviewPhase ?? "NONE",
+    serviceValidationPhase: item.serviceValidationPhase ?? "NONE",
+    categoryId: item.categoryId,
+    categoryName: item.categoryName,
+    providerName: item.providerName,
+    versionLabel: item.versionLabel,
+  });
+}
+
+function reviewItemToViewModel(item: AdminReviewListItemDto): AdminWorkInboxItemViewModel {
+  return buildAdminWorkInboxItemViewModel({
+    packId: item.packId,
+    packName: item.name,
+    packStatus: item.status,
+    sourceKind: "REVIEW",
+    packReviewStatus: item.reviewStatus,
+    categoryId: item.categoryId,
+    categoryName: item.categoryName,
+    providerName: item.providerName,
+  });
 }
 
 /**
@@ -192,14 +232,18 @@ export function AdminWorkInboxPageClient() {
     void refresh();
   }, [refresh]);
 
+  const allViewItems = useMemo(
+    () =>
+      mergeAdminWorkInboxViewModels([
+        ...zipItems.map(zipItemToViewModel),
+        ...reviewItems.map(reviewItemToViewModel),
+      ]),
+    [zipItems, reviewItems],
+  );
+
   const categoryOptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const item of zipItems) {
-      if (item.categoryId) {
-        map.set(item.categoryId, item.categoryName?.trim() || item.categoryId);
-      }
-    }
-    for (const item of reviewItems) {
+    for (const item of allViewItems) {
       if (item.categoryId) {
         map.set(item.categoryId, item.categoryName?.trim() || item.categoryId);
       }
@@ -207,63 +251,47 @@ export function AdminWorkInboxPageClient() {
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
-  }, [zipItems, reviewItems]);
+  }, [allViewItems]);
 
-  const matchesCategory = useCallback(
-    (categoryId: string | null | undefined) => {
-      if (categoryFilter === "all") return true;
-      return categoryId === categoryFilter;
-    },
-    [categoryFilter],
-  );
+  const filteredViewItems = useMemo(() => {
+    const groups = FILTER_TO_GROUPS[statusFilter];
+    return allViewItems.filter((item) => {
+      if (categoryFilter !== "all" && item.categoryId !== categoryFilter) return false;
+      if (groups && !groups.includes(item.adminQueueGroup)) return false;
+      return true;
+    });
+  }, [allViewItems, categoryFilter, statusFilter]);
 
-  const acceptItems = useMemo(
-    () =>
-      zipItems.filter(
-        (item) =>
-          item.phase === "REQUESTED" &&
-          matchesCategory(item.categoryId) &&
-          (statusFilter === "all" || statusFilter === "accept"),
-      ),
-    [zipItems, matchesCategory, statusFilter],
+  const acceptItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "ACCEPT_REQUIRED");
+  const generateItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "GENERATE_REQUIRED");
+  const qualityItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "QUALITY_CHECK_REQUIRED",
   );
-  const generateItems = useMemo(
-    () =>
-      zipItems.filter(
-        (item) =>
-          item.phase === "ACCEPTED" &&
-          matchesCategory(item.categoryId) &&
-          (statusFilter === "all" || statusFilter === "generate"),
-      ),
-    [zipItems, matchesCategory, statusFilter],
+  const providerReviewInProgressItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "PROVIDER_REVIEW_IN_PROGRESS",
   );
-  const providerReviewItems = useMemo(
-    () =>
-      zipItems.filter(
-        (item) =>
-          item.phase === "COMPLETED" &&
-          matchesCategory(item.categoryId) &&
-          (statusFilter === "all" || statusFilter === "provider_review"),
-      ),
-    [zipItems, matchesCategory, statusFilter],
+  const packReviewRequiredItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "ADMIN_REVIEW_REQUIRED",
   );
-  const filteredReviewItems = useMemo(
-    () =>
-      reviewItems.filter(
-        (item) =>
-          matchesCategory(item.categoryId) &&
-          (statusFilter === "all" || statusFilter === "pack_review"),
-      ),
-    [reviewItems, matchesCategory, statusFilter],
+  const packReviewInProgressItems = filterAdminWorkInboxByQueueGroup(
+    filteredViewItems,
+    "ADMIN_REVIEW_IN_PROGRESS",
   );
+  const publishedItems = filterAdminWorkInboxByQueueGroup(filteredViewItems, "PUBLISHED");
 
-  const totalWaiting =
+  const totalWaiting = countAdminWorkInboxWaiting(filteredViewItems);
+  const rawTotal = allViewItems.length;
+  const visibleCount =
     acceptItems.length +
     generateItems.length +
-    providerReviewItems.length +
-    filteredReviewItems.length;
-
-  const rawTotal = zipItems.length + reviewItems.length;
+    qualityItems.length +
+    providerReviewInProgressItems.length +
+    packReviewRequiredItems.length +
+    packReviewInProgressItems.length +
+    publishedItems.length;
 
   return (
     <div className="space-y-5 pb-6">
@@ -307,8 +335,12 @@ export function AdminWorkInboxPageClient() {
             <option value="all">{ADMIN_WORK_FILTER_STATUS_ALL}</option>
             <option value="accept">{ADMIN_WORK_FILTER_STATUS_ACCEPT}</option>
             <option value="generate">{ADMIN_WORK_FILTER_STATUS_GENERATE}</option>
+            <option value="quality">{ADMIN_WORK_FILTER_STATUS_QUALITY}</option>
             <option value="provider_review">{ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW}</option>
             <option value="pack_review">{ADMIN_WORK_FILTER_STATUS_PACK_REVIEW}</option>
+            <option value="pack_review_in_progress">
+              {ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS}
+            </option>
           </select>
         </div>
       </div>
@@ -325,7 +357,7 @@ export function AdminWorkInboxPageClient() {
         <p className="rounded-2xl border border-store-border bg-white p-4 text-sm text-store-muted">
           {ADMIN_WORK_EMPTY}
         </p>
-      ) : totalWaiting === 0 ? (
+      ) : visibleCount === 0 ? (
         <p className="rounded-2xl border border-dashed border-store-border bg-white px-4 py-3 text-sm text-store-muted">
           {ADMIN_WORK_FILTER_NO_MATCH}
         </p>
@@ -339,11 +371,7 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {acceptItems.map((item) => (
-                <ZipWorkCard
-                  key={item.packId}
-                  item={item}
-                  ctaLabel={ADMIN_WORK_SECTION_ACCEPT_CTA}
-                />
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>
@@ -356,11 +384,20 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {generateItems.map((item) => (
-                <ZipWorkCard
-                  key={item.packId}
-                  item={item}
-                  ctaLabel={ADMIN_WORK_SECTION_GENERATE_CTA}
-                />
+                <WorkInboxCard key={item.packId} item={item} />
+              ))}
+            </ul>
+          </WorkSection>
+
+          <WorkSection
+            title={ADMIN_WORK_SECTION_QUALITY_TITLE}
+            body={ADMIN_WORK_SECTION_QUALITY_BODY}
+            count={qualityItems.length}
+            accentClass="bg-amber-100 text-amber-900"
+          >
+            <ul className="space-y-1.5">
+              {qualityItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>
@@ -368,16 +405,12 @@ export function AdminWorkInboxPageClient() {
           <WorkSection
             title={ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE}
             body={ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY}
-            count={providerReviewItems.length}
-            accentClass="bg-emerald-100 text-emerald-900"
+            count={providerReviewInProgressItems.length}
+            accentClass="bg-violet-100 text-violet-900"
           >
             <ul className="space-y-1.5">
-              {providerReviewItems.map((item) => (
-                <ZipWorkCard
-                  key={item.packId}
-                  item={item}
-                  ctaLabel={ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA}
-                />
+              {providerReviewInProgressItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>
@@ -385,12 +418,38 @@ export function AdminWorkInboxPageClient() {
           <WorkSection
             title={ADMIN_WORK_SECTION_PACK_REVIEW_TITLE}
             body={ADMIN_WORK_SECTION_PACK_REVIEW_BODY}
-            count={filteredReviewItems.length}
-            accentClass="bg-amber-100 text-amber-900"
+            count={packReviewRequiredItems.length}
+            accentClass="bg-orange-100 text-orange-900"
           >
             <ul className="space-y-1.5">
-              {filteredReviewItems.map((item) => (
-                <ReviewWorkCard key={item.packId} item={item} />
+              {packReviewRequiredItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
+              ))}
+            </ul>
+          </WorkSection>
+
+          <WorkSection
+            title={ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_TITLE}
+            body={ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_BODY}
+            count={packReviewInProgressItems.length}
+            accentClass="bg-orange-100 text-orange-900"
+          >
+            <ul className="space-y-1.5">
+              {packReviewInProgressItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
+              ))}
+            </ul>
+          </WorkSection>
+
+          <WorkSection
+            title={ADMIN_WORK_SECTION_PUBLISHED_TITLE}
+            body={ADMIN_WORK_SECTION_PUBLISHED_BODY}
+            count={publishedItems.length}
+            accentClass="bg-emerald-100 text-emerald-900"
+          >
+            <ul className="space-y-1.5">
+              {publishedItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>
           </WorkSection>

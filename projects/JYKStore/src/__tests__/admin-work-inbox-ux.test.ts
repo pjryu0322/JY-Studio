@@ -19,18 +19,25 @@ describe("admin work inbox UX", () => {
     assert.ok(readSource("src/app/(store)/admin/page.tsx").includes("AdminWorkInboxPageClient"));
   });
 
-  it("orders admin work by accept, generate, provider review request, pack review", () => {
+  it("orders admin work by accept, generate, quality, provider review, pack review", () => {
     const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_ACCEPT_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_GENERATE_TITLE"));
+    assert.ok(inbox.includes("ADMIN_WORK_SECTION_QUALITY_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
+    assert.ok(inbox.includes("buildAdminWorkInboxItemViewModel"));
+    assert.ok(inbox.includes("countAdminWorkInboxWaiting"));
+    assert.ok(!inbox.includes("생성 완료"));
+    assert.ok(!inbox.includes('phase === "COMPLETED"'));
     const acceptAt = inbox.indexOf("title={ADMIN_WORK_SECTION_ACCEPT_TITLE}");
     const generateAt = inbox.indexOf("title={ADMIN_WORK_SECTION_GENERATE_TITLE}");
+    const qualityAt = inbox.indexOf("title={ADMIN_WORK_SECTION_QUALITY_TITLE}");
     const providerAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE}");
     const packAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PACK_REVIEW_TITLE}");
     assert.ok(acceptAt > 0 && acceptAt < generateAt);
-    assert.ok(generateAt < providerAt);
+    assert.ok(generateAt < qualityAt);
+    assert.ok(qualityAt < providerAt);
     assert.ok(providerAt < packAt);
   });
 
@@ -63,5 +70,11 @@ describe("admin work inbox UX", () => {
     assert.ok(chrome.includes("ADMIN_WORK_INBOX_DESCRIPTION"));
     assert.ok(inbox.includes("admin-work-category"));
     assert.ok(inbox.includes("admin-work-status"));
+  });
+
+  it("filters reviewing packs to open review statuses only", () => {
+    const service = readSource("src/lib/admin-review-service.ts");
+    assert.ok(service.includes("isOpenPackReviewStatus"));
+    assert.ok(service.includes('item.status === "PUBLISHED"'));
   });
 });

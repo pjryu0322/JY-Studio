@@ -580,15 +580,18 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     const inbox = readSrc("components/AdminWorkInboxPageClient.tsx");
     assert.match(inbox, /fetchAdminWorkerZipRequests/);
     assert.match(inbox, /ADMIN_WORK_SECTION_ACCEPT_TITLE/);
+    assert.match(inbox, /ADMIN_WORK_SECTION_QUALITY_TITLE/);
     assert.match(inbox, /ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE/);
     assert.match(inbox, /ADMIN_WORK_SECTION_PACK_REVIEW_TITLE/);
+    assert.match(inbox, /buildAdminWorkInboxItemViewModel|countAdminWorkInboxWaiting/);
+    assert.doesNotMatch(inbox, /생성 완료/);
     const page = readSrc("app/(store)/admin/page.tsx");
     assert.match(page, /AdminWorkInboxPageClient/);
     const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");
     assert.match(queue, /fetchAdminWorkerZipRequests/);
-    assert.match(queue, /접수하고 생성 실행/);
-    assert.match(queue, /품질 점검·계속하기/);
-    assert.match(queue, /생성 완료/);
+    assert.match(queue, /item\.displayStatus/);
+    assert.match(queue, /item\.ctaLabel/);
+    assert.match(queue, /품질 점검 후 검토 요청/);
   });
 });
 
@@ -781,6 +784,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               createdAt: new Date(2),
               status: "PENDING",
               pack: {
+                status: "DRAFT",
                 name: "A",
                 categoryId: "ui",
                 category: { name: "UI" },
@@ -793,6 +797,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               createdAt: new Date(1),
               status: "PENDING",
               pack: {
+                status: "DRAFT",
                 name: "A",
                 categoryId: "ui",
                 category: { name: "UI" },
@@ -805,6 +810,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
               createdAt: new Date(0),
               status: "PASS",
               pack: {
+                status: "DRAFT",
                 name: "B",
                 categoryId: "grid",
                 category: { name: "Grid" },
@@ -815,6 +821,13 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
           ],
         },
       } as never,
+      resolveWorkflowMarkers: async () =>
+        new Map([
+          [
+            "packB",
+            { providerReviewPhase: "REQUESTED" as const, serviceValidationPhase: "NONE" as const },
+          ],
+        ]),
       getRequestMetadata: (async () => ({
         originalFileName: "a.zip",
         fileSize: 1,
@@ -834,6 +847,9 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal(items[1]!.originalFileName, null);
     assert.equal(items[1]!.phase, "COMPLETED");
     assert.equal(items[1]!.accepted, true);
+    assert.equal(items[1]!.displayStatus, "제공자 검토 중");
+    assert.equal(items[1]!.isWaitingForAdmin, false);
+    assert.notEqual(items[1]!.displayStatus, "생성 완료");
   });
 
   it("withdrawProviderWorkerZipRequest removes a pending request and retires the marker", async () => {

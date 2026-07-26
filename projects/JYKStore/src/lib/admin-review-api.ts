@@ -83,6 +83,14 @@ export type AdminWorkerZipRequestListItem = {
   originalFileName: string | null;
   accepted: boolean;
   phase: "REQUESTED" | "ACCEPTED" | "COMPLETED";
+  packStatus: string;
+  providerReviewPhase: "NONE" | "REQUESTED" | "CONFIRMED" | "WITHDRAWN";
+  serviceValidationPhase: "NONE" | "PASSED";
+  workflowStatus: string;
+  displayStatus: string;
+  adminQueueGroup: string;
+  ctaLabel: string;
+  isWaitingForAdmin: boolean;
 };
 
 /** List DRAFT packs with open or completed ZIP generation requests. */
