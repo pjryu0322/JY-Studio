@@ -1,4 +1,4 @@
-"""Merge short API heading fragments into parent sections (entity grouping)."""
+"""Merge short API heading fragments into parent sections (hierarchy-aware)."""
 
 from __future__ import annotations
 
@@ -76,16 +76,33 @@ def _heading_level(section: dict[str, Any]) -> int:
     level = section.get("headingLevel")
     if isinstance(level, int) and level > 0:
         return level
+    path = _heading_path(section)
+    if path and " > " in path:
+        return path.count(" > ") + 1
     heading = _clean_text(section.get("heading") or "")
     if " > " in heading:
         return heading.count(" > ") + 1
     return 2
 
 
-def _parent_path(section: dict[str, Any]) -> str:
+def _heading_path(section: dict[str, Any]) -> str:
+    for key in ("headingPath", "parentPath"):
+        value = section.get(key)
+        if isinstance(value, str) and value.strip():
+            return _clean_text(value)
+        if isinstance(value, (list, tuple)) and value:
+            return " > ".join(_clean_text(str(part)) for part in value if str(part).strip())
     heading = _clean_text(section.get("heading") or "")
-    if " > " in heading:
-        return heading.rsplit(" > ", 1)[0].strip()
+    return heading
+
+
+def _parent_path(section: dict[str, Any]) -> str:
+    path = _heading_path(section)
+    if " > " in path:
+        return path.rsplit(" > ", 1)[0].strip()
+    parent_title = section.get("parentTitle")
+    if isinstance(parent_title, str) and parent_title.strip():
+        return _clean_text(parent_title)
     return ""
 
 
@@ -97,48 +114,55 @@ def _looks_like_entity_section(section: dict[str, Any]) -> bool:
         return False
     if _ENTITY_HEADING_RE.match(heading):
         return True
-    # Explicit entity marker only — do not treat shared document apiName as entity.
     explicit = (section.get("entityName") or "").strip()
     if explicit:
         return True
     body = _clean_text(section.get("content") or "")
     codes = section.get("codeBlocks") or []
-    # Top-level substantial section can act as entity root when no Class: label.
     return _heading_level(section) <= 2 and (len(body) >= 40 or bool(codes))
 
 
 def find_merge_parent(
     merged: list[dict[str, Any]], fragment: dict[str, Any]
 ) -> dict[str, Any]:
-    """Pick parent by path / entity / heading level, then adjacent fallback."""
+    """Prefer path and heading-level parents before same-entity fallback."""
     if not merged:
         raise ValueError("merged sections must not be empty")
 
-    frag_heading = _clean_text(fragment.get("heading") or "")
     frag_parent_path = _parent_path(fragment)
     frag_level = _heading_level(fragment)
 
-    # 1) Same parent path: prefer section whose heading equals the fragment parent path.
+    # 1) Direct parent by headingPath / parent path.
     if frag_parent_path:
         parent_key = frag_parent_path.lower()
         for candidate in reversed(merged):
-            cand_heading = _clean_text(candidate.get("heading") or "")
-            if cand_heading.lower() == parent_key:
-                return candidate
-            if frag_heading.lower().startswith(cand_heading.lower() + " > "):
+            cand_path = _heading_path(candidate).lower()
+            cand_heading = _clean_text(candidate.get("heading") or "").lower()
+            if cand_path == parent_key or cand_heading == parent_key:
                 return candidate
 
-    # 2) Same entity: nearest preceding entity/root section.
-    for candidate in reversed(merged):
-        if _looks_like_entity_section(candidate):
-            return candidate
-
-    # 3) Heading-level parent: nearest section with a shallower level.
+    # 2) Heading-level parent: nearest shallower section.
     for candidate in reversed(merged):
         if _heading_level(candidate) < frag_level:
             return candidate
 
-    # 4) Adjacent fallback.
+    # 3) Same parent path: preceding semantic sibling/context section.
+    if frag_parent_path:
+        parent_key = frag_parent_path.lower()
+        for candidate in reversed(merged):
+            if _parent_path(candidate).lower() != parent_key:
+                continue
+            cand_heading = candidate.get("heading") or ""
+            if is_fragment_heading_name(cand_heading):
+                continue
+            return candidate
+
+    # 4) Same entity / root — only after hierarchy signals fail.
+    for candidate in reversed(merged):
+        if _looks_like_entity_section(candidate):
+            return candidate
+
+    # 5) Adjacent fallback.
     return merged[-1]
 
 

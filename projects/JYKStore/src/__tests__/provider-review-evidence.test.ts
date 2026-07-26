@@ -4,6 +4,8 @@ import {
   buildChunkIssueEvidence,
   buildProviderReviewAreaGuidance,
   buildRetrievalIssueEvidence,
+  areProviderRetrievalIssuesJudged,
+  isProviderAttentionChunkJudged,
   providerReviewConfirmBlockReason,
   providerReviewHasBlockingFail,
 } from "../lib/provider-review-evidence.ts";
@@ -118,7 +120,85 @@ describe("provider review evidence", () => {
       chunkReviewComplete: true,
       retrievalReviewComplete: false,
     });
-    assert.match(reason ?? "", /검색 평가 실패 상세/);
+    assert.match(reason ?? "", /검색 평가 이슈를 각각/);
+  });
+
+  it("does not treat opening detail as chunk judgment", () => {
+    assert.equal(
+      isProviderAttentionChunkJudged({
+        chunkId: "c1",
+        status: "warning",
+        reviewedChunkIds: new Set(),
+        supplementChunkIds: new Set(),
+      }),
+      false,
+    );
+    assert.equal(
+      isProviderAttentionChunkJudged({
+        chunkId: "c1",
+        status: "warning",
+        reviewedChunkIds: new Set(["c1"]),
+        supplementChunkIds: new Set(),
+      }),
+      true,
+    );
+    assert.equal(
+      isProviderAttentionChunkJudged({
+        chunkId: "c2",
+        status: "needs_action",
+        reviewedChunkIds: new Set(["c2"]),
+        supplementChunkIds: new Set(),
+      }),
+      false,
+    );
+    assert.equal(
+      isProviderAttentionChunkJudged({
+        chunkId: "c2",
+        status: "needs_action",
+        reviewedChunkIds: new Set(["c2"]),
+        supplementChunkIds: new Set(["c2"]),
+      }),
+      true,
+    );
+  });
+
+  it("requires supplement for retrieval FAIL issues", () => {
+    assert.equal(
+      areProviderRetrievalIssuesJudged({
+        retrievalStatus: "FAIL",
+        issueIds: ["r1", "r2"],
+        confirmedIssueIds: new Set(["r1", "r2"]),
+        supplementIssueIds: new Set(),
+      }),
+      false,
+    );
+    assert.equal(
+      areProviderRetrievalIssuesJudged({
+        retrievalStatus: "FAIL",
+        issueIds: ["r1", "r2"],
+        confirmedIssueIds: new Set(),
+        supplementIssueIds: new Set(["r1"]),
+      }),
+      false,
+    );
+    assert.equal(
+      areProviderRetrievalIssuesJudged({
+        retrievalStatus: "FAIL",
+        issueIds: ["r1", "r2"],
+        confirmedIssueIds: new Set(),
+        supplementIssueIds: new Set(["r1", "r2"]),
+      }),
+      true,
+    );
+    assert.equal(
+      areProviderRetrievalIssuesJudged({
+        retrievalStatus: "WARNING",
+        issueIds: ["r1"],
+        confirmedIssueIds: new Set(["r1"]),
+        supplementIssueIds: new Set(),
+      }),
+      true,
+    );
   });
 
   it("builds retrieval issue evidence with problem data preview", () => {

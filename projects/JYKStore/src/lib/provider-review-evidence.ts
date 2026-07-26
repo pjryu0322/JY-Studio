@@ -481,22 +481,54 @@ export function providerReviewConfirmBlockReason(input: {
       retrievalStatus: input.retrievalStatus,
     })
   ) {
-    return "실패 상태인 품질 항목이 있어 확인 완료할 수 없습니다. 보완 요청을 작성해 주세요.";
+    return "실패 상태인 품질 항목이 있어 확인 완료할 수 없습니다. 보완 요청 또는 재처리 요청을 제출해 주세요.";
   }
   if (!input.structureReviewComplete) {
     return "구조화 주의·실패 이슈가 있는 원본 파일의 경고 아이콘을 눌러 상세를 확인한 뒤 확인 완료해 주세요.";
   }
   if (!input.chunkReviewComplete) {
     const left = input.unreviewedAttentionChunkCount ?? 0;
-    return `주의·보완이 필요한 검색 지식 단위를 모두 상세 검토해 주세요. (남은 ${left}건)`;
+    return `주의·보완이 필요한 검색 지식 단위를 각각 명시적으로 판단해 주세요. (남은 ${left}건)`;
   }
   if (!input.retrievalReviewComplete) {
-    return "검색 평가 실패 상세를 확인하거나 보완 요청을 작성한 뒤 확인 완료해 주세요.";
+    return "검색 평가 이슈를 각각 확인하거나 보완 요청에 추가한 뒤 확인 완료해 주세요.";
   }
   if (input.hasPendingChangesDraft) {
     return "작성 중인 보완 요청이 있습니다. 제출하거나 취소한 뒤 확인 완료해 주세요.";
   }
   return null;
+}
+
+/** Attention chunk is judged only by explicit OK or supplement — not by opening detail. */
+export function isProviderAttentionChunkJudged(input: {
+  chunkId: string;
+  status: "ok" | "warning" | "needs_action";
+  reviewedChunkIds: ReadonlySet<string>;
+  supplementChunkIds: ReadonlySet<string>;
+}): boolean {
+  if (input.status === "ok") return true;
+  if (input.supplementChunkIds.has(input.chunkId)) return true;
+  // FAIL-level chunks must be routed to supplement, not silent OK.
+  if (input.status === "needs_action") return false;
+  return input.reviewedChunkIds.has(input.chunkId);
+}
+
+/** Retrieval issues are judged per id; opening the modal does not count. */
+export function areProviderRetrievalIssuesJudged(input: {
+  retrievalStatus?: string | null;
+  issueIds: readonly string[];
+  confirmedIssueIds: ReadonlySet<string>;
+  supplementIssueIds: ReadonlySet<string>;
+}): boolean {
+  if (input.issueIds.length === 0) {
+    return !providerReviewStatusIsFail(input.retrievalStatus);
+  }
+  const failStatus = providerReviewStatusIsFail(input.retrievalStatus);
+  return input.issueIds.every((id) => {
+    if (input.supplementIssueIds.has(id)) return true;
+    if (failStatus) return false;
+    return input.confirmedIssueIds.has(id);
+  });
 }
 
 export function providerReviewHasWarning(input: {

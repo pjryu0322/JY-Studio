@@ -223,6 +223,7 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
     headings = root.find_all(list(HEADING_TAGS))
 
     if headings:
+        heading_stack: list[tuple[int, str]] = []
         for heading in headings:
             section_soup = _section_content_until_next_heading(heading)
             heading_text = _clean_text(heading.get_text(" ", strip=True))
@@ -236,10 +237,20 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
             heading_level = (
                 int(tag_name[1]) if len(tag_name) == 2 and tag_name[1].isdigit() else 2
             )
+            while heading_stack and heading_stack[-1][0] >= heading_level:
+                heading_stack.pop()
+            path_titles = [title for _, title in heading_stack] + [heading_text]
+            heading_path = " > ".join(path_titles)
+            parent_title = heading_stack[-1][1] if heading_stack else ""
+            parent_path = " > ".join(title for _, title in heading_stack)
+            heading_stack.append((heading_level, heading_text))
             sections.append(
                 {
                     "heading": heading_text,
                     "headingLevel": heading_level,
+                    "headingPath": heading_path,
+                    "parentTitle": parent_title,
+                    "parentPath": parent_path,
                     "content": content,
                     "tables": _extract_tables(section_soup),
                     "codeBlocks": code_blocks,
@@ -251,6 +262,9 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
             {
                 "heading": title,
                 "headingLevel": 1,
+                "headingPath": title,
+                "parentTitle": "",
+                "parentPath": "",
                 "content": content,
                 "tables": _extract_tables(root),
                 "codeBlocks": _extract_code_blocks(root),

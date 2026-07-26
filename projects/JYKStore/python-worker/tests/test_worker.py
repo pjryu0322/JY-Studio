@@ -193,14 +193,15 @@ class HtmlApiParserTests(unittest.TestCase):
         # Substantial Properties section remains independent.
         self.assertTrue(any(s["heading"] == "Properties" for s in result["sections"]))
 
-    def test_heading_fragments_prefer_entity_parent_over_adjacent_member(self):
-        """Methods/Events must attach to the entity root, not the previous member."""
+    def test_heading_fragments_prefer_level_parent_over_adjacent_member(self):
+        """Group headings attach to nearest shallower parent, not adjacent member."""
         from src.section_merge import merge_heading_fragments
 
         sections = [
             {
                 "heading": "Class: Alpha",
                 "headingLevel": 1,
+                "headingPath": "Class: Alpha",
                 "content": "Alpha is the primary grid collection helper used by bindings.",
                 "codeBlocks": [],
                 "tables": [],
@@ -208,6 +209,7 @@ class HtmlApiParserTests(unittest.TestCase):
             {
                 "heading": "length",
                 "headingLevel": 3,
+                "headingPath": "Class: Alpha > length",
                 "content": "Number of items currently stored.",
                 "codeBlocks": [],
                 "tables": [],
@@ -215,6 +217,7 @@ class HtmlApiParserTests(unittest.TestCase):
             {
                 "heading": "Methods",
                 "headingLevel": 2,
+                "headingPath": "Class: Alpha > Methods",
                 "content": "list",
                 "codeBlocks": [],
                 "tables": [],
@@ -222,6 +225,7 @@ class HtmlApiParserTests(unittest.TestCase):
             {
                 "heading": "Class: Beta",
                 "headingLevel": 1,
+                "headingPath": "Class: Beta",
                 "content": "Beta is a separate entity for chart series configuration.",
                 "codeBlocks": [],
                 "tables": [],
@@ -229,6 +233,7 @@ class HtmlApiParserTests(unittest.TestCase):
             {
                 "heading": "Returns",
                 "headingLevel": 2,
+                "headingPath": "Class: Beta > Returns",
                 "content": "Beta",
                 "codeBlocks": [],
                 "tables": [],
@@ -243,6 +248,77 @@ class HtmlApiParserTests(unittest.TestCase):
         self.assertIn("Methods", " ".join(alpha.get("mergedHeadings") or []))
         self.assertIn("Returns", " ".join(beta.get("mergedHeadings") or []))
         self.assertTrue(any(s["heading"] == "length" for s in merged))
+
+    def test_returns_attach_to_method_not_class_root(self):
+        """Path/level parents beat same-entity root when nesting method Returns."""
+        from src.section_merge import merge_heading_fragments
+
+        sections = [
+            {
+                "heading": "ClassA",
+                "headingLevel": 1,
+                "headingPath": "ClassA",
+                "content": "ClassA documents the API surface for collection helpers.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "methodOne",
+                "headingLevel": 3,
+                "headingPath": "ClassA > Methods > methodOne",
+                "parentPath": "ClassA > Methods",
+                "content": "methodOne updates the selected row binding state for the grid.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Returns",
+                "headingLevel": 4,
+                "headingPath": "ClassA > Methods > methodOne > Returns",
+                "parentPath": "ClassA > Methods > methodOne",
+                "content": "void",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "methodTwo",
+                "headingLevel": 3,
+                "headingPath": "ClassA > Methods > methodTwo",
+                "parentPath": "ClassA > Methods",
+                "content": "methodTwo clears the temporary selection cache after commit.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Returns",
+                "headingLevel": 4,
+                "headingPath": "ClassA > Methods > methodTwo > Returns",
+                "parentPath": "ClassA > Methods > methodTwo",
+                "content": "Boolean",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Events",
+                "headingLevel": 2,
+                "headingPath": "ClassA > Events",
+                "parentPath": "ClassA",
+                "content": "list",
+                "codeBlocks": [],
+                "tables": [],
+            },
+        ]
+        merged = merge_heading_fragments(sections)
+        headings = [s["heading"] for s in merged]
+        self.assertNotIn("Returns", headings)
+        self.assertNotIn("Events", headings)
+        method_one = next(s for s in merged if s["heading"] == "methodOne")
+        method_two = next(s for s in merged if s["heading"] == "methodTwo")
+        class_a = next(s for s in merged if s["heading"] == "ClassA")
+        self.assertIn("Returns", " ".join(method_one.get("mergedHeadings") or []))
+        self.assertIn("Returns", " ".join(method_two.get("mergedHeadings") or []))
+        self.assertNotIn("Returns", " ".join(class_a.get("mergedHeadings") or []))
+        self.assertIn("Events", " ".join(class_a.get("mergedHeadings") or []))
 
     def test_keeps_independent_short_api_description(self):
         from src.section_merge import merge_heading_fragments

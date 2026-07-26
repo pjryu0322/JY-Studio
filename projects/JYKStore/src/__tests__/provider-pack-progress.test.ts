@@ -338,10 +338,17 @@ describe("provider center pack progress UX sources", () => {
     assert.ok(panel.includes("상세 검토"));
     assert.ok(panel.includes("DetailReviewIcon"));
     assert.ok(panel.includes("보완 요청에 추가"));
+    assert.ok(panel.includes("문제 없음으로 확인"));
+    assert.ok(panel.includes("다시 확인 필요"));
     assert.ok(panel.includes("reviewedChunkIds"));
+    assert.ok(panel.includes("openedChunkIds"));
+    assert.ok(panel.includes("isProviderAttentionChunkJudged"));
+    assert.ok(panel.includes("areProviderRetrievalIssuesJudged"));
     assert.ok(panel.includes("retrievalModalOpen") || panel.includes("검색 평가 이슈 상세"));
+    assert.ok(panel.includes("재처리 요청"));
     assert.ok(panel.includes("providerReviewConfirmBlockReason"));
     assert.ok(panel.includes("영역별 주의·실패 안내"));
+    assert.ok(!panel.includes("markRetrievalReviewed("));
     assert.ok(panel.includes("setChunkReviewExpanded"));
     assert.ok(panel.includes("toggleChunkSort"));
     assert.ok(panel.includes("chunkFilterCounts"));
