@@ -104,6 +104,7 @@ export function buildAdminWorkInboxItemViewModel(
     workerZipPhase,
     providerReviewPhase,
     providerSupplementPhase,
+    serviceValidationPhase,
     packReviewStatus,
   });
 
@@ -145,6 +146,7 @@ function mapQueuePresentation(input: {
   workerZipPhase: "REQUESTED" | "ACCEPTED" | "COMPLETED" | null;
   providerReviewPhase: StoreProviderReviewPhase;
   providerSupplementPhase: ProviderSupplementAdminPhase | "NONE";
+  serviceValidationPhase: StoreServiceValidationPhase;
   packReviewStatus: string | null;
 }): {
   adminQueueGroup: AdminWorkInboxQueueGroup;
@@ -233,6 +235,14 @@ function mapQueuePresentation(input: {
   }
 
   if (input.providerReviewPhase === "CONFIRMED") {
+    if (input.serviceValidationPhase !== "PASSED") {
+      return {
+        adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
+        displayStatus: "서비스 검증 대기",
+        ctaLabel: "서비스 검증",
+        isWaitingForAdmin: true,
+      };
+    }
     return {
       adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
       displayStatus: "검수 요청 접수",

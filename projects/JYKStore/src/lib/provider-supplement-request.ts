@@ -28,6 +28,25 @@ export type ProviderSupplementAdminPhase =
   | "CLARIFY"
   | "WITHDRAWN";
 
+/** Open phases that block service validation and plain provider-review re-request. */
+export const OPEN_PROVIDER_SUPPLEMENT_PHASES = [
+  "PENDING",
+  "ACCEPTED",
+  "CLARIFY",
+  "RESOLVED",
+] as const satisfies readonly ProviderSupplementAdminPhase[];
+
+export function isOpenProviderSupplementPhase(
+  phase: string | null | undefined,
+): boolean {
+  return (
+    phase === "PENDING" ||
+    phase === "ACCEPTED" ||
+    phase === "CLARIFY" ||
+    phase === "RESOLVED"
+  );
+}
+
 export type ProviderSupplementHistoryEntry = {
   at: string;
   action:

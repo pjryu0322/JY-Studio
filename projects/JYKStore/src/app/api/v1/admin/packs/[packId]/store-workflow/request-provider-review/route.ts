@@ -3,11 +3,15 @@ import { requireAdminSession } from "@/lib/admin-route-guard";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { buildAdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 import { getAdminReviewDetail } from "@/lib/admin-review-service";
-import { requestProviderStoreReview } from "@/lib/store-workflow-markers";
+import {
+  requestProviderStoreReview,
+  resolveStoreWorkflowMarkers,
+} from "@/lib/store-workflow-markers";
 import {
   canRequestProviderReviewHandoff,
   resolveAdminWorkerZipPhaseForPack,
 } from "@/lib/store-workflow-handoff-gates";
+import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = { params: Promise<{ packId: string }> };
@@ -46,8 +50,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
       clientId,
     });
     const quality = buildAdminQualityGateSnapshot(detail);
+    const markers = await resolveStoreWorkflowMarkers(trimmed);
 
-    if (!canRequestProviderReviewHandoff({ workerZipPhase, quality })) {
+    if (isOpenProviderSupplementPhase(markers.providerSupplementPhase)) {
+      return jsonWithClientIdCookie(
+        {
+          ok: false,
+          error: "PROVIDER_SUPPLEMENT_OPEN",
+          message:
+            "열린 제공자 보완요청이 있습니다. 보완요청 패널에서 재검토를 요청하세요.",
+          providerSupplementPhase: markers.providerSupplementPhase,
+        },
+        clientId,
+        { status: 409 },
+      );
+    }
+
+    if (
+      !canRequestProviderReviewHandoff({
+        workerZipPhase,
+        quality,
+        providerReviewPhase: markers.providerReviewPhase,
+        providerSupplementPhase: markers.providerSupplementPhase,
+      })
+    ) {
       if (workerZipPhase !== "COMPLETED") {
         return jsonWithClientIdCookie(
           {

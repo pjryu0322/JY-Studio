@@ -10,6 +10,7 @@ import type {
   RoleRailItem,
 } from "@/lib/role-workspace/types";
 import { ROUTES, adminReviewDetailPath } from "@/lib/routes";
+import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import type {
   StoreProviderReviewPhase,
   StoreServiceValidationPhase,
@@ -257,12 +258,9 @@ export function getAdminReviewRailState(input: {
   const serviceDone =
     serviceValidationPhase === "PASSED" || Boolean(input.searchValidationDone);
   const detailPath = adminReviewDetailPath(packId);
-  const supplementPhase = input.providerSupplementPhase ?? "NONE";
-  const openSupplement =
-    supplementPhase === "PENDING" ||
-    supplementPhase === "ACCEPTED" ||
-    supplementPhase === "CLARIFY" ||
-    supplementPhase === "RESOLVED";
+  const openSupplement = isOpenProviderSupplementPhase(
+    input.providerSupplementPhase ?? "NONE",
+  );
 
   let completedThrough: AdminReviewWorkflowStep | null = null;
   let current: AdminReviewWorkflowStep = "queue";

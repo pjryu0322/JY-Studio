@@ -10,7 +10,7 @@ import { AdminKnowledgeCorrectionPanel } from "@/components/AdminKnowledgeCorrec
 import { AdminKnowledgeGenerationPanel } from "@/components/AdminKnowledgeGenerationPanel";
 import { AdminQualityCheckPanel } from "@/components/AdminQualityCheckPanel";
 import { AdminProviderReviewPanel } from "@/components/AdminProviderReviewPanel";
-import { AdminServiceValidationOpsPanel } from "@/components/AdminServiceValidationOpsPanel";
+import { AdminServiceValidationWorkbenchPanel } from "@/components/AdminServiceValidationWorkbenchPanel";
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
@@ -21,7 +21,10 @@ import {
   markAdminServiceValidationPassedApi,
   type AdminStoreWorkflowMarkers,
 } from "@/lib/admin-review-api";
-import type { ProviderSupplementRequestState } from "@/lib/provider-supplement-request";
+import {
+  isOpenProviderSupplementPhase,
+  type ProviderSupplementRequestState,
+} from "@/lib/provider-supplement-request";
 import { isReviewAccepted } from "@/lib/admin-review-tabs";
 import {
   buildAdminQualityGateSnapshot,
@@ -30,6 +33,7 @@ import {
   type AdminReviewWorkflowStep,
   type AdminWorkerZipPhase,
 } from "@/lib/role-workspace/admin-review-rail";
+import type { AdminServiceChannelGatesSnapshot } from "@/lib/role-workspace/admin-service-validation-view-model";
 
 /** null = no explicit ?step (resolve from workflow after load). */
 export function parseAdminReviewStep(raw: string | null): AdminReviewWorkflowStep | null {
@@ -71,20 +75,9 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     useState<ProviderSupplementRequestState | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
-  const [channelGates, setChannelGates] = useState<{
-    allPassed: boolean;
-    serviceValidationReady?: boolean;
-    bindingStatus?: string;
-    bindingReason?: string | null;
-    channels: Array<{
-      channel: string;
-      label: string;
-      passed: boolean;
-      reason: string | null;
-      reasonCode?: string | null;
-    }>;
-    missingLabels: string[];
-  } | null>(null);
+  const [channelGates, setChannelGates] = useState<AdminServiceChannelGatesSnapshot | null>(
+    null,
+  );
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -194,12 +187,9 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const showDecision = activeStep === "decision" || activeStep === "publish";
   const providerConfirmed = workflowMarkers.providerReviewPhase === "CONFIRMED";
   const serviceDone = workflowMarkers.serviceValidationPhase === "PASSED";
-  const openSupplement =
-    workflowMarkers.providerSupplementPhase === "PENDING" ||
-    workflowMarkers.providerSupplementPhase === "ACCEPTED" ||
-    workflowMarkers.providerSupplementPhase === "CLARIFY" ||
-    workflowMarkers.providerSupplementPhase === "RESOLVED";
-  const channelsReady = Boolean(channelGates?.allPassed);
+  const openSupplement = isOpenProviderSupplementPhase(
+    workflowMarkers.providerSupplementPhase,
+  );
   const generationDone = workerZipPhase === "COMPLETED";
 
   return (
@@ -340,78 +330,25 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       ) : null}
 
       {showSearch ? (
-        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">서비스 검증</h2>
-            <p className="mt-1 text-xs text-store-muted">
-              API·MCP·ZIP/RAG Export 동작과 검색 품질 샘플을 확인합니다. 제공자 확인 완료 후에만
-              검증 완료를 기록할 수 있습니다.
-            </p>
-          </div>
-          {!providerConfirmed ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              제공자 확인이 완료되지 않아 서비스 검증 완료를 기록할 수 없습니다.
-            </p>
-          ) : null}
-          {providerConfirmed && openSupplement ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다. 제공자 검토
-              단계에서 보완요청을 처리하세요.
-            </p>
-          ) : null}
-          {providerConfirmed && channelGates && channelGates.bindingStatus !== "CURRENT" ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              {channelGates.bindingReason ??
-                "최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다."}
-            </p>
-          ) : null}
-          {providerConfirmed && channelGates && !channelGates.allPassed ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <p className="font-semibold">미검증 채널</p>
-              <ul className="mt-1 list-disc pl-4">
-                {channelGates.channels
-                  .filter((c) => !c.passed)
-                  .map((c) => (
-                    <li key={c.channel}>
-                      {c.label}
-                      {c.reason ? ` — ${c.reason}` : ""}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ) : null}
-          {providerConfirmed && channelsReady ? (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-              API·MCP·ZIP/RAG Export 검증이 모두 통과했습니다.
-            </p>
-          ) : null}
-          <AdminServiceValidationOpsPanel packId={packId} />
-          <button
-            type="button"
-            disabled={
-              !providerConfirmed ||
-              openSupplement ||
-              !channelsReady ||
-              serviceDone ||
-              actionBusy
-            }
-            onClick={() => {
-              setActionBusy(true);
-              void markAdminServiceValidationPassedApi(packId)
-                .then(() => refreshSilently())
-                .then(() => goStep("decision"))
-                .catch((err) =>
-                  setError(err instanceof Error ? err.message : "서비스 검증 기록에 실패했습니다."),
-                )
-                .finally(() => setActionBusy(false));
-            }}
-            className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
-          >
-            {serviceDone
-              ? "서비스 검증 완료됨 · 최종 검수 판단으로 이동"
-              : "검증 확인 완료 · 최종 검수 판단으로 이동"}
-          </button>
-        </section>
+        <AdminServiceValidationWorkbenchPanel
+          packId={packId}
+          providerConfirmed={providerConfirmed}
+          openSupplement={openSupplement}
+          serviceDone={serviceDone}
+          actionBusy={actionBusy}
+          channelGates={channelGates}
+          onGoDecision={() => goStep("decision")}
+          onMarkPassed={() => {
+            setActionBusy(true);
+            void markAdminServiceValidationPassedApi(packId)
+              .then(() => refreshSilently())
+              .then(() => goStep("decision"))
+              .catch((err) =>
+                setError(err instanceof Error ? err.message : "서비스 검증 기록에 실패했습니다."),
+              )
+              .finally(() => setActionBusy(false));
+          }}
+        />
       ) : null}
 
       {showDecision ? (

@@ -44,10 +44,23 @@ describe("admin work inbox view model", () => {
       workerZipPhase: "COMPLETED",
       providerReviewPhase: "CONFIRMED",
     });
-    assert.equal(view.displayStatus, "검수 요청 접수");
-    assert.equal(view.ctaLabel, "검수 시작");
+    assert.equal(view.displayStatus, "서비스 검증 대기");
+    assert.equal(view.ctaLabel, "서비스 검증");
     assert.equal(view.adminQueueGroup, "ADMIN_REVIEW_REQUIRED");
     assert.equal(view.isWaitingForAdmin, true);
+  });
+
+  it("maps confirmed + service PASSED toward pack review copy", () => {
+    const view = buildAdminWorkInboxItemViewModel({
+      packId: "pack-2b",
+      packName: "Validated",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "CONFIRMED",
+      serviceValidationPhase: "PASSED",
+    });
+    assert.equal(view.displayStatus, "검수 요청 접수");
+    assert.equal(view.ctaLabel, "검수 시작");
   });
 
   it("maps reviewing + pending to admin review required", () => {

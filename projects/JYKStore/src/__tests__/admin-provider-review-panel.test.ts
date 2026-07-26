@@ -30,7 +30,14 @@ describe("admin provider review workbench (step3)", () => {
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
     assert.ok(!detail.includes("import { AdminProviderSupplementPanel }"));
     assert.ok(detail.includes("openSupplement"));
-    assert.ok(detail.includes("보완요청이 처리되지 않아 서비스 검증"));
+    assert.ok(detail.includes("AdminServiceValidationWorkbenchPanel"));
+  });
+
+  it("hides plain provider-review request form while supplement is open", () => {
+    const panel = readSource("src/components/AdminProviderReviewPanel.tsx");
+    assert.ok(panel.includes("!hasOpenSupplement"));
+    assert.ok(panel.includes("isOpenProviderSupplementPhase"));
+    assert.match(panel, /canSubmitRequest[\s\S]*!hasOpenSupplement/);
   });
 
   it("quality panel summarizes gates instead of placeholder-only copy", () => {

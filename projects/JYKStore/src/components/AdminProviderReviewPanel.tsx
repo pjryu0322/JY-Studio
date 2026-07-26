@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { AdminProviderSupplementPanel } from "@/components/AdminProviderSupplementPanel";
 import { requestAdminProviderReviewApi } from "@/lib/admin-review-api";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import type { ProviderSupplementRequestState } from "@/lib/provider-supplement-request";
+import {
+  isOpenProviderSupplementPhase,
+  type ProviderSupplementRequestState,
+} from "@/lib/provider-supplement-request";
 import type { AdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 import type { AdminWorkerZipPhase } from "@/lib/role-workspace/admin-review-rail";
 import { canRequestProviderReviewHandoff } from "@/lib/store-workflow-handoff-gates-policy";
@@ -73,14 +76,22 @@ export function AdminProviderReviewPanel({
   const [checkedWarnings, setCheckedWarnings] = useState(false);
   const [checkedCorrectionScope, setCheckedCorrectionScope] = useState(false);
 
+  const hasOpenSupplement = isOpenProviderSupplementPhase(supplementState?.adminPhase);
+
   const canRequestGate = canRequestProviderReviewHandoff({
     workerZipPhase,
     quality,
     providerReviewPhase,
+    providerSupplementPhase: supplementState?.adminPhase,
   });
 
   const blockReasons = useMemo(() => {
     const reasons: string[] = [];
+    if (hasOpenSupplement) {
+      reasons.push(
+        "열린 보완요청이 있습니다. 보완요청 패널에서 재검토를 요청하세요.",
+      );
+    }
     if (workerZipPhase !== "COMPLETED") {
       reasons.push(`지식데이터 생성이 완료되지 않았습니다. (현재: ${workerZipPhase})`);
     }
@@ -97,7 +108,7 @@ export function AdminProviderReviewPanel({
       reasons.push("제공자가 이미 확인을 완료했습니다.");
     }
     return reasons;
-  }, [workerZipPhase, quality, providerReviewPhase]);
+  }, [workerZipPhase, quality, providerReviewPhase, hasOpenSupplement]);
 
   const acknowledgementsReady =
     checkedQuality &&
@@ -106,10 +117,14 @@ export function AdminProviderReviewPanel({
     (!quality.hasWarnings || checkedWarnings);
 
   const canSubmitRequest =
-    canRequestGate && acknowledgementsReady && blockReasons.length === 0;
+    canRequestGate &&
+    !hasOpenSupplement &&
+    acknowledgementsReady &&
+    blockReasons.length === 0;
 
   const showRequestForm =
-    providerReviewPhase === "NONE" || providerReviewPhase === "WITHDRAWN";
+    !hasOpenSupplement &&
+    (providerReviewPhase === "NONE" || providerReviewPhase === "WITHDRAWN");
 
   const onRequest = async () => {
     if (!canSubmitRequest || busy) return;
@@ -123,12 +138,6 @@ export function AdminProviderReviewPanel({
       setBusy(false);
     }
   };
-
-  const hasOpenSupplement =
-    supplementState != null &&
-    supplementState.adminPhase !== "WITHDRAWN" &&
-    supplementState.adminPhase !== "REJECTED";
-
   return (
     <div className="space-y-3">
       {hasOpenSupplement ? (
