@@ -30,6 +30,7 @@ import {
   ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW,
   ADMIN_WORK_FILTER_STATUS_QUALITY,
   ADMIN_WORK_FILTER_STATUS_RETURNED,
+  ADMIN_WORK_FILTER_STATUS_SERVICE_VALIDATION,
   ADMIN_WORK_SECTION_ACCEPT_BODY,
   ADMIN_WORK_SECTION_ACCEPT_TITLE,
   ADMIN_WORK_SECTION_GENERATE_BODY,
@@ -44,6 +45,8 @@ import {
   ADMIN_WORK_SECTION_PUBLISHED_TITLE,
   ADMIN_WORK_SECTION_RETURNED_BODY,
   ADMIN_WORK_SECTION_RETURNED_TITLE,
+  ADMIN_WORK_SECTION_SERVICE_VALIDATION_BODY,
+  ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE,
   ADMIN_WORK_SUMMARY_LABEL,
 } from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
@@ -54,6 +57,7 @@ type WorkStatusFilter =
   | "generate"
   | "quality"
   | "provider_review"
+  | "service_validation"
   | "pack_review"
   | "pack_review_in_progress"
   | "returned";
@@ -64,6 +68,7 @@ const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | nu
   generate: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
   quality: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
   provider_review: ["PROVIDER_REVIEW_IN_PROGRESS"],
+  service_validation: ["ADMIN_REVIEW_REQUIRED"],
   pack_review: ["ADMIN_REVIEW_REQUIRED"],
   pack_review_in_progress: ["ADMIN_REVIEW_IN_PROGRESS"],
   returned: ["PROVIDER_SUPPLEMENT_REQUIRED", "RETURNED_OR_REJECTED"],
@@ -355,6 +360,18 @@ export function AdminWorkInboxPageClient() {
     return allViewItems.filter((item) => {
       if (categoryFilter !== "all" && item.categoryId !== categoryFilter) return false;
       if (groups && !groups.includes(item.adminQueueGroup)) return false;
+      if (statusFilter === "service_validation") {
+        return (
+          item.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+          item.serviceValidationPhase !== "PASSED"
+        );
+      }
+      if (statusFilter === "pack_review") {
+        return (
+          item.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+          item.serviceValidationPhase === "PASSED"
+        );
+      }
       return true;
     });
   }, [allViewItems, categoryFilter, statusFilter]);
@@ -368,9 +385,15 @@ export function AdminWorkInboxPageClient() {
     filteredViewItems,
     "PROVIDER_REVIEW_IN_PROGRESS",
   );
-  const packReviewRequiredItems = filterAdminWorkInboxByQueueGroup(
+  const adminReviewRequiredItems = filterAdminWorkInboxByQueueGroup(
     filteredViewItems,
     "ADMIN_REVIEW_REQUIRED",
+  );
+  const serviceValidationItems = adminReviewRequiredItems.filter(
+    (item) => item.serviceValidationPhase !== "PASSED",
+  );
+  const packReviewRequiredItems = adminReviewRequiredItems.filter(
+    (item) => item.serviceValidationPhase === "PASSED",
   );
   const packReviewInProgressItems = filterAdminWorkInboxByQueueGroup(
     filteredViewItems,
@@ -401,6 +424,7 @@ export function AdminWorkInboxPageClient() {
     acceptItems.length +
     generateItems.length +
     providerReviewInProgressItems.length +
+    serviceValidationItems.length +
     packReviewRequiredItems.length +
     packReviewInProgressItems.length +
     returnedOrRejectedItems.length +
@@ -451,6 +475,9 @@ export function AdminWorkInboxPageClient() {
             <option value="generate">{ADMIN_WORK_FILTER_STATUS_GENERATE}</option>
             <option value="quality">{ADMIN_WORK_FILTER_STATUS_QUALITY}</option>
             <option value="provider_review">{ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW}</option>
+            <option value="service_validation">
+              {ADMIN_WORK_FILTER_STATUS_SERVICE_VALIDATION}
+            </option>
             <option value="pack_review">{ADMIN_WORK_FILTER_STATUS_PACK_REVIEW}</option>
             <option value="pack_review_in_progress">
               {ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS}
@@ -512,6 +539,19 @@ export function AdminWorkInboxPageClient() {
           >
             <ul className="space-y-1.5">
               {providerReviewInProgressItems.map((item) => (
+                <WorkInboxCard key={item.packId} item={item} />
+              ))}
+            </ul>
+          </WorkSection>
+
+          <WorkSection
+            title={ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE}
+            body={ADMIN_WORK_SECTION_SERVICE_VALIDATION_BODY}
+            count={serviceValidationItems.length}
+            accentClass="bg-teal-100 text-teal-900"
+          >
+            <ul className="space-y-1.5">
+              {serviceValidationItems.map((item) => (
                 <WorkInboxCard key={item.packId} item={item} />
               ))}
             </ul>

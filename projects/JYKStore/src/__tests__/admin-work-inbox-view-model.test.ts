@@ -59,8 +59,8 @@ describe("admin work inbox view model", () => {
       providerReviewPhase: "CONFIRMED",
       serviceValidationPhase: "PASSED",
     });
-    assert.equal(view.displayStatus, "검수 요청 접수");
-    assert.equal(view.ctaLabel, "검수 시작");
+    assert.equal(view.displayStatus, "승인·게시 대기");
+    assert.equal(view.ctaLabel, "승인·게시");
   });
 
   it("maps reviewing + pending to admin review required", () => {
@@ -70,8 +70,8 @@ describe("admin work inbox view model", () => {
       packStatus: "REVIEWING",
       packReviewStatus: "PENDING",
     });
-    assert.equal(view.displayStatus, "검수 요청 접수");
-    assert.equal(view.ctaLabel, "검수 시작");
+    assert.equal(view.displayStatus, "승인·게시 대기");
+    assert.equal(view.ctaLabel, "승인·게시");
     assert.equal(view.isWaitingForAdmin, true);
   });
 
@@ -82,7 +82,7 @@ describe("admin work inbox view model", () => {
       packStatus: "REVIEWING",
       packReviewStatus: "IN_REVIEW",
     });
-    assert.equal(view.displayStatus, "검수 중");
+    assert.equal(view.displayStatus, "승인·게시 진행 중");
     assert.equal(view.ctaLabel, "검수 계속하기");
     assert.equal(view.adminQueueGroup, "ADMIN_REVIEW_IN_PROGRESS");
     assert.equal(view.isWaitingForAdmin, true);

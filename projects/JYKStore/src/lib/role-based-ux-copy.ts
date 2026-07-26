@@ -192,7 +192,7 @@ export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 �
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
 export const ADMIN_WORK_INBOX_TITLE = "오늘 처리할 일";
 export const ADMIN_WORK_INBOX_DESCRIPTION =
-  "자료 접수 → 생성·품질보정 → 제공자 검토 → 최종 검수 순으로 확인하세요.";
+  "자료 접수 → 생성·품질보정 → 제공자 검토 → 서비스 검증 → 승인·게시 순으로 확인하세요.";
 export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "자료 접수 대기";
 export const ADMIN_WORK_SECTION_ACCEPT_BODY =
   "제공자가 ZIP/원본 자료를 제출했습니다. 자료를 확인한 뒤 접수하거나 반려하세요.";
@@ -206,17 +206,21 @@ export const ADMIN_WORK_SECTION_QUALITY_TITLE = "생성·품질보정 대기";
 export const ADMIN_WORK_SECTION_QUALITY_BODY =
   "접수가 끝난 지식팩입니다. 생성 실행과 품질보정을 진행하세요.";
 export const ADMIN_WORK_SECTION_QUALITY_CTA = "생성·품질보정";
-export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 검토";
+export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 확인 대기";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY =
   "제공자가 생성 결과를 확인 중입니다. 관리자 조치 대기가 아닙니다.";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_CTA = "검토 요청 내역 보기";
-export const ADMIN_WORK_SECTION_PACK_REVIEW_TITLE = "검수 요청 접수";
+export const ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE = "서비스 검증 대기";
+export const ADMIN_WORK_SECTION_SERVICE_VALIDATION_BODY =
+  "제공자 확인이 끝났습니다. API·MCP·RAG Export 검증을 완료하세요.";
+export const ADMIN_WORK_SECTION_SERVICE_VALIDATION_CTA = "서비스 검증";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_TITLE = "승인·게시 대기";
 export const ADMIN_WORK_SECTION_PACK_REVIEW_BODY =
-  "제공자 확인이 끝나 관리자 검수가 필요합니다.";
-export const ADMIN_WORK_SECTION_PACK_REVIEW_CTA = "검수 시작";
-export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_TITLE = "검수 진행 중";
+  "서비스 검증까지 끝난 지식팩입니다. 최종 승인·게시를 진행하세요.";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_CTA = "승인·게시";
+export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_TITLE = "승인·게시 진행 중";
 export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_BODY =
-  "관리자가 검수를 시작한 지식팩입니다. 이어서 진행하세요.";
+  "관리자가 검수를 시작한 지식팩입니다. 이어서 승인·게시를 진행하세요.";
 export const ADMIN_WORK_SECTION_PACK_REVIEW_IN_PROGRESS_CTA = "검수 계속하기";
 export const ADMIN_WORK_SECTION_PUBLISHED_TITLE = "공개 지식팩";
 export const ADMIN_WORK_SECTION_PUBLISHED_BODY =
@@ -232,8 +236,9 @@ export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "자료 접수 대기";
 export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성·품질보정";
 export const ADMIN_WORK_FILTER_STATUS_QUALITY = "생성·품질보정";
 export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토";
-export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "검수 요청 접수";
-export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "검수 진행 중";
+export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "승인·게시 대기";
+export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "승인·게시 진행 중";
+export const ADMIN_WORK_FILTER_STATUS_SERVICE_VALIDATION = "서비스 검증 대기";
 export const ADMIN_WORK_FILTER_STATUS_RETURNED = "제공자 보완요청";
 export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
 export const ADMIN_WORK_EMPTY = "지금 처리할 작업이 없습니다.";

@@ -25,6 +25,7 @@ describe("admin work inbox UX", () => {
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_GENERATE_TITLE"));
     assert.ok(!inbox.includes("ADMIN_WORK_SECTION_QUALITY_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE"));
+    assert.ok(inbox.includes("ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
     assert.ok(inbox.includes("ADMIN_WORK_SECTION_RETURNED_TITLE"));
     assert.ok(inbox.includes("PROVIDER_SUPPLEMENT_REQUIRED") || inbox.includes("returnedItems"));
@@ -42,11 +43,13 @@ describe("admin work inbox UX", () => {
     const acceptAt = inbox.indexOf("title={ADMIN_WORK_SECTION_ACCEPT_TITLE}");
     const generateAt = inbox.indexOf("title={ADMIN_WORK_SECTION_GENERATE_TITLE}");
     const providerAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE}");
+    const serviceAt = inbox.indexOf("title={ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE}");
     const packAt = inbox.indexOf("title={ADMIN_WORK_SECTION_PACK_REVIEW_TITLE}");
     const returnedAt = inbox.indexOf("title={ADMIN_WORK_SECTION_RETURNED_TITLE}");
     assert.ok(acceptAt > 0 && acceptAt < generateAt);
     assert.ok(generateAt < providerAt);
-    assert.ok(providerAt < packAt);
+    assert.ok(providerAt < serviceAt);
+    assert.ok(serviceAt < packAt);
     assert.ok(packAt < returnedAt);
   });
 

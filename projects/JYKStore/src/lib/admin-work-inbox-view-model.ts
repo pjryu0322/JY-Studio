@@ -167,7 +167,7 @@ function mapQueuePresentation(input: {
     if (input.packReviewStatus === PackReviewStatus.IN_REVIEW) {
       return {
         adminQueueGroup: "ADMIN_REVIEW_IN_PROGRESS",
-        displayStatus: "검수 중",
+        displayStatus: "승인·게시 진행 중",
         ctaLabel: "검수 계속하기",
         isWaitingForAdmin: true,
       };
@@ -179,8 +179,8 @@ function mapQueuePresentation(input: {
     ) {
       return {
         adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
-        displayStatus: "검수 요청 접수",
-        ctaLabel: "검수 시작",
+        displayStatus: "승인·게시 대기",
+        ctaLabel: "승인·게시",
         isWaitingForAdmin: true,
       };
     }
@@ -245,8 +245,8 @@ function mapQueuePresentation(input: {
     }
     return {
       adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
-      displayStatus: "검수 요청 접수",
-      ctaLabel: "검수 시작",
+      displayStatus: "승인·게시 대기",
+      ctaLabel: "승인·게시",
       isWaitingForAdmin: true,
     };
   }

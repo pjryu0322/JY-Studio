@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { TodayView } from "@/components/TodayView";
-import { isProviderAccountRole } from "@/lib/account-role";
+import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
 import { getStoreAuthSessionFromCookies } from "@/lib/auth-session";
 import { listTodayFeaturedPacks } from "@/lib/pack-catalog-service";
 import { ROUTES } from "@/lib/routes";
@@ -13,6 +13,9 @@ export default async function TodayPage() {
   const session = await getStoreAuthSessionFromCookies();
   if (session) {
     const user = await getStoreUserById(session.userId);
+    if (isAdminAccountRole(user?.accountRole)) {
+      redirect(ROUTES.admin);
+    }
     if (isProviderAccountRole(user?.accountRole)) {
       redirect(ROUTES.provider);
     }
