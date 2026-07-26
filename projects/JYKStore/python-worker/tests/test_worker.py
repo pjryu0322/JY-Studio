@@ -193,6 +193,79 @@ class HtmlApiParserTests(unittest.TestCase):
         # Substantial Properties section remains independent.
         self.assertTrue(any(s["heading"] == "Properties" for s in result["sections"]))
 
+    def test_heading_fragments_prefer_entity_parent_over_adjacent_member(self):
+        """Methods/Events must attach to the entity root, not the previous member."""
+        from src.section_merge import merge_heading_fragments
+
+        sections = [
+            {
+                "heading": "Class: Alpha",
+                "headingLevel": 1,
+                "content": "Alpha is the primary grid collection helper used by bindings.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "length",
+                "headingLevel": 3,
+                "content": "Number of items currently stored.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Methods",
+                "headingLevel": 2,
+                "content": "list",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Class: Beta",
+                "headingLevel": 1,
+                "content": "Beta is a separate entity for chart series configuration.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "Returns",
+                "headingLevel": 2,
+                "content": "Beta",
+                "codeBlocks": [],
+                "tables": [],
+            },
+        ]
+        merged = merge_heading_fragments(sections)
+        headings = [s["heading"] for s in merged]
+        self.assertNotIn("Methods", headings)
+        self.assertNotIn("Returns", headings)
+        alpha = next(s for s in merged if s["heading"] == "Class: Alpha")
+        beta = next(s for s in merged if s["heading"] == "Class: Beta")
+        self.assertIn("Methods", " ".join(alpha.get("mergedHeadings") or []))
+        self.assertIn("Returns", " ".join(beta.get("mergedHeadings") or []))
+        self.assertTrue(any(s["heading"] == "length" for s in merged))
+
+    def test_keeps_independent_short_api_description(self):
+        from src.section_merge import merge_heading_fragments
+
+        sections = [
+            {
+                "heading": "Class: Grid",
+                "headingLevel": 1,
+                "content": "Grid renders tabular data with virtualized rows.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+            {
+                "heading": "setSpan",
+                "headingLevel": 2,
+                "content": "Merges cells across columns for grouped headers.",
+                "codeBlocks": [],
+                "tables": [],
+            },
+        ]
+        merged = merge_heading_fragments(sections)
+        self.assertEqual([s["heading"] for s in merged], ["Class: Grid", "setSpan"])
+
 
 class SampleHtmlParserTests(unittest.TestCase):
     def test_preserves_sample_name_and_code(self):

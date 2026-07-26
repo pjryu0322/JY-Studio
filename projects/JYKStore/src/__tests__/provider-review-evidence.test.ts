@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   buildChunkIssueEvidence,
   buildProviderReviewAreaGuidance,
+  buildRetrievalIssueEvidence,
+  providerReviewConfirmBlockReason,
   providerReviewHasBlockingFail,
 } from "../lib/provider-review-evidence.ts";
 
@@ -80,5 +82,63 @@ describe("provider review evidence", () => {
       }),
       true,
     );
+  });
+
+  it("blocks confirm when retrieval FAIL even if other reviews are complete", () => {
+    const reason = providerReviewConfirmBlockReason({
+      structureStatus: "PASS",
+      chunkStatus: "PASS",
+      retrievalStatus: "FAIL",
+      structureReviewComplete: true,
+      chunkReviewComplete: true,
+      retrievalReviewComplete: true,
+    });
+    assert.match(reason ?? "", /실패 상태/);
+  });
+
+  it("blocks confirm until each attention chunk is reviewed", () => {
+    const reason = providerReviewConfirmBlockReason({
+      structureStatus: "PASS",
+      chunkStatus: "WARNING",
+      retrievalStatus: "PASS",
+      structureReviewComplete: true,
+      chunkReviewComplete: false,
+      retrievalReviewComplete: true,
+      unreviewedAttentionChunkCount: 4,
+    });
+    assert.match(reason ?? "", /남은 4건/);
+  });
+
+  it("blocks confirm until retrieval detail is reviewed", () => {
+    const reason = providerReviewConfirmBlockReason({
+      structureStatus: "PASS",
+      chunkStatus: "PASS",
+      retrievalStatus: "WARNING",
+      structureReviewComplete: true,
+      chunkReviewComplete: true,
+      retrievalReviewComplete: false,
+    });
+    assert.match(reason ?? "", /검색 평가 실패 상세/);
+  });
+
+  it("builds retrieval issue evidence with problem data preview", () => {
+    const rows = buildRetrievalIssueEvidence({
+      failedResults: [
+        {
+          caseId: "case-1",
+          retrievalMode: "hybrid",
+          query: "셀 병합 API는 어떻게 쓰나요?",
+          status: "FAIL",
+          issueCodes: ["RETRIEVAL_EXPECTED_CHUNK_MISSING"],
+          firstHitRank: null,
+          hit: false,
+        },
+      ],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.sourceDocumentId, null);
+    assert.match(rows[0]?.problemPreview ?? "", /질문:/);
+    assert.match(rows[0]?.problemPreview ?? "", /RETRIEVAL_EXPECTED_CHUNK_MISSING/);
+    assert.match(rows[0]?.serviceImpact ?? "", /기대 답변/);
   });
 });

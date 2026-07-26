@@ -5,9 +5,17 @@ import {
 import type { ProviderReviewAreaGuidance, ProviderReviewIssueEvidence } from "@/lib/provider-review-evidence";
 
 type SourceDoc = { title?: string | null; sourceFormat?: string | null; sourceType?: string | null };
-type ChunkSample = {
+
+export type ProviderReviewMarkdownChunkItem = {
   chunkId?: string | null;
   title?: string | null;
+  locationLabel?: string | null;
+  contentPreview?: string | null;
+  issueReason?: string | null;
+  serviceImpact?: string | null;
+  providerAction?: string | null;
+  reviewStatus?: string | null;
+  /** @deprecated Prefer contentPreview / issueReason fields. */
   contentLength?: number | null;
 };
 
@@ -21,7 +29,9 @@ export function buildProviderGenerationReviewMarkdown(input: {
   failCount: number;
   checkedAt?: string | null;
   sourceDocuments: readonly SourceDoc[];
-  chunkSamples: readonly ChunkSample[];
+  chunkReviewItems?: readonly ProviderReviewMarkdownChunkItem[];
+  /** @deprecated Use chunkReviewItems. Kept for older callers. */
+  chunkSamples?: readonly ProviderReviewMarkdownChunkItem[];
   guidance: readonly ProviderReviewAreaGuidance[];
   issues: readonly ProviderReviewIssueEvidence[];
 }): string {
@@ -32,6 +42,10 @@ export function buildProviderGenerationReviewMarkdown(input: {
   });
   const checked =
     input.checkedAt != null ? new Date(input.checkedAt).toLocaleString("ko-KR") : "—";
+  const chunkItems =
+    input.chunkReviewItems ??
+    input.chunkSamples ??
+    [];
 
   const lines: string[] = [
     `# 생성결과 내역`,
@@ -76,15 +90,17 @@ export function buildProviderGenerationReviewMarkdown(input: {
     lines.push(``);
   }
 
-  lines.push(`## Chunk 샘플`, ``);
-  if (input.chunkSamples.length === 0) {
+  lines.push(`## 지식단위/Chunk 검토 상세`, ``);
+  if (chunkItems.length === 0) {
     lines.push(`- (없음)`, ``);
   } else {
-    lines.push(`| 제목/ID | 길이 |`);
-    lines.push(`| --- | --- |`);
-    for (const m of input.chunkSamples) {
+    lines.push(
+      `| Chunk ID | 원본 위치 | 제목/섹션 | 본문 미리보기 | 이슈 사유 | 서비스 영향 | 제공자 조치 | 검토 상태 |`,
+    );
+    lines.push(`| --- | --- | --- | --- | --- | --- | --- | --- |`);
+    for (const row of chunkItems) {
       lines.push(
-        `| ${escapeCell(m.title || m.chunkId || "—")} | ${typeof m.contentLength === "number" ? `${m.contentLength}자` : "—"} |`,
+        `| ${escapeCell(row.chunkId || "—")} | ${escapeCell(row.locationLabel || "—")} | ${escapeCell(row.title || "—")} | ${escapeCell(row.contentPreview || (typeof row.contentLength === "number" ? `${row.contentLength}자` : "—"))} | ${escapeCell(row.issueReason || "—")} | ${escapeCell(row.serviceImpact || "—")} | ${escapeCell(row.providerAction || "—")} | ${escapeCell(row.reviewStatus || "—")} |`,
       );
     }
     lines.push(``);

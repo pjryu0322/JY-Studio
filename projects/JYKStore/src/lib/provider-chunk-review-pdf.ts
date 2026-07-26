@@ -82,7 +82,13 @@ export function buildProviderChunkReviewPdfChunkHtml(
   <p class="meta"><strong>상태</strong> ${escapeHtml(row.item.statusLabel)}
     ${row.item.issueTypeLabels.length ? ` · ${escapeHtml(row.item.issueTypeLabels.join(", "))}` : ""}</p>
   <p class="meta"><strong>원본 위치</strong> ${escapeHtml(location || "원본 위치 정보 없음")}</p>
-  <p class="meta"><strong>판단 사유</strong> ${escapeHtml(row.item.issueReason)}</p>
+  <p class="meta"><strong>이슈 사유</strong> ${escapeHtml(row.item.issueReason)}</p>
+  <p class="meta"><strong>서비스 영향</strong> ${escapeHtml(
+    row.item.status === "ok"
+      ? "검색·인용에 특이 영향 없음"
+      : "검색 결과가 조각나거나 중복되어 답변 품질이 낮아질 수 있습니다.",
+  )}</p>
+  <p class="meta"><strong>제공자 조치</strong> ${escapeHtml(row.item.providerActionHint)}</p>
   <h3>지식 단위 본문</h3>
   <pre>${escapeHtml(body)}${row.detail?.contentTruncated ? "\n…(이후 생략)" : ""}</pre>
   <h3>원문</h3>

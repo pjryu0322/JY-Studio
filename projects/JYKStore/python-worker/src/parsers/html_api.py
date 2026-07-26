@@ -232,9 +232,14 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
                 heading_text, content, code_blocks, api_name=api_name
             ):
                 continue
+            tag_name = (getattr(heading, "name", None) or "h2").lower()
+            heading_level = (
+                int(tag_name[1]) if len(tag_name) == 2 and tag_name[1].isdigit() else 2
+            )
             sections.append(
                 {
                     "heading": heading_text,
+                    "headingLevel": heading_level,
                     "content": content,
                     "tables": _extract_tables(section_soup),
                     "codeBlocks": code_blocks,
@@ -245,6 +250,7 @@ def parse_api_html(file_path: Path, source_path: str) -> dict[str, Any]:
         sections.append(
             {
                 "heading": title,
+                "headingLevel": 1,
                 "content": content,
                 "tables": _extract_tables(root),
                 "codeBlocks": _extract_code_blocks(root),

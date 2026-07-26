@@ -27,8 +27,11 @@ import {
   buildStructureIssueEvidence,
   countProviderReviewIssueSeverity,
   issuesForSourceDocument,
+  providerReviewConfirmBlockReason,
   providerReviewHasBlockingFail,
   providerReviewHasWarning,
+  providerReviewStatusIsFail,
+  providerReviewStatusNeedsAttention,
   sourceDocumentIdsWithIssues,
   type ProviderReviewIssueEvidence,
 } from "@/lib/provider-review-evidence";
@@ -180,8 +183,15 @@ export function ProviderGenerationReviewPanel({
   const [issueModalDocId, setIssueModalDocId] = useState<string | null>(null);
   const [modalSelectedIssueId, setModalSelectedIssueId] = useState<string | null>(null);
   const [issuesReviewed, setIssuesReviewed] = useState(false);
-  const [chunkAttentionReviewed, setChunkAttentionReviewed] = useState(false);
+  const [reviewedChunkIds, setReviewedChunkIds] = useState<Set<string>>(() => new Set());
+  const [reviewedRetrievalIssueIds, setReviewedRetrievalIssueIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [retrievalReviewed, setRetrievalReviewed] = useState(false);
+  const [retrievalModalOpen, setRetrievalModalOpen] = useState(false);
+  const [modalSelectedRetrievalId, setModalSelectedRetrievalId] = useState<string | null>(null);
   const [markedOkChunkIds, setMarkedOkChunkIds] = useState<Set<string>>(() => new Set());
+  const [supplementChunkIds, setSupplementChunkIds] = useState<Set<string>>(() => new Set());
   const [sourceDocsExpanded, setSourceDocsExpanded] = useState(true);
   const [chunkReviewExpanded, setChunkReviewExpanded] = useState(true);
   const [chunkFilter, setChunkFilter] = useState<ProviderChunkReviewFilter>("all");
@@ -216,7 +226,6 @@ export function ProviderGenerationReviewPanel({
     () => pack?.versions[0]?.sourceDocuments ?? [],
     [pack],
   );
-  const chunkSamples = pack?.chunkQuality?.report?.metrics?.slice(0, 8) ?? [];
   const chunkReviewItems = useMemo(
     () =>
       buildProviderChunkReviewItems({
@@ -258,11 +267,17 @@ export function ProviderGenerationReviewPanel({
     });
     return rows;
   }, [filteredChunkItems, chunkSortKey, chunkSortDir]);
-  const attentionChunkCount =
-    chunkStatusCounts.warning + chunkStatusCounts.needs_action;
+  const attentionChunkIds = useMemo(
+    () =>
+      chunkReviewItems
+        .filter((item) => item.status === "warning" || item.status === "needs_action")
+        .map((item) => item.chunkId),
+    [chunkReviewItems],
+  );
+  const attentionChunkCount = attentionChunkIds.length;
   const chunkFilterCounts = {
     all: chunkReviewItems.length,
-    warning: attentionChunkCount,
+    warning: chunkStatusCounts.warning + chunkStatusCounts.needs_action,
     needs_action: chunkStatusCounts.needs_action,
   } as const;
   const visibleChunkIds = useMemo(
@@ -329,12 +344,43 @@ export function ProviderGenerationReviewPanel({
   const blockingFail = providerReviewHasBlockingFail({
     structureStatus: quality.structure,
     chunkStatus: quality.chunk,
+    retrievalStatus: quality.retrieval,
   });
   const hasWarning = providerReviewHasWarning({
     structureStatus: quality.structure,
     chunkStatus: quality.chunk,
     retrievalStatus: quality.retrieval,
   });
+  const unreviewedAttentionChunkCount = attentionChunkIds.filter(
+    (id) => !reviewedChunkIds.has(id),
+  ).length;
+  const allAttentionChunksReviewed =
+    attentionChunkCount === 0 || unreviewedAttentionChunkCount === 0;
+  const retrievalFailCount = retrievalEvidence.length;
+  const retrievalNeedsReview =
+    providerReviewStatusIsFail(quality.retrieval) || retrievalFailCount > 0;
+  const retrievalReviewComplete =
+    !retrievalNeedsReview ||
+    retrievalReviewed ||
+    (retrievalFailCount > 0 &&
+      retrievalEvidence.every((issue) => reviewedRetrievalIssueIds.has(issue.id)));
+  const structureNeedsReview =
+    providerReviewStatusNeedsAttention(quality.structure) || structureEvidence.length > 0;
+  const structureReviewComplete = !structureNeedsReview || issuesReviewed;
+  const chunkNeedsReview =
+    providerReviewStatusNeedsAttention(quality.chunk) || attentionChunkCount > 0;
+  const chunkReviewComplete = !chunkNeedsReview || allAttentionChunksReviewed;
+  const confirmBlockedReason = providerReviewConfirmBlockReason({
+    structureStatus: quality.structure,
+    chunkStatus: quality.chunk,
+    retrievalStatus: quality.retrieval,
+    structureReviewComplete,
+    chunkReviewComplete,
+    retrievalReviewComplete,
+    unreviewedAttentionChunkCount,
+    hasPendingChangesDraft: Boolean(formOpen && details.trim()),
+  });
+  const canConfirm = phase === "REQUESTED" && confirmBlockedReason == null;
   const docsWithIssues = useMemo(() => sourceDocumentIdsWithIssues(allIssues), [allIssues]);
   const sortedSourceDocs = useMemo(() => {
     const rows = sourceDocs.map((doc, index) => ({
@@ -465,6 +511,30 @@ export function ProviderGenerationReviewPanel({
     pack?.updatedAt ??
     null;
 
+  useEffect(() => {
+    if (!chunkDetailItem) return;
+    let cancelled = false;
+    setChunkDetailBusy(true);
+    setChunkDetailError(null);
+    void fetchProviderChunkReviewDetailApi(packId, chunkDetailItem.chunkId)
+      .then((res) => {
+        if (cancelled) return;
+        setChunkDetail(res.chunk);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setChunkDetailError(
+          err instanceof Error ? err.message : "지식 단위 본문을 불러오지 못했습니다.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setChunkDetailBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chunkDetailItem, packId]);
+
   if (phase !== "REQUESTED" && phase !== "CONFIRMED") {
     return null;
   }
@@ -479,6 +549,7 @@ export function ProviderGenerationReviewPanel({
       setTargetKind(seeded.targetKind);
       setTargetLabel(seeded.targetLabel);
       setDetails(seeded.details);
+      markChunkForSupplement(chunkSeed.chunkId);
     } else if (seed) {
       setChangeType(seed.suggestedChangeType);
       setTargetKind(seed.suggestedTargetKind);
@@ -493,6 +564,13 @@ export function ProviderGenerationReviewPanel({
           .filter(Boolean)
           .join("\n"),
       );
+      if (seed.area === "retrieval") {
+        markRetrievalReviewed(seed.id);
+      } else if (seed.area === "structure") {
+        markIssuesReviewed();
+      } else if (seed.targetId) {
+        markChunkForSupplement(seed.targetId);
+      }
     }
     setFormOpen(true);
     setError(null);
@@ -502,28 +580,32 @@ export function ProviderGenerationReviewPanel({
     setIssuesReviewed(true);
   };
 
-  const markChunkAttentionReviewed = () => {
-    setChunkAttentionReviewed(true);
+  const markChunkReviewed = (chunkId: string) => {
+    setReviewedChunkIds((prev) => {
+      if (prev.has(chunkId)) return prev;
+      const next = new Set(prev);
+      next.add(chunkId);
+      return next;
+    });
   };
 
-  const runConfirm = async (opts?: { attentionReviewed?: boolean }) => {
-    if (blockingFail) {
-      setError("실패 상태인 품질 항목이 있어 확인 완료할 수 없습니다. 보완 요청을 작성해 주세요.");
-      return;
+  const markRetrievalReviewed = (issueId?: string | null) => {
+    setRetrievalReviewed(true);
+    if (issueId) {
+      setReviewedRetrievalIssueIds((prev) => {
+        if (prev.has(issueId)) return prev;
+        const next = new Set(prev);
+        next.add(issueId);
+        return next;
+      });
+    } else {
+      setReviewedRetrievalIssueIds(new Set(retrievalEvidence.map((issue) => issue.id)));
     }
-    if (allIssues.length > 0 && !issuesReviewed) {
-      setError("이슈가 있는 원본 파일의 경고 아이콘을 눌러 이슈 상세를 확인한 뒤 확인 완료해 주세요.");
-      return;
-    }
-    const attentionOk = Boolean(opts?.attentionReviewed) || chunkAttentionReviewed;
-    if (attentionChunkCount > 0 && !attentionOk) {
-      setError(
-        "주의·보완이 필요한 검색 지식 단위를 상세 검토한 뒤 확인 완료해 주세요.",
-      );
-      return;
-    }
-    if (formOpen && details.trim()) {
-      setError("작성 중인 보완 요청이 있습니다. 제출하거나 취소한 뒤 확인 완료해 주세요.");
+  };
+
+  const runConfirm = async () => {
+    if (confirmBlockedReason) {
+      setError(confirmBlockedReason);
       return;
     }
     const confirmMessage = hasWarning
@@ -589,7 +671,7 @@ export function ProviderGenerationReviewPanel({
     setChunkDetail(null);
     setChunkDetailError(null);
     if (item.status !== "ok") {
-      markChunkAttentionReviewed();
+      markChunkReviewed(item.chunkId);
     }
   };
 
@@ -600,38 +682,30 @@ export function ProviderGenerationReviewPanel({
     setChunkDetailBusy(false);
   };
 
-  useEffect(() => {
-    if (!chunkDetailItem) return;
-    let cancelled = false;
-    setChunkDetailBusy(true);
-    setChunkDetailError(null);
-    void fetchProviderChunkReviewDetailApi(packId, chunkDetailItem.chunkId)
-      .then((res) => {
-        if (cancelled) return;
-        setChunkDetail(res.chunk);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setChunkDetailError(
-          err instanceof Error ? err.message : "지식 단위 본문을 불러오지 못했습니다.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setChunkDetailBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [chunkDetailItem, packId]);
-
   const markChunkOk = (chunkId: string) => {
     setMarkedOkChunkIds((prev) => {
       const next = new Set(prev);
       next.add(chunkId);
       return next;
     });
-    markChunkAttentionReviewed();
+    markChunkReviewed(chunkId);
     setMessage("해당 지식 단위를 문제 없음으로 표시했습니다.");
+  };
+
+  const markChunkForSupplement = (chunkId: string) => {
+    setSupplementChunkIds((prev) => {
+      const next = new Set(prev);
+      next.add(chunkId);
+      return next;
+    });
+    markChunkReviewed(chunkId);
+  };
+
+  const chunkReviewStateLabel = (chunkId: string, status: ProviderChunkReviewItem["status"]) => {
+    if (supplementChunkIds.has(chunkId)) return "보완 요청 대상";
+    if (markedOkChunkIds.has(chunkId) || reviewedChunkIds.has(chunkId)) return "검토 완료";
+    if (status === "ok") return "정상";
+    return "검토 전";
   };
 
   const areaLabel = (area: ProviderReviewIssueEvidence["area"]) => {
@@ -641,6 +715,11 @@ export function ProviderGenerationReviewPanel({
   };
 
   const downloadMarkdown = () => {
+    const attentionItems = chunkReviewItems.filter(
+      (item) => item.status === "warning" || item.status === "needs_action",
+    );
+    const exportChunks =
+      attentionItems.length > 0 ? attentionItems : chunkReviewItems.slice(0, 12);
     const md = buildProviderGenerationReviewMarkdown({
       packId,
       packName: pack?.name ?? packId,
@@ -651,13 +730,32 @@ export function ProviderGenerationReviewPanel({
       failCount: severityCounts.fail,
       checkedAt,
       sourceDocuments: sourceDocs,
-      chunkSamples,
+      chunkReviewItems: exportChunks.map((item) => ({
+        chunkId: item.chunkId,
+        title: item.title,
+        locationLabel: [item.sourceFileName, ...item.sourceSectionPath]
+          .filter(Boolean)
+          .join(" › "),
+        contentPreview: item.contentPreview,
+        issueReason: item.issueReason,
+        serviceImpact:
+          item.status === "ok"
+            ? "검색·인용에 특이 영향 없음"
+            : "검색 결과가 조각나거나 중복되어 답변 품질이 낮아질 수 있습니다.",
+        providerAction: item.providerActionHint,
+        reviewStatus: chunkReviewStateLabel(item.chunkId, item.status),
+      })),
       guidance,
       issues: allIssues,
     });
     const safeName = (pack?.name ?? packId).replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60);
     downloadTextFile(`${safeName}-생성결과내역.md`, md);
   };
+
+  const selectedRetrievalIssue =
+    retrievalEvidence.find((issue) => issue.id === modalSelectedRetrievalId) ??
+    retrievalEvidence[0] ??
+    null;
 
   return (
     <section
@@ -671,14 +769,8 @@ export function ProviderGenerationReviewPanel({
             <>
               <button
                 type="button"
-                title={
-                  blockingFail
-                    ? "실패 상태에서는 확인 완료할 수 없습니다."
-                    : attentionChunkCount > 0 && !chunkAttentionReviewed
-                      ? "주의·보완이 필요한 검색 지식 단위를 상세 검토한 뒤 확인할 수 있습니다."
-                      : undefined
-                }
-                disabled={busy != null || blockingFail}
+                title={confirmBlockedReason ?? undefined}
+                disabled={busy != null || !canConfirm}
                 onClick={() => void runConfirm()}
                 className="inline-flex min-h-[36px] items-center rounded-xl bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
               >
@@ -744,6 +836,78 @@ export function ProviderGenerationReviewPanel({
           </tbody>
         </table>
       </div>
+
+      {guidance.length > 0 ? (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+            <h3 className="text-xs font-bold text-slate-900">영역별 주의·실패 안내</h3>
+            {retrievalNeedsReview ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setRetrievalModalOpen(true);
+                  setModalSelectedRetrievalId(null);
+                  markRetrievalReviewed();
+                }}
+                className="min-h-[28px] rounded-lg border border-amber-300 bg-amber-50 px-2 text-[10px] font-bold text-amber-950"
+              >
+                검색 평가 이슈 상세
+              </button>
+            ) : null}
+          </div>
+          <table className="min-w-full text-left text-[11px] text-slate-700">
+            <thead className="border-y border-slate-100 bg-slate-50 text-store-muted">
+              <tr>
+                <th className="px-3 py-2 font-semibold">영역</th>
+                <th className="px-3 py-2 font-semibold">상태</th>
+                <th className="px-3 py-2 font-semibold">문제 사유</th>
+                <th className="px-3 py-2 font-semibold">서비스 영향</th>
+                <th className="px-3 py-2 font-semibold">제공자 조치</th>
+                <th className="px-3 py-2 font-semibold">확인 경로</th>
+              </tr>
+            </thead>
+            <tbody>
+              {guidance.map((row) => (
+                <tr key={row.area} className="border-b border-slate-100 align-top">
+                  <td className="px-3 py-2 font-semibold text-slate-900">{row.areaLabel}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{row.statusLabel}</td>
+                  <td className="px-3 py-2">{row.problem}</td>
+                  <td className="px-3 py-2">{row.serviceImpact}</td>
+                  <td className="px-3 py-2">{row.providerAction}</td>
+                  <td className="px-3 py-2">
+                    {row.area === "retrieval" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRetrievalModalOpen(true);
+                          setModalSelectedRetrievalId(null);
+                          markRetrievalReviewed();
+                        }}
+                        className="min-h-[28px] rounded-lg border border-slate-300 bg-white px-2 text-[10px] font-bold text-slate-800"
+                      >
+                        검색 평가 상세
+                      </button>
+                    ) : row.area === "chunk" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChunkReviewExpanded(true);
+                          setChunkFilter("warning");
+                        }}
+                        className="min-h-[28px] rounded-lg border border-slate-300 bg-white px-2 text-[10px] font-bold text-slate-800"
+                      >
+                        지식 단위 목록
+                      </button>
+                    ) : (
+                      <span className="text-store-muted">원본 파일 경고 아이콘</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
@@ -986,6 +1150,7 @@ export function ProviderGenerationReviewPanel({
                     <SortMark active={chunkSortKey === "status"} dir={chunkSortDir} />
                   </button>
                 </th>
+                <th className="px-3 py-2 font-semibold">검토</th>
                 <th className="w-12 px-3 py-2 font-semibold">
                   <span className="sr-only">상세 검토</span>
                 </th>
@@ -994,7 +1159,7 @@ export function ProviderGenerationReviewPanel({
             <tbody>
               {sortedChunkItems.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-2 text-store-muted" colSpan={7}>
+                  <td className="px-3 py-2 text-store-muted" colSpan={8}>
                     {chunkReviewItems.length === 0
                       ? "표시할 검색 지식 단위가 없습니다."
                       : "선택한 필터에 해당하는 항목이 없습니다."}
@@ -1004,6 +1169,7 @@ export function ProviderGenerationReviewPanel({
                 sortedChunkItems.map(({ item, index }) => {
                   const markedOk = markedOkChunkIds.has(item.chunkId);
                   const selected = selectedChunkIds.has(item.chunkId);
+                  const reviewLabel = chunkReviewStateLabel(item.chunkId, item.status);
                   const location = [item.sourceFileName, ...item.sourceSectionPath]
                     .filter(Boolean)
                     .join(" › ");
@@ -1055,6 +1221,19 @@ export function ProviderGenerationReviewPanel({
                           }`}
                         >
                           {markedOk ? "문제 없음" : item.statusLabel}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            reviewLabel === "보완 요청 대상"
+                              ? "bg-red-50 text-red-800"
+                              : reviewLabel === "검토 완료" || reviewLabel === "정상"
+                                ? "bg-emerald-50 text-emerald-800"
+                                : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {reviewLabel}
                         </span>
                       </td>
                       <td className="px-3 py-2">
@@ -1210,6 +1389,161 @@ export function ProviderGenerationReviewPanel({
                             >
                               이 이슈로 보완 요청 작성
                             </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {retrievalModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="provider-retrieval-modal-title"
+          onClick={() => setRetrievalModalOpen(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-store-border bg-white p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3
+                  id="provider-retrieval-modal-title"
+                  className="text-sm font-bold text-slate-900"
+                >
+                  검색 평가 이슈 상세
+                </h3>
+                <p className="mt-0.5 text-[11px] text-store-muted">
+                  실패·주의 질문을 확인한 뒤 확인 완료하거나 보완 요청을 작성하세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRetrievalModalOpen(false)}
+                className="inline-flex min-h-[32px] items-center rounded-lg border border-store-border px-2 text-[11px] font-semibold text-slate-700"
+              >
+                닫기
+              </button>
+            </div>
+
+            {retrievalEvidence.length === 0 ? (
+              <p className="mt-3 text-xs text-store-muted">표시할 검색 평가 실패 이슈가 없습니다.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {retrievalEvidence.map((issue) => {
+                  const active =
+                    (modalSelectedRetrievalId ?? retrievalEvidence[0]?.id) === issue.id;
+                  const reviewed = reviewedRetrievalIssueIds.has(issue.id);
+                  return (
+                    <li key={issue.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalSelectedRetrievalId(issue.id);
+                          markRetrievalReviewed(issue.id);
+                        }}
+                        className={`w-full rounded-xl border px-3 py-2 text-left text-[11px] ${
+                          active
+                            ? "border-amber-400 bg-amber-50"
+                            : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-slate-900">
+                            {issue.issueTypeLabel}
+                          </span>
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                            {issue.severityLabel}
+                          </span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              reviewed
+                                ? "bg-emerald-50 text-emerald-800"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {reviewed ? "검토 완료" : "검토 전"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-slate-700">{issue.locationLabel || issue.message}</p>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {selectedRetrievalIssue ? (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-full text-left text-[11px] text-slate-700">
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <th className="w-28 bg-slate-50 px-3 py-2 font-semibold text-store-muted">
+                        평가 질문
+                      </th>
+                      <td className="px-3 py-2">
+                        {selectedRetrievalIssue.locationLabel || "질문 정보 없음"}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">
+                        문제 데이터
+                      </th>
+                      <td className="px-3 py-2">
+                        <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-2 font-mono text-[10px] text-slate-800">
+                          {selectedRetrievalIssue.problemPreview ||
+                            selectedRetrievalIssue.message ||
+                            "상세 근거 데이터 없음"}
+                        </pre>
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">
+                        서비스 영향
+                      </th>
+                      <td className="px-3 py-2">{selectedRetrievalIssue.serviceImpact}</td>
+                    </tr>
+                    <tr>
+                      <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">
+                        제공자 조치
+                      </th>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{selectedRetrievalIssue.providerAction}</span>
+                          {phase === "REQUESTED" ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busy != null}
+                                onClick={() => {
+                                  markRetrievalReviewed(selectedRetrievalIssue.id);
+                                  setRetrievalModalOpen(false);
+                                  setMessage("검색 평가 상세 확인을 완료했습니다.");
+                                }}
+                                className="min-h-[32px] rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-bold text-slate-800 disabled:opacity-60"
+                              >
+                                검색 평가 상세 확인 완료
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy != null}
+                                onClick={() => {
+                                  openChangesForm(selectedRetrievalIssue);
+                                  setRetrievalModalOpen(false);
+                                }}
+                                className="min-h-[32px] rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-bold text-slate-800 disabled:opacity-60"
+                              >
+                                보완 요청 작성
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </td>
@@ -1423,18 +1757,12 @@ export function ProviderGenerationReviewPanel({
                 </button>
                 <button
                   type="button"
-                  title={
-                    blockingFail
-                      ? "실패 상태에서는 확인 완료할 수 없습니다."
-                      : attentionChunkCount > 0 && !chunkAttentionReviewed
-                        ? "주의·보완 항목을 확인한 뒤 가능합니다."
-                        : undefined
-                  }
-                  disabled={busy != null || blockingFail}
+                  title={confirmBlockedReason ?? undefined}
+                  disabled={busy != null || !canConfirm}
                   onClick={() => {
-                    markChunkAttentionReviewed();
+                    markChunkReviewed(chunkDetailItem.chunkId);
                     closeChunkDetail();
-                    void runConfirm({ attentionReviewed: true });
+                    void runConfirm();
                   }}
                   className="min-h-[36px] rounded-xl bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
                 >

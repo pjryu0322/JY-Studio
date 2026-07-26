@@ -60,6 +60,10 @@ describe("provider chunk review pdf", () => {
     assert.match(html, /주의 필요/);
     assert.match(html, /본문 &lt;script&gt;/);
     assert.match(html, /원문 내용/);
+    assert.match(html, /이슈 사유/);
+    assert.match(html, /서비스 영향/);
+    assert.match(html, /제공자 조치/);
+    assert.match(html, /확인하세요/);
     assert.match(html, /지식 단위 ID: c1/);
     assert.match(html, /<!-- pagebreak -->/);
   });

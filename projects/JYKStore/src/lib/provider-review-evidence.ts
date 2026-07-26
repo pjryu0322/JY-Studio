@@ -68,6 +68,8 @@ type RawRetrievalFail = {
   issueCodes?: string[] | null;
   caseId?: string | null;
   retrievalMode?: string | null;
+  firstHitRank?: number | null;
+  hit?: boolean | null;
 };
 
 const ISSUE_TYPE_LABELS: Record<string, string> = {
@@ -309,6 +311,16 @@ export function buildRetrievalIssueEvidence(input: {
         : row.status
           ? `평가 상태: ${formatProviderReviewQualityLabel(row.status)}`
           : null;
+    const problemParts = [
+      `질문: ${query}`,
+      row.retrievalMode ? `검색 모드: ${row.retrievalMode}` : null,
+      codes.length > 0 ? `이슈 코드: ${codes.join(", ")}` : null,
+      row.status ? `평가 상태: ${formatProviderReviewQualityLabel(row.status)}` : null,
+      typeof row.firstHitRank === "number"
+        ? `첫 적중 순위: ${row.firstHitRank}`
+        : "첫 적중 순위: 없음",
+      typeof row.hit === "boolean" ? `적중 여부: ${row.hit ? "예" : "아니오"}` : null,
+    ].filter(Boolean);
     const hasConcreteEvidence = Boolean(query);
     return {
       id: `retrieval-${idx}-${row.caseId ?? query.slice(0, 24)}`,
@@ -325,7 +337,7 @@ export function buildRetrievalIssueEvidence(input: {
         .join(" · "),
       sourceDocumentId: null,
       targetId: row.caseId?.trim() || null,
-      problemPreview: null,
+      problemPreview: problemParts.join("\n"),
       expectation: "평가 질문이 기대 근거 chunk/답변에 연결되어야 합니다.",
       serviceImpact: serviceImpactForCode("RETRIEVAL_FAIL", "retrieval"),
       providerAction: providerActionFor("RETRIEVAL_FAIL", "retrieval", hasConcreteEvidence),
@@ -429,10 +441,62 @@ export function providerReviewHasBlockingFail(input: {
   chunkStatus?: string | null;
   retrievalStatus?: string | null;
 }): boolean {
-  return [input.structureStatus, input.chunkStatus, input.retrievalStatus].some((s) => {
-    const n = (s ?? "").toUpperCase();
-    return n === "FAIL" || n === "FAILED" || n === "ERROR";
-  });
+  return [input.structureStatus, input.chunkStatus, input.retrievalStatus].some((s) =>
+    providerReviewStatusIsFail(s),
+  );
+}
+
+export function providerReviewStatusIsFail(status?: string | null): boolean {
+  const n = (status ?? "").toUpperCase();
+  return n === "FAIL" || n === "FAILED" || n === "ERROR";
+}
+
+export function providerReviewStatusNeedsAttention(status?: string | null): boolean {
+  const n = (status ?? "").toUpperCase();
+  return (
+    n === "WARNING" ||
+    n === "WARN" ||
+    n === "FAIL" ||
+    n === "FAILED" ||
+    n === "ERROR" ||
+    n === "STALE"
+  );
+}
+
+/** Pure confirm gate used by ProviderGenerationReviewPanel (and tests). */
+export function providerReviewConfirmBlockReason(input: {
+  structureStatus?: string | null;
+  chunkStatus?: string | null;
+  retrievalStatus?: string | null;
+  structureReviewComplete: boolean;
+  chunkReviewComplete: boolean;
+  retrievalReviewComplete: boolean;
+  unreviewedAttentionChunkCount?: number;
+  hasPendingChangesDraft?: boolean;
+}): string | null {
+  if (
+    providerReviewHasBlockingFail({
+      structureStatus: input.structureStatus,
+      chunkStatus: input.chunkStatus,
+      retrievalStatus: input.retrievalStatus,
+    })
+  ) {
+    return "실패 상태인 품질 항목이 있어 확인 완료할 수 없습니다. 보완 요청을 작성해 주세요.";
+  }
+  if (!input.structureReviewComplete) {
+    return "구조화 주의·실패 이슈가 있는 원본 파일의 경고 아이콘을 눌러 상세를 확인한 뒤 확인 완료해 주세요.";
+  }
+  if (!input.chunkReviewComplete) {
+    const left = input.unreviewedAttentionChunkCount ?? 0;
+    return `주의·보완이 필요한 검색 지식 단위를 모두 상세 검토해 주세요. (남은 ${left}건)`;
+  }
+  if (!input.retrievalReviewComplete) {
+    return "검색 평가 실패 상세를 확인하거나 보완 요청을 작성한 뒤 확인 완료해 주세요.";
+  }
+  if (input.hasPendingChangesDraft) {
+    return "작성 중인 보완 요청이 있습니다. 제출하거나 취소한 뒤 확인 완료해 주세요.";
+  }
+  return null;
 }
 
 export function providerReviewHasWarning(input: {
