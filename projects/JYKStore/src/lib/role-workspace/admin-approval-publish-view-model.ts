@@ -12,13 +12,19 @@ export type AdminApprovalPublishStatus =
   | "BLOCKED"
   | "READY_TO_DECIDE"
   | "APPROVED"
-  | "PUBLISHED";
+  | "PUBLISHED"
+  | "VERIFIED";
 
 export type AdminApprovalChecklistItem = {
   id: string;
   label: string;
   done: boolean;
   detail?: string;
+};
+
+export type AdminApprovalRemediationAction = {
+  id: "generation" | "quality" | "providerConfirm" | "searchValidation";
+  label: string;
 };
 
 export type AdminApprovalPublishViewModel = {
@@ -29,6 +35,7 @@ export type AdminApprovalPublishViewModel = {
   primaryLabel: string;
   summaryMessage: string;
   checklist: AdminApprovalChecklistItem[];
+  remediationActions: AdminApprovalRemediationAction[];
 };
 
 export function buildAdminApprovalPublishViewModel(input: {
@@ -43,26 +50,43 @@ export function buildAdminApprovalPublishViewModel(input: {
   const packStatus = input.detail?.pack.status ?? null;
   const blockedReasons: string[] = [];
   const warnings: string[] = [];
+  const remediationActions: AdminApprovalRemediationAction[] = [];
+
+  const pushRemediation = (action: AdminApprovalRemediationAction) => {
+    if (remediationActions.some((a) => a.id === action.id)) return;
+    if (remediationActions.length >= 3) return;
+    remediationActions.push(action);
+  };
 
   if (input.workerZipPhase !== "COMPLETED") {
     blockedReasons.push(
       `지식데이터 생성이 완료되지 않았습니다. (현재: ${input.workerZipPhase})`,
     );
+    pushRemediation({ id: "generation", label: "생성·품질보정으로 이동" });
   }
   if (!input.quality.completed) {
     blockedReasons.push("품질점검을 먼저 완료해야 합니다.");
+    if (!remediationActions.some((a) => a.id === "generation")) {
+      pushRemediation({ id: "quality", label: "생성·품질보정으로 이동" });
+    }
   }
   if (input.quality.hasBlockers || input.quality.failCount > 0) {
     blockedReasons.push("품질점검 차단 이슈(FAIL)가 있어 승인할 수 없습니다.");
+    if (!remediationActions.some((a) => a.id === "generation" || a.id === "quality")) {
+      pushRemediation({ id: "quality", label: "생성·품질보정으로 이동" });
+    }
   }
   if (!input.providerConfirmed) {
     blockedReasons.push("제공자 확인이 완료되지 않았습니다.");
+    pushRemediation({ id: "providerConfirm", label: "제공자 검토로 이동" });
   }
   if (input.openSupplement) {
     blockedReasons.push("열린 제공자 보완요청을 먼저 처리해야 합니다.");
+    pushRemediation({ id: "providerConfirm", label: "제공자 검토로 이동" });
   }
   if (!input.serviceDone) {
     blockedReasons.push("서비스 검증이 완료되지 않았습니다.");
+    pushRemediation({ id: "searchValidation", label: "서비스 검증으로 이동" });
   }
 
   if (input.quality.hasWarnings) {
@@ -130,23 +154,31 @@ export function buildAdminApprovalPublishViewModel(input: {
     },
   ];
 
-  if (packStatus === "PUBLISHED" || packStatus === "VERIFIED") {
+  if (packStatus === "VERIFIED") {
+    return {
+      status: "VERIFIED",
+      blockedReasons: [],
+      warnings,
+      canDecide: false,
+      primaryLabel: "검증 완료(VERIFIED)",
+      summaryMessage:
+        "검증 완료 상태로 게시되었습니다. 공개 상세에서 노출·운영 상태를 확인하세요.",
+      checklist,
+      remediationActions: [],
+    };
+  }
+
+  if (packStatus === "PUBLISHED") {
     return {
       status: "PUBLISHED",
       blockedReasons: [],
       warnings,
       canDecide: false,
-      primaryLabel: "공개 상태 확인",
-      summaryMessage:
-        packStatus === "VERIFIED"
-          ? "검증 완료(VERIFIED) 상태입니다."
-          : "공개(PUBLISHED) 상태입니다.",
-      checklist: checklist.map((c) => ({ ...c, done: true })),
+      primaryLabel: "공개(PUBLISHED)",
+      summaryMessage: "공개 상태입니다. 할 일 또는 공개 상세에서 운영을 이어가세요.",
+      checklist,
+      remediationActions: [],
     };
-  }
-
-  if (packStatus === "REVIEWING" && blockedReasons.length === 0) {
-    // Accepted or pending decision — ready for accept tab actions
   }
 
   const canDecide = blockedReasons.length === 0;
@@ -157,8 +189,12 @@ export function buildAdminApprovalPublishViewModel(input: {
       warnings,
       canDecide: true,
       primaryLabel: "최종 승인·반려 진행",
-      summaryMessage: "최종 게이트를 통과했습니다. 승인 또는 반려를 진행하세요.",
+      summaryMessage:
+        packStatus === "REVIEWING"
+          ? "최종 게이트를 통과했습니다. 승인 또는 반려를 진행하세요."
+          : "최종 게이트를 통과했습니다. 검수 접수(REVIEWING) 후 승인·반려를 진행할 수 있습니다.",
       checklist,
+      remediationActions: [],
     };
   }
 
@@ -170,5 +206,6 @@ export function buildAdminApprovalPublishViewModel(input: {
     primaryLabel: "승인 전 차단 조건 해소 필요",
     summaryMessage: blockedReasons[0] ?? "승인·게시 전 조건을 확인하세요.",
     checklist,
+    remediationActions,
   };
 }

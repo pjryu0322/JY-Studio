@@ -69,6 +69,8 @@ describe("admin provider review P0 (open supplement)", () => {
     assert.ok(
       markers.includes("제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다."),
     );
+    // TODO(db-test): add markAdminServiceValidationPassed integration cases for
+    // PROVIDER_SUPPLEMENT_OPEN / PROVIDER_CONFIRM_REQUIRED / non-CURRENT binding.
     const route = readSource(
       "src/app/api/v1/admin/packs/[packId]/store-workflow/service-validation/route.ts",
     );

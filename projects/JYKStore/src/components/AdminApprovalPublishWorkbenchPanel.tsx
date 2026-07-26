@@ -22,6 +22,10 @@ export function AdminApprovalPublishWorkbenchPanel({
   workerZipPhase,
   channelGates,
   onUpdated,
+  onGoGeneration,
+  onGoQuality,
+  onGoProviderReview,
+  onGoServiceValidation,
 }: {
   readonly packId: string;
   readonly detail: AdminReviewDetailDto;
@@ -32,6 +36,10 @@ export function AdminApprovalPublishWorkbenchPanel({
   readonly workerZipPhase: AdminWorkerZipPhase;
   readonly channelGates?: AdminServiceChannelGatesSnapshot | null;
   readonly onUpdated: (next: AdminReviewDetailDto) => void;
+  readonly onGoGeneration?: () => void;
+  readonly onGoQuality?: () => void;
+  readonly onGoProviderReview?: () => void;
+  readonly onGoServiceValidation?: () => void;
 }) {
   const vm = buildAdminApprovalPublishViewModel({
     detail,
@@ -42,6 +50,16 @@ export function AdminApprovalPublishWorkbenchPanel({
     workerZipPhase,
     channelGates,
   });
+
+  const showDecisionForm = vm.canDecide && detail.pack.status === "REVIEWING";
+  const isPublishedLike = vm.status === "PUBLISHED" || vm.status === "VERIFIED";
+
+  const runRemediation = (id: string) => {
+    if (id === "generation") onGoGeneration?.();
+    else if (id === "quality") (onGoQuality ?? onGoGeneration)?.();
+    else if (id === "providerConfirm") onGoProviderReview?.();
+    else if (id === "searchValidation") onGoServiceValidation?.();
+  };
 
   return (
     <div className="space-y-3">
@@ -57,7 +75,7 @@ export function AdminApprovalPublishWorkbenchPanel({
           className={`rounded-xl border px-3 py-2 text-xs ${
             vm.status === "READY_TO_DECIDE"
               ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : vm.status === "PUBLISHED"
+              : isPublishedLike
                 ? "border-slate-200 bg-slate-50 text-slate-800"
                 : "border-amber-200 bg-amber-50 text-amber-950"
           }`}
@@ -113,7 +131,22 @@ export function AdminApprovalPublishWorkbenchPanel({
           </ul>
         </div>
 
-        {vm.status === "PUBLISHED" ? (
+        {vm.status === "BLOCKED" && vm.remediationActions.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {vm.remediationActions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => runRemediation(action.id)}
+                className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {isPublishedLike ? (
           <div className="flex flex-wrap gap-2">
             <a
               href={ROUTES.admin}
@@ -131,15 +164,17 @@ export function AdminApprovalPublishWorkbenchPanel({
         ) : null}
       </section>
 
-      <AdminReviewReceiptInfoCard detail={detail} />
+      {!isPublishedLike ? <AdminReviewReceiptInfoCard detail={detail} /> : null}
 
-      {vm.canDecide || detail.pack.status === "REVIEWING" ? (
+      {showDecisionForm ? (
         <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={onUpdated} />
-      ) : (
+      ) : !isPublishedLike ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          차단 조건을 해소한 뒤 승인·반려를 진행할 수 있습니다.
+          {vm.status === "BLOCKED"
+            ? "차단 조건을 해소한 뒤 승인·반려를 진행할 수 있습니다. 위 이동 버튼으로 해당 단계로 돌아가세요."
+            : "검수 접수(REVIEWING) 상태이고 최종 게이트를 통과한 경우에만 승인·반려를 진행할 수 있습니다."}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

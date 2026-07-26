@@ -376,6 +376,10 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           onUpdated={(next) => {
             setDetail(next);
           }}
+          onGoGeneration={() => goStep("generation")}
+          onGoQuality={() => goStep("quality")}
+          onGoProviderReview={() => goStep("providerConfirm")}
+          onGoServiceValidation={() => goStep("searchValidation")}
         />
       ) : null}
     </div>

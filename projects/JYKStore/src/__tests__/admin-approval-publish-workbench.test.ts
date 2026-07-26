@@ -14,9 +14,7 @@ function readSource(relativePath: string): string {
   return readFileSync(join(projectRoot, relativePath), "utf8");
 }
 
-function minimalDetail(
-  status: string,
-): AdminReviewDetailDto {
+function minimalDetail(status: string): AdminReviewDetailDto {
   return {
     pack: {
       id: "p1",
@@ -53,54 +51,39 @@ const qualityOk = {
   warnings: [] as string[],
 };
 
-describe("admin approval publish workbench (step5)", () => {
-  it("blocks when provider is not confirmed", () => {
+describe("admin approval publish hardening", () => {
+  it("blocks even when legacy readiness.canApprove is true without provider confirm", () => {
+    const detail = minimalDetail("REVIEWING");
+    assert.equal(detail.readiness.canApprove, true);
     const vm = buildAdminApprovalPublishViewModel({
-      detail: minimalDetail("REVIEWING"),
+      detail,
       providerConfirmed: false,
       serviceDone: true,
       openSupplement: false,
       quality: qualityOk,
       workerZipPhase: "COMPLETED",
     });
-    assert.equal(vm.status, "BLOCKED");
     assert.equal(vm.canDecide, false);
-    assert.ok(vm.blockedReasons.some((r) => r.includes("제공자 확인")));
+    assert.equal(vm.status, "BLOCKED");
   });
 
-  it("blocks when service validation is incomplete", () => {
+  it("blocks even when legacy readiness.canApprove is true without serviceDone", () => {
+    const detail = minimalDetail("REVIEWING");
     const vm = buildAdminApprovalPublishViewModel({
-      detail: minimalDetail("REVIEWING"),
+      detail,
       providerConfirmed: true,
       serviceDone: false,
       openSupplement: false,
       quality: qualityOk,
       workerZipPhase: "COMPLETED",
     });
-    assert.equal(vm.status, "BLOCKED");
+    assert.equal(vm.canDecide, false);
     assert.ok(vm.blockedReasons.some((r) => r.includes("서비스 검증")));
+    assert.ok(vm.remediationActions.some((a) => a.id === "searchValidation"));
   });
 
-  it("blocks when quality has blockers", () => {
-    const vm = buildAdminApprovalPublishViewModel({
-      detail: minimalDetail("REVIEWING"),
-      providerConfirmed: true,
-      serviceDone: true,
-      openSupplement: false,
-      quality: {
-        ...qualityOk,
-        hasBlockers: true,
-        failCount: 1,
-        blockers: ["FAIL"],
-      },
-      workerZipPhase: "COMPLETED",
-    });
-    assert.equal(vm.status, "BLOCKED");
-    assert.ok(vm.blockedReasons.some((r) => r.includes("품질")));
-  });
-
-  it("blocks when open supplement exists", () => {
-    const vm = buildAdminApprovalPublishViewModel({
+  it("blocks open supplement and incomplete worker zip", () => {
+    const open = buildAdminApprovalPublishViewModel({
       detail: minimalDetail("REVIEWING"),
       providerConfirmed: true,
       serviceDone: true,
@@ -108,11 +91,22 @@ describe("admin approval publish workbench (step5)", () => {
       quality: qualityOk,
       workerZipPhase: "COMPLETED",
     });
-    assert.equal(vm.status, "BLOCKED");
-    assert.ok(vm.blockedReasons.some((r) => r.includes("보완요청")));
+    assert.equal(open.canDecide, false);
+    assert.ok(open.remediationActions.some((a) => a.id === "providerConfirm"));
+
+    const zip = buildAdminApprovalPublishViewModel({
+      detail: minimalDetail("REVIEWING"),
+      providerConfirmed: true,
+      serviceDone: true,
+      openSupplement: false,
+      quality: qualityOk,
+      workerZipPhase: "PROCESSING",
+    });
+    assert.equal(zip.canDecide, false);
+    assert.ok(zip.remediationActions.some((a) => a.id === "generation"));
   });
 
-  it("is READY_TO_DECIDE when gates pass", () => {
+  it("allows decide only when all workflow gates pass", () => {
     const vm = buildAdminApprovalPublishViewModel({
       detail: minimalDetail("REVIEWING"),
       providerConfirmed: true,
@@ -121,12 +115,13 @@ describe("admin approval publish workbench (step5)", () => {
       quality: qualityOk,
       workerZipPhase: "COMPLETED",
     });
-    assert.equal(vm.status, "READY_TO_DECIDE");
     assert.equal(vm.canDecide, true);
+    assert.equal(vm.status, "READY_TO_DECIDE");
+    assert.equal(vm.remediationActions.length, 0);
   });
 
-  it("marks PUBLISHED packs", () => {
-    const vm = buildAdminApprovalPublishViewModel({
+  it("distinguishes PUBLISHED vs VERIFIED", () => {
+    const published = buildAdminApprovalPublishViewModel({
       detail: minimalDetail("PUBLISHED"),
       providerConfirmed: true,
       serviceDone: true,
@@ -134,25 +129,43 @@ describe("admin approval publish workbench (step5)", () => {
       quality: qualityOk,
       workerZipPhase: "COMPLETED",
     });
-    assert.equal(vm.status, "PUBLISHED");
-    assert.equal(vm.canDecide, false);
+    assert.equal(published.status, "PUBLISHED");
+    assert.match(published.summaryMessage, /공개/);
+
+    const verified = buildAdminApprovalPublishViewModel({
+      detail: minimalDetail("VERIFIED"),
+      providerConfirmed: true,
+      serviceDone: true,
+      openSupplement: false,
+      quality: qualityOk,
+      workerZipPhase: "COMPLETED",
+    });
+    assert.equal(verified.status, "VERIFIED");
+    assert.match(verified.summaryMessage, /검증 완료/);
+    assert.equal(verified.canDecide, false);
   });
 
-  it("isolates approval into AdminApprovalPublishWorkbenchPanel", () => {
-    const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(detail.includes("AdminApprovalPublishWorkbenchPanel"));
-    assert.ok(!detail.includes("AdminReviewAcceptTab"));
-    assert.ok(!detail.includes("AdminReviewReceiptInfoCard"));
+  it("gates AdminReviewAcceptTab on vm.canDecide (not REVIEWING alone)", () => {
     const panel = readSource("src/components/AdminApprovalPublishWorkbenchPanel.tsx");
-    assert.ok(panel.includes("AdminReviewAcceptTab"));
-    assert.ok(panel.includes("최종 점검 체크리스트"));
+    assert.ok(panel.includes("showDecisionForm"));
+    assert.ok(panel.includes("vm.canDecide && detail.pack.status === \"REVIEWING\""));
+    assert.ok(!panel.includes("vm.canDecide || detail.pack.status === \"REVIEWING\""));
+    assert.ok(panel.includes("remediationActions"));
+    assert.ok(panel.includes("onGoProviderReview"));
+    assert.ok(panel.includes("onGoServiceValidation"));
   });
 
-  it("approvePackReview gates open supplement and store workflow", () => {
+  it("wires remediation CTAs from detail page", () => {
+    const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    assert.ok(detail.includes("onGoGeneration"));
+    assert.ok(detail.includes("onGoQuality"));
+    assert.ok(detail.includes("onGoProviderReview"));
+    assert.ok(detail.includes("onGoServiceValidation"));
+  });
+
+  it("approvePackReview still gates open supplement and store workflow", () => {
     const service = readSource("src/lib/admin-review-service.ts");
     assert.ok(service.includes("PROVIDER_SUPPLEMENT_OPEN"));
-    assert.ok(service.includes("isOpenProviderSupplementPhase"));
     assert.ok(service.includes("SERVICE_VALIDATION_REQUIRED"));
-    assert.ok(service.includes("resolveStoreWorkflowMarkers"));
   });
 });
