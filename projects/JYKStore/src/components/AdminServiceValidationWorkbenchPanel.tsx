@@ -19,6 +19,8 @@ export function AdminServiceValidationWorkbenchPanel({
   channelGates,
   onMarkPassed,
   onGoDecision,
+  onRefreshChannels,
+  refreshBusy,
 }: {
   readonly packId: string;
   readonly providerConfirmed: boolean;
@@ -28,6 +30,8 @@ export function AdminServiceValidationWorkbenchPanel({
   readonly channelGates: AdminServiceChannelGatesSnapshot | null;
   readonly onMarkPassed: () => void;
   readonly onGoDecision?: () => void;
+  readonly onRefreshChannels?: () => void;
+  readonly refreshBusy?: boolean;
 }) {
   const vm = buildAdminServiceValidationViewModel({
     providerConfirmed,
@@ -43,6 +47,44 @@ export function AdminServiceValidationWorkbenchPanel({
         <p className="mt-1 text-xs text-store-muted">
           API·MCP·RAG Export 채널이 최신 Worker 산출물 기준으로 검증됐는지 확인합니다.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-bold text-slate-900">완료 조건 체크리스트</p>
+          {onRefreshChannels ? (
+            <button
+              type="button"
+              disabled={Boolean(refreshBusy)}
+              onClick={() => onRefreshChannels()}
+              className="min-h-[32px] rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] font-bold text-slate-800 disabled:opacity-60"
+            >
+              {refreshBusy ? "새로고침 중…" : "채널 상태 새로고침"}
+            </button>
+          ) : null}
+        </div>
+        <ul className="mt-2 space-y-1.5 text-xs">
+          {vm.checklist.map((item) => (
+            <li key={item.id} className="flex items-start gap-2">
+              <span
+                className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                  item.done
+                    ? "bg-emerald-100 text-emerald-900"
+                    : "bg-amber-100 text-amber-950"
+                }`}
+              >
+                {item.done ? "✓" : "!"}
+              </span>
+              <span>
+                <span className="font-semibold text-slate-900">{item.label}</span>
+                {item.detail ? (
+                  <span className="mt-0.5 block text-store-muted">{item.detail}</span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[11px] text-store-muted">{vm.howToRunHint}</p>
       </div>
 
       {vm.blockedReasons.length > 0 ? (

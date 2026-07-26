@@ -36,6 +36,8 @@ import {
 import {
   isDoclingBundleReviewSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
+import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
+import { resolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
 import {
   assertDoclingReviewIntegrityOrThrow,
   summarizeDoclingReviewIntegrity,
@@ -631,6 +633,35 @@ export async function approvePackReview(input: {
 
   if (!isAdminReviewAccepted(detailBefore.latestReview?.status)) {
     return { error: "NOT_ACCEPTED" as const };
+  }
+
+  const workflowMarkers = await resolveStoreWorkflowMarkers(packId);
+  if (isOpenProviderSupplementPhase(workflowMarkers.providerSupplementPhase)) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "제공자 보완요청이 처리되지 않아 승인할 수 없습니다.",
+      code: "PROVIDER_SUPPLEMENT_OPEN" as const,
+    };
+  }
+  if (
+    workflowMarkers.providerReviewPhase === "REQUESTED" ||
+    workflowMarkers.providerReviewPhase === "WITHDRAWN"
+  ) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "제공자 확인이 완료된 뒤에만 승인할 수 있습니다.",
+      code: "PROVIDER_CONFIRM_REQUIRED" as const,
+    };
+  }
+  if (
+    workflowMarkers.providerReviewPhase === "CONFIRMED" &&
+    workflowMarkers.serviceValidationPhase !== "PASSED"
+  ) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "서비스 검증이 완료된 뒤에만 승인할 수 있습니다.",
+      code: "SERVICE_VALIDATION_REQUIRED" as const,
+    };
   }
 
   const approveSnapshot = detailBefore.latestReview?.submitSnapshot ?? null;

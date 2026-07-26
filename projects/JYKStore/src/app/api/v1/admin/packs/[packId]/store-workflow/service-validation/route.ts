@@ -37,6 +37,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           error: result.error,
           message: result.message,
           missingChannels: result.missingChannels ?? [],
+          ...(result.providerSupplementPhase
+            ? { providerSupplementPhase: result.providerSupplementPhase }
+            : {}),
         },
         clientId,
         { status: 409 },

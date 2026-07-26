@@ -61,6 +61,19 @@ describe("admin provider review P0 (open supplement)", () => {
     assert.ok(route.includes("resolveStoreWorkflowMarkers"));
     assert.ok(route.includes("providerSupplementPhase"));
   });
+
+  it("markAdminServiceValidationPassed rejects open supplement with PROVIDER_SUPPLEMENT_OPEN", () => {
+    const markers = readSource("src/lib/store-workflow-markers.ts");
+    assert.ok(markers.includes("PROVIDER_SUPPLEMENT_OPEN"));
+    assert.ok(markers.includes("isOpenProviderSupplementPhase"));
+    assert.ok(
+      markers.includes("제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다."),
+    );
+    const route = readSource(
+      "src/app/api/v1/admin/packs/[packId]/store-workflow/service-validation/route.ts",
+    );
+    assert.ok(route.includes("providerSupplementPhase"));
+  });
 });
 
 describe("admin service validation view model (step4)", () => {
@@ -176,9 +189,15 @@ describe("admin service validation view model (step4)", () => {
     assert.ok(detail.includes("AdminServiceValidationWorkbenchPanel"));
     assert.ok(!detail.includes("AdminServiceValidationOpsPanel"));
     assert.ok(detail.includes("onMarkPassed"));
+    assert.ok(detail.includes("onRefreshChannels"));
     const panel = readSource("src/components/AdminServiceValidationWorkbenchPanel.tsx");
     assert.ok(panel.includes("채널별 검증 현황"));
+    assert.ok(panel.includes("완료 조건 체크리스트"));
+    assert.ok(panel.includes("채널 상태 새로고침"));
     assert.ok(panel.includes("AdminServiceValidationOpsPanel"));
+    assert.ok(panel.includes("API·MCP·RAG Export"));
+    const vm = readSource("src/lib/role-workspace/admin-service-validation-view-model.ts");
+    assert.ok(vm.includes("ZIP/RAG Export"));
   });
 });
 
@@ -229,6 +248,9 @@ describe("admin review rail service validation (step4)", () => {
       activeStep: "decision",
     });
     assert.equal(rail.currentStep, "decision");
+    const decision = rail.items.find((i) => i.id === "decision");
+    assert.equal(decision?.label, "승인·게시");
+    assert.ok(!rail.items.some((i) => i.id === "publish"));
   });
 
   it("RESOLVED supplement still blocks service validation", () => {

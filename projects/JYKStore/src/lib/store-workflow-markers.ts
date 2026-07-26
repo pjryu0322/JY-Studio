@@ -31,6 +31,7 @@ import {
   buildInitialProviderSupplementState,
   changeTypeLabel,
   encodeProviderSupplementRequestState,
+  isOpenProviderSupplementPhase,
   mapAdminPhaseToPipelineStatus,
   mapSupplementStatusToAdminPhase,
   OPEN_SUPPLEMENT_PIPELINE_STATUSES,
@@ -1257,6 +1258,7 @@ export async function markAdminServiceValidationPassed(input: {
       error: string;
       message: string;
       missingChannels?: string[];
+      providerSupplementPhase?: string;
     }
 > {
   const client = input.prismaClient ?? prisma;
@@ -1267,6 +1269,14 @@ export async function markAdminServiceValidationPassed(input: {
       ok: false,
       error: "PROVIDER_CONFIRM_REQUIRED",
       message: "제공자 확인 완료 후에만 서비스 검증을 완료할 수 있습니다.",
+    };
+  }
+  if (isOpenProviderSupplementPhase(markers.providerSupplementPhase)) {
+    return {
+      ok: false,
+      error: "PROVIDER_SUPPLEMENT_OPEN",
+      message: "제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다.",
+      providerSupplementPhase: markers.providerSupplementPhase,
     };
   }
   if (markers.serviceValidationPhase === "PASSED") return { ok: true };

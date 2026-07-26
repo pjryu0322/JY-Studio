@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
-import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
 import { AdminMaterialAcceptancePanel } from "@/components/AdminMaterialAcceptancePanel";
 import { AdminKnowledgeCorrectionPanel } from "@/components/AdminKnowledgeCorrectionPanel";
 import { AdminKnowledgeGenerationPanel } from "@/components/AdminKnowledgeGenerationPanel";
 import { AdminQualityCheckPanel } from "@/components/AdminQualityCheckPanel";
 import { AdminProviderReviewPanel } from "@/components/AdminProviderReviewPanel";
 import { AdminServiceValidationWorkbenchPanel } from "@/components/AdminServiceValidationWorkbenchPanel";
+import { AdminApprovalPublishWorkbenchPanel } from "@/components/AdminApprovalPublishWorkbenchPanel";
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
@@ -25,7 +24,6 @@ import {
   isOpenProviderSupplementPhase,
   type ProviderSupplementRequestState,
 } from "@/lib/provider-supplement-request";
-import { isReviewAccepted } from "@/lib/admin-review-tabs";
 import {
   buildAdminQualityGateSnapshot,
   getAdminReviewRailState,
@@ -34,7 +32,6 @@ import {
   type AdminWorkerZipPhase,
 } from "@/lib/role-workspace/admin-review-rail";
 import type { AdminServiceChannelGatesSnapshot } from "@/lib/role-workspace/admin-service-validation-view-model";
-
 /** null = no explicit ?step (resolve from workflow after load). */
 export function parseAdminReviewStep(raw: string | null): AdminReviewWorkflowStep | null {
   switch (raw) {
@@ -75,6 +72,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     useState<ProviderSupplementRequestState | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
+  const [channelRefreshBusy, setChannelRefreshBusy] = useState(false);
   const [channelGates, setChannelGates] = useState<AdminServiceChannelGatesSnapshot | null>(
     null,
   );
@@ -108,6 +106,18 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   }, [refresh]);
 
   const refreshSilently = useCallback(() => refresh({ silent: true }), [refresh]);
+
+  const refreshChannelGates = useCallback(async () => {
+    setChannelRefreshBusy(true);
+    try {
+      const gates = await fetchAdminServiceChannelGates(packId);
+      setChannelGates(gates);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "채널 상태를 새로고침하지 못했습니다.");
+    } finally {
+      setChannelRefreshBusy(false);
+    }
+  }, [packId]);
 
   const goStep = useCallback(
     (step: AdminReviewWorkflowStep) => {
@@ -337,6 +347,8 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           serviceDone={serviceDone}
           actionBusy={actionBusy}
           channelGates={channelGates}
+          refreshBusy={channelRefreshBusy}
+          onRefreshChannels={() => void refreshChannelGates()}
           onGoDecision={() => goStep("decision")}
           onMarkPassed={() => {
             setActionBusy(true);
@@ -352,24 +364,19 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       ) : null}
 
       {showDecision ? (
-        <>
-          {!serviceDone || !providerConfirmed ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              제공자 확인과 서비스 검증이 완료된 뒤에 최종 승인·공개를 진행하세요.
-            </p>
-          ) : null}
-          <AdminReviewReceiptInfoCard detail={detail} />
-          <AdminReviewAcceptTab
-            packId={packId}
-            detail={detail}
-            onUpdated={(next) => {
-              setDetail(next);
-              if (isReviewAccepted(next)) {
-                // keep decision step
-              }
-            }}
-          />
-        </>
+        <AdminApprovalPublishWorkbenchPanel
+          packId={packId}
+          detail={detail}
+          providerConfirmed={providerConfirmed}
+          serviceDone={serviceDone}
+          openSupplement={openSupplement}
+          quality={quality}
+          workerZipPhase={workerZipPhase}
+          channelGates={channelGates}
+          onUpdated={(next) => {
+            setDetail(next);
+          }}
+        />
       ) : null}
     </div>
   );
