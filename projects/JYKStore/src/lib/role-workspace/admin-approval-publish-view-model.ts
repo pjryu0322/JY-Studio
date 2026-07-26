@@ -175,7 +175,7 @@ export function buildAdminApprovalPublishViewModel(input: {
       warnings,
       canDecide: false,
       primaryLabel: "공개(PUBLISHED)",
-      summaryMessage: "공개 상태입니다. 할 일 또는 공개 상세에서 운영을 이어가세요.",
+      summaryMessage: "공개 상태입니다. 작업함 또는 공개 상세에서 운영을 이어가세요.",
       checklist,
       remediationActions: [],
     };

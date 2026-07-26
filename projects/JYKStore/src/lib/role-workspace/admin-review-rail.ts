@@ -442,7 +442,7 @@ export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = [
 /** Static admin console rail (list / ops pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {
   const items: Array<{ id: string; label: string; href: string }> = [
-    { id: "home", label: "할 일", href: ROUTES.admin },
+    { id: "home", label: "작업함", href: ROUTES.admin },
     { id: "reviews", label: "검수 대기", href: ROUTES.adminReviews },
     { id: "ops", label: "운영 로그", href: ROUTES.adminOps },
   ];

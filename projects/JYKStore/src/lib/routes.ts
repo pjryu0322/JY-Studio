@@ -99,7 +99,7 @@ export const BOTTOM_TABS: readonly {
   { key: "search", href: ROUTES.search, label: "검색", icon: "⌕" },
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
-  { key: "admin", href: ROUTES.admin, label: "할 일", icon: "☑" },
+  { key: "admin", href: ROUTES.admin, label: "작업함", icon: "📥" },
   { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
   { key: "providerReview", href: ROUTES.providerReviews, label: "검토대상", icon: "☑" },
   { key: "account", href: ROUTES.account, label: "계정", icon: "👤" },

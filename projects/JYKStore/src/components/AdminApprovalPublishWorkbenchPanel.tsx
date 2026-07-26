@@ -152,7 +152,7 @@ export function AdminApprovalPublishWorkbenchPanel({
               href={ROUTES.admin}
               className="inline-flex min-h-[40px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
             >
-              할 일로 이동
+              작업함으로 이동
             </a>
             <a
               href={packDetailPath(packId)}

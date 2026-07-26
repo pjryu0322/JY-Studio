@@ -45,7 +45,7 @@ describe("account session exit UX", () => {
     assert.equal(PROVIDER_PROFILE_PATH, `${ROUTES.accountProfile}#provider-profile`);
     assert.deepEqual(
       accountMenuLinksForRole("ADMIN").map((item) => item.label),
-      ["계정 정보", "할 일", "운영 사용량", "AuditLog", "Ops 대시보드", "검수 대기 목록", "스토어 홈"],
+      ["계정 정보", "작업함", "운영 사용량", "AuditLog", "Ops 대시보드", "검수 대기 목록", "스토어 홈"],
     );
     assert.equal(
       accountMenuLinksForRole("ADMIN").find((item) => item.label === "Ops 대시보드")?.href,

@@ -54,20 +54,26 @@ describe("admin work inbox UX", () => {
     assert.ok(packAt < returnedAt);
   });
 
-  it("puts 할 일 first in the admin console rail", () => {
+  it("puts 작업함 first in the admin console rail", () => {
     const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
-    assert.ok(rail.includes('label: "할 일"'));
+    assert.ok(rail.includes('label: "작업함"'));
+    assert.ok(!rail.includes('label: "할 일"'));
+    assert.ok(!rail.includes('label: "오늘 처리할 일"'));
     assert.ok(rail.indexOf('id: "home"') < rail.indexOf('id: "reviews"'));
   });
 
-  it("exposes an admin 할 일 icon on the app left rail", () => {
+  it("exposes an admin 작업함 Inbox icon on the app left rail", () => {
     const routes = readSource("src/lib/routes.ts");
     const nav = readSource("src/components/BottomTabNav.tsx");
     assert.ok(routes.includes('"admin"'));
-    assert.ok(routes.includes('label: "할 일"'));
+    assert.ok(routes.includes('label: "작업함"'));
+    assert.ok(!routes.includes('label: "할 일"'));
     assert.ok(nav.includes('"admin"'));
     assert.ok(nav.includes('"categories"'));
     assert.ok(nav.includes('case "admin":'));
+    // Inbox silhouette (not checklist / home)
+    assert.ok(nav.includes("M22 12h-6l-2 3h-4l-2-3H2"));
+    assert.ok(nav.includes("aria-label=") || nav.includes("title="));
   });
 
   it("removes nested console rail and restores inbox chrome title", () => {

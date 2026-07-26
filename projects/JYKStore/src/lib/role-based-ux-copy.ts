@@ -190,9 +190,9 @@ export const ADMIN_LOGIN_DESCRIPTION =
 export const ADMIN_ACCESS_REQUIRED_TITLE = "관리자 권한이 필요합니다.";
 export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 주세요.";
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
-export const ADMIN_WORK_INBOX_TITLE = "오늘 처리할 일";
+export const ADMIN_WORK_INBOX_TITLE = "작업함";
 export const ADMIN_WORK_INBOX_DESCRIPTION =
-  "자료 접수 → 생성·품질보정 → 제공자 검토 → 서비스 검증 → 승인·게시 순으로 확인하세요.";
+  "자료 접수, 생성·품질보정, 제공자 검토, 서비스 검증, 승인·게시 등 조치가 필요한 지식팩을 확인합니다.";
 export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "자료 접수 대기";
 export const ADMIN_WORK_SECTION_ACCEPT_BODY =
   "제공자가 ZIP/원본 자료를 제출했습니다. 자료를 확인한 뒤 접수하거나 반려하세요.";
@@ -241,7 +241,7 @@ export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "승인·게시 
 export const ADMIN_WORK_FILTER_STATUS_SERVICE_VALIDATION = "서비스 검증 대기";
 export const ADMIN_WORK_FILTER_STATUS_RETURNED = "제공자 보완요청";
 export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
-export const ADMIN_WORK_EMPTY = "지금 처리할 작업이 없습니다.";
+export const ADMIN_WORK_EMPTY = "현재 처리 대기 중인 작업이 없습니다.";
 export const ADMIN_WORK_SUMMARY_LABEL = "대기";
 export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
 export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";

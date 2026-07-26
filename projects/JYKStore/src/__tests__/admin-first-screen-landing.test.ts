@@ -52,17 +52,23 @@ describe("admin first screen landing", () => {
     assert.ok(!inbox.includes("추천 지식팩"));
     assert.ok(!inbox.includes("인기 지식팩"));
     assert.ok(!inbox.includes("TodayView"));
+    assert.ok(!inbox.includes("투데이"));
+    assert.ok(!copy.includes("오늘 처리할 일"));
+    assert.ok(copy.includes('ADMIN_WORK_INBOX_TITLE = "작업함"'));
+    assert.ok(copy.includes("현재 처리 대기 중인 작업이 없습니다."));
     assert.ok(copy.includes("서비스 검증 대기"));
     assert.ok(copy.includes("승인·게시 대기"));
     assert.ok(chrome.includes("ADMIN_WORK_INBOX_TITLE"));
   });
 
-  it("admin rail starts at 할 일 (/admin), not 투데이", () => {
+  it("admin rail starts at 작업함 (/admin), not 투데이", () => {
     const nav = readSource("src/components/BottomTabNav.tsx");
+    const routes = readSource("src/lib/routes.ts");
     assert.ok(nav.includes('role === "ADMIN"'));
     assert.ok(nav.includes('"admin"'));
     const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
     assert.ok(adminBlock.includes('"admin"'));
     assert.ok(!adminBlock.includes('"today"'));
+    assert.ok(routes.includes('label: "작업함"'));
   });
 });
