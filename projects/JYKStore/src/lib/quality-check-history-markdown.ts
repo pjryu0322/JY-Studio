@@ -4,10 +4,7 @@
  */
 import type { AdminWorkerZipQualityRefreshResult } from "@/lib/admin-review-api";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import {
-  collectReviewBlockers,
-  collectReviewWarnings,
-} from "@/lib/admin-review-decision";
+import { buildReviewIssuesDetailMarkdown } from "@/lib/admin-review-issues-markdown";
 
 const STEP_LABELS: Record<string, string> = {
   source_validation: "원천 검증",
@@ -86,33 +83,14 @@ export function buildQualityCheckHistoryMarkdown(input: {
   lines.push(``);
 
   if (input.detail) {
-    const blockers = collectReviewBlockers(input.detail);
-    const warnings = collectReviewWarnings(input.detail);
-    lines.push(`## 차단/주의 이슈`);
+    lines.push(`---`);
     lines.push(``);
-    if (blockers.length === 0 && warnings.length === 0) {
-      lines.push(`표시할 차단/주의 이슈가 없습니다.`);
-      lines.push(``);
-    } else {
-      if (blockers.length > 0) {
-        lines.push(`### 차단 이슈`);
-        lines.push(``);
-        for (const item of blockers) lines.push(`- ${item}`);
-        lines.push(``);
-      } else {
-        lines.push(`차단 이슈 없음`);
-        lines.push(``);
-      }
-      if (warnings.length > 0) {
-        lines.push(`### 주의 이슈`);
-        lines.push(``);
-        for (const item of warnings) lines.push(`- ${item}`);
-        lines.push(``);
-      } else {
-        lines.push(`주의 이슈 없음`);
-        lines.push(``);
-      }
-    }
+    lines.push(
+      buildReviewIssuesDetailMarkdown({
+        detail: input.detail,
+        exportedAt,
+      }),
+    );
   }
 
   return lines.join("\n");

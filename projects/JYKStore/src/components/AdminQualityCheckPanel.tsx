@@ -3,20 +3,22 @@
 import type { AdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 
 /**
- * Workbench step2 — 품질점검 상태 요약.
- * 실행 UI는 AdminWorkerZipGenerationCard `#admin-quality-section`에 두고,
- * 여기서는 결과 요약·다음 액션만 보여 중복 안내를 피한다.
+ * Workbench — 품질점검 상태 요약.
+ * 실행/완료/완료취소 CTA는 AdminWorkerZipGenerationCard 헤더에 둔다.
  */
 export function AdminQualityCheckPanel({
   quality,
   generationDone,
-  onRerunQuality,
   onScrollToQuality,
+  onGoCorrection,
+  onGoProviderReview,
 }: {
   readonly quality: AdminQualityGateSnapshot;
   readonly generationDone: boolean;
   readonly onRerunQuality?: () => void;
   readonly onScrollToQuality?: () => void;
+  readonly onGoCorrection?: () => void;
+  readonly onGoProviderReview?: () => void;
 }) {
   let statusLabel = "품질점검 대기";
   let tone = "border-slate-200 bg-slate-50 text-slate-800";
@@ -35,6 +37,11 @@ export function AdminQualityCheckPanel({
     statusLabel = "제공자 검토요청 가능";
     tone = "border-emerald-200 bg-emerald-50 text-emerald-900";
   }
+
+  const canNavigate =
+    generationDone && quality.completed;
+  const needsCorrection =
+    canNavigate && (quality.hasBlockers || quality.failCount > 0 || quality.hasWarnings);
 
   return (
     <section className={`space-y-2 rounded-2xl border px-4 py-3 ${tone}`}>
@@ -55,26 +62,36 @@ export function AdminQualityCheckPanel({
           ))}
         </ul>
       ) : null}
+      <p className="text-[11px] opacity-80">
+        상단 「실행」으로 점검을 돌리고, 결과 확인 후 「완료」하면 다음 단계로 진행합니다. 다시
+        점검하려면 「완료취소」 후 「실행」하세요.
+      </p>
       <div className="flex flex-wrap gap-2">
-        {generationDone ? (
-          <button
-            type="button"
-            onClick={() => {
-              onScrollToQuality?.();
-              onRerunQuality?.();
-            }}
-            className="min-h-[36px] rounded-xl border border-current/20 bg-white px-3 text-xs font-bold"
-          >
-            {quality.completed ? "품질점검 재실행" : "품질점검 실행"}
-          </button>
-        ) : null}
-        {generationDone && quality.completed ? (
+        {canNavigate ? (
           <button
             type="button"
             onClick={() => onScrollToQuality?.()}
             className="min-h-[36px] rounded-xl border border-current/20 bg-white/70 px-3 text-xs font-semibold"
           >
             상세 결과로 이동
+          </button>
+        ) : null}
+        {canNavigate && needsCorrection ? (
+          <button
+            type="button"
+            onClick={() => onGoCorrection?.()}
+            className="min-h-[36px] rounded-xl border border-current/20 bg-white px-3 text-xs font-bold"
+          >
+            보정으로 이동
+          </button>
+        ) : null}
+        {canNavigate && !needsCorrection ? (
+          <button
+            type="button"
+            onClick={() => onGoProviderReview?.()}
+            className="min-h-[36px] rounded-xl border border-current/20 bg-white px-3 text-xs font-bold"
+          >
+            제공자 검토로 이동
           </button>
         ) : null}
       </div>

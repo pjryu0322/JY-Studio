@@ -23,7 +23,7 @@ export type AdminApprovalChecklistItem = {
 };
 
 export type AdminApprovalRemediationAction = {
-  id: "generation" | "quality" | "providerConfirm" | "searchValidation";
+  id: "generation" | "quality" | "correction" | "providerConfirm" | "searchValidation";
   label: string;
 };
 
@@ -62,18 +62,18 @@ export function buildAdminApprovalPublishViewModel(input: {
     blockedReasons.push(
       `지식데이터 생성이 완료되지 않았습니다. (현재: ${input.workerZipPhase})`,
     );
-    pushRemediation({ id: "generation", label: "생성·품질보정으로 이동" });
+    pushRemediation({ id: "generation", label: "생성으로 이동" });
   }
   if (!input.quality.completed) {
     blockedReasons.push("품질점검을 먼저 완료해야 합니다.");
     if (!remediationActions.some((a) => a.id === "generation")) {
-      pushRemediation({ id: "quality", label: "생성·품질보정으로 이동" });
+      pushRemediation({ id: "quality", label: "점검으로 이동" });
     }
   }
   if (input.quality.hasBlockers || input.quality.failCount > 0) {
     blockedReasons.push("품질점검 차단 이슈(FAIL)가 있어 승인할 수 없습니다.");
     if (!remediationActions.some((a) => a.id === "generation" || a.id === "quality")) {
-      pushRemediation({ id: "quality", label: "생성·품질보정으로 이동" });
+      pushRemediation({ id: "correction", label: "보정으로 이동" });
     }
   }
   if (!input.providerConfirmed) {
@@ -116,9 +116,22 @@ export function buildAdminApprovalPublishViewModel(input: {
     },
     {
       id: "generation",
-      label: "생성·품질보정",
+      label: "생성",
+      done: input.workerZipPhase === "COMPLETED",
+    },
+    {
+      id: "quality",
+      label: "점검",
+      done: input.quality.completed && input.quality.failCount === 0,
+      detail:
+        !input.quality.completed
+          ? "품질점검을 실행하세요."
+          : undefined,
+    },
+    {
+      id: "correction",
+      label: "보정",
       done:
-        input.workerZipPhase === "COMPLETED" &&
         input.quality.completed &&
         !input.quality.hasBlockers &&
         input.quality.failCount === 0,
@@ -175,7 +188,7 @@ export function buildAdminApprovalPublishViewModel(input: {
       warnings,
       canDecide: false,
       primaryLabel: "공개(PUBLISHED)",
-      summaryMessage: "공개 상태입니다. 작업함 또는 공개 상세에서 운영을 이어가세요.",
+      summaryMessage: "공개 상태입니다. 지식데이터 접수 또는 공개 상세에서 운영을 이어가세요.",
       checklist,
       remediationActions: [],
     };

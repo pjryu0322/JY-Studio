@@ -1,22 +1,62 @@
 import {
   ADMIN_CONSOLE_TITLE,
+  ADMIN_CORRECTION_QUEUE_TITLE,
+  ADMIN_GENERATION_QUEUE_DESCRIPTION,
+  ADMIN_GENERATION_QUEUE_TITLE,
+  ADMIN_QUALITY_QUEUE_TITLE,
   ADMIN_REVIEWS_LIST_TITLE,
   ADMIN_WORK_INBOX_DESCRIPTION,
   ADMIN_WORK_INBOX_TITLE,
   PROVIDER_CENTER_TAGLINE,
 } from "@/lib/role-based-ux-copy";
-import { ROUTES } from "@/lib/routes";
+import { parseAdminWorkQueue, ROUTES, type AdminWorkQueueKey } from "@/lib/routes";
 
 export type StorePageChrome = {
   title: string;
   description: string;
 };
 
+function adminQueueChrome(queue: AdminWorkQueueKey): StorePageChrome {
+  switch (queue) {
+    case "accept":
+      return { title: ADMIN_WORK_INBOX_TITLE, description: ADMIN_WORK_INBOX_DESCRIPTION };
+    case "generation":
+      return {
+        title: ADMIN_GENERATION_QUEUE_TITLE,
+        description: ADMIN_GENERATION_QUEUE_DESCRIPTION,
+      };
+    case "quality":
+      return { title: ADMIN_QUALITY_QUEUE_TITLE, description: "" };
+    case "correction":
+      return { title: ADMIN_CORRECTION_QUEUE_TITLE, description: "" };
+    case "provider-review":
+      return { title: "제공자 검토", description: "" };
+    case "service-validation":
+      return { title: "서비스 검증", description: "" };
+    case "approval-publish":
+      return { title: "승인·게시", description: "" };
+    case "ops":
+      return { title: "공개/운영", description: "" };
+    default:
+      return { title: ADMIN_WORK_INBOX_TITLE, description: ADMIN_WORK_INBOX_DESCRIPTION };
+  }
+}
+
 /**
  * Shared content-top chrome (title + description) for the store shell header.
  * Pages should not repeat the same h1/description block in the body.
  */
-export function resolveStorePageChrome(pathname: string): StorePageChrome {
+export function resolveStorePageChrome(
+  pathname: string,
+  search?: string | { get(name: string): string | null } | null,
+): StorePageChrome {
+  const queueRaw =
+    typeof search === "string"
+      ? new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("queue")
+      : search && typeof search.get === "function"
+        ? search.get("queue")
+        : null;
+
   if (pathname === ROUTES.home || pathname === ROUTES.today) {
     return {
       title: "투데이",
@@ -151,9 +191,12 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
     };
   }
   if (pathname === ROUTES.admin) {
+    return adminQueueChrome(parseAdminWorkQueue(queueRaw ?? "accept"));
+  }
+  if (pathname === ROUTES.adminGeneration) {
     return {
-      title: ADMIN_WORK_INBOX_TITLE,
-      description: ADMIN_WORK_INBOX_DESCRIPTION,
+      title: ADMIN_GENERATION_QUEUE_TITLE,
+      description: ADMIN_GENERATION_QUEUE_DESCRIPTION,
     };
   }
   if (pathname === ROUTES.adminReviews) {
@@ -164,8 +207,8 @@ export function resolveStorePageChrome(pathname: string): StorePageChrome {
   }
   if (pathname.startsWith(`${ROUTES.adminReviews}/`)) {
     return {
-      title: "검수 상세",
-      description: "지식데이터 생성·품질 점검·최종 검수 판단을 진행합니다.",
+      title: "지식데이터 생성 및 편집",
+      description: "생성, 점검, 보정 순으로 지식데이터를 처리합니다.",
     };
   }
   if (pathname === ROUTES.adminKnowledgeUnitDrafts) {

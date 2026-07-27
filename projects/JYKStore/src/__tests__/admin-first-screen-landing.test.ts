@@ -54,14 +54,23 @@ describe("admin first screen landing", () => {
     assert.ok(!inbox.includes("TodayView"));
     assert.ok(!inbox.includes("투데이"));
     assert.ok(!copy.includes("오늘 처리할 일"));
-    assert.ok(copy.includes('ADMIN_WORK_INBOX_TITLE = "작업함"'));
+    assert.ok(copy.includes('ADMIN_WORK_INBOX_TITLE = "지식데이터 접수"'));
+    assert.ok(copy.includes('ADMIN_WORK_INBOX_DESCRIPTION = ""'));
     assert.ok(copy.includes("현재 처리 대기 중인 작업이 없습니다."));
     assert.ok(copy.includes("서비스 검증 대기"));
     assert.ok(copy.includes("승인·게시 대기"));
     assert.ok(chrome.includes("ADMIN_WORK_INBOX_TITLE"));
+    assert.ok(chrome.includes("ADMIN_GENERATION_QUEUE_TITLE"));
+    assert.ok(chrome.includes("adminQueueChrome") || chrome.includes("parseAdminWorkQueue"));
   });
 
-  it("admin rail starts at 작업함 (/admin), not 투데이", () => {
+  it("admin /admin redirects bare path to queue=accept", () => {
+    const page = readSource("src/app/(store)/admin/page.tsx");
+    assert.ok(page.includes('adminQueuePath("accept")'));
+    assert.ok(page.includes("redirect"));
+  });
+
+  it("admin rail starts at 지식데이터 접수 (/admin), not 투데이", () => {
     const nav = readSource("src/components/BottomTabNav.tsx");
     const routes = readSource("src/lib/routes.ts");
     assert.ok(nav.includes('role === "ADMIN"'));
@@ -69,6 +78,6 @@ describe("admin first screen landing", () => {
     const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
     assert.ok(adminBlock.includes('"admin"'));
     assert.ok(!adminBlock.includes('"today"'));
-    assert.ok(routes.includes('label: "작업함"'));
+    assert.ok(routes.includes('label: "지식데이터 접수"'));
   });
 });

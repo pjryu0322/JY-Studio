@@ -155,6 +155,8 @@ export type WorkerZipPipelineInput = {
   workerScriptPath?: string;
   maxFileBytes?: number;
   maxTotalBytes?: number;
+  /** Admin 사전정리 제외 경로 — forwarded to the Python Worker. */
+  adminExcludePaths?: readonly string[];
   /** Upload size guard for the source ZIP (default 200MB). */
   maxSourceZipUploadBytes?: number;
   /** Upload size guard per worker output file (default 100MB). */
@@ -398,6 +400,7 @@ async function runPythonWorker(ctx: WorkerZipPipelineContext): Promise<void> {
     pythonPath: input.pythonPath,
     maxFileBytes: input.maxFileBytes,
     maxTotalBytes: input.maxTotalBytes,
+    adminExcludePaths: input.adminExcludePaths,
     env: input.env,
   });
   if (!run.ok) {

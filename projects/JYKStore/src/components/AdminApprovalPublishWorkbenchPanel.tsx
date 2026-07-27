@@ -24,6 +24,7 @@ export function AdminApprovalPublishWorkbenchPanel({
   onUpdated,
   onGoGeneration,
   onGoQuality,
+  onGoCorrection,
   onGoProviderReview,
   onGoServiceValidation,
 }: {
@@ -38,6 +39,7 @@ export function AdminApprovalPublishWorkbenchPanel({
   readonly onUpdated: (next: AdminReviewDetailDto) => void;
   readonly onGoGeneration?: () => void;
   readonly onGoQuality?: () => void;
+  readonly onGoCorrection?: () => void;
   readonly onGoProviderReview?: () => void;
   readonly onGoServiceValidation?: () => void;
 }) {
@@ -57,6 +59,7 @@ export function AdminApprovalPublishWorkbenchPanel({
   const runRemediation = (id: string) => {
     if (id === "generation") onGoGeneration?.();
     else if (id === "quality") (onGoQuality ?? onGoGeneration)?.();
+    else if (id === "correction") (onGoCorrection ?? onGoQuality)?.();
     else if (id === "providerConfirm") onGoProviderReview?.();
     else if (id === "searchValidation") onGoServiceValidation?.();
   };
@@ -152,7 +155,7 @@ export function AdminApprovalPublishWorkbenchPanel({
               href={ROUTES.admin}
               className="inline-flex min-h-[40px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
             >
-              작업함으로 이동
+              지식데이터 접수로 이동
             </a>
             <a
               href={packDetailPath(packId)}

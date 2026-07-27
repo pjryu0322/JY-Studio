@@ -80,6 +80,16 @@ export type AdminWorkerZipRequestListItem = {
   categoryName: string | null;
   versionLabel: string | null;
   requestedAt: string;
+  acceptedAt: string | null;
+  /**
+   * 품질점검(품질점검 리프레시) 결과가 마지막으로 확정된 시각 — ISO.
+   * 미실행이면 null.
+   */
+  qualityCheckedAt: string | null;
+  /**
+   * 품질점검상태: NOT_CHECKED / IN_PROGRESS / PASS / WARNING / FAIL
+   */
+  qualityStatus: string;
   originalFileName: string | null;
   accepted: boolean;
   phase: "REQUESTED" | "ACCEPTED" | "COMPLETED";
@@ -156,6 +166,75 @@ export async function fetchAdminWorkerZipRequestState(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as AdminWorkerZipRequestState;
+}
+
+export type AdminWorkerZipPreflightEntry = {
+  path: string;
+  kind: "file" | "folder";
+  extension: string;
+  sizeBytes: number | null;
+  exclusionCandidate: boolean;
+  exclusionReason: string | null;
+  exclusionDetail: string | null;
+};
+
+export type AdminWorkerZipPreflightInventory = {
+  packId: string;
+  packName: string;
+  originalFileName: string | null;
+  zipSizeBytes: number;
+  entryCount: number;
+  fileCount: number;
+  folderCount: number;
+  exclusionCandidateCount: number;
+  entries: AdminWorkerZipPreflightEntry[];
+  savedExcludedPaths?: string[];
+  savedExcludedReasons?: Record<string, string>;
+  savedExcludedAt?: string | null;
+};
+
+/** Admin 사전정리 — 원본 ZIP 파일/폴더/확장자/크기/제외 후보. */
+export async function fetchAdminWorkerZipPreflight(
+  packId: string,
+): Promise<AdminWorkerZipPreflightInventory> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/preflight`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminWorkerZipPreflightInventory;
+}
+
+/** Admin 사전정리 — 제외 선택(+사유) 저장. */
+export async function saveAdminWorkerZipPreflightExclusions(
+  packId: string,
+  items: readonly { path: string; reason: string }[],
+): Promise<{
+  packId: string;
+  savedExcludedPaths: string[];
+  savedExcludedReasons: Record<string, string>;
+  savedExcludedAt: string;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/worker-zip/preflight`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    packId: string;
+    savedExcludedPaths: string[];
+    savedExcludedReasons: Record<string, string>;
+    savedExcludedAt: string;
+  };
 }
 
 /**

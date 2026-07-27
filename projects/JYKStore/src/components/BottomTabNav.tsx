@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   isProviderAccountRole,
@@ -144,6 +144,57 @@ function AppNavIcon({ tabKey }: { readonly tabKey: BottomTabKey }) {
           <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
         </svg>
       );
+    case "adminAccept":
+      return (
+        <svg {...common}>
+          <path d="M4 20h16V8H4z" />
+          <path d="M8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3" />
+          <path d="M10 13h4" />
+        </svg>
+      );
+    case "adminGeneration":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M10 8.5v7l6-3.5-6-3.5z" />
+        </svg>
+      );
+    case "adminQuality":
+      return (
+        <svg {...common}>
+          <path d="M8 5h10a2 2 0 0 1 2 2v12H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+          <path d="m10 12 2 2 4-4" />
+        </svg>
+      );
+    case "adminCorrection":
+      return (
+        <svg {...common}>
+          <path d="M14.7 6.3a2.1 2.1 0 0 1 3 3L9 18l-4 1 1-4 8.7-8.7z" />
+        </svg>
+      );
+    case "adminProviderReview":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5" />
+          <path d="m15 13 2 2 3-3" />
+        </svg>
+      );
+    case "adminServiceValidation":
+      return (
+        <svg {...common}>
+          <circle cx="10.5" cy="10.5" r="5.5" />
+          <path d="m15 15 4.5 4.5" />
+          <path d="m8.5 10.5 1.2 1.2 2.3-2.4" />
+        </svg>
+      );
+    case "adminApproval":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="m8.5 12.5 2.2 2.2 4.8-5" />
+        </svg>
+      );
     case "account":
       return (
         <svg {...common}>
@@ -185,11 +236,16 @@ export function appRailTabsForRole(role: AccountRole): typeof BOTTOM_TABS {
   if (role === "ADMIN") {
     const order: Array<(typeof BOTTOM_TABS)[number]["key"]> = [
       "admin",
-      "categories",
+      "adminGeneration",
+      "adminQuality",
+      "adminCorrection",
+      "adminProviderReview",
+      "adminServiceValidation",
+      "adminApproval",
+      "ops",
       "account",
       "opsUsage",
       "opsAudit",
-      "ops",
     ];
     return order
       .map((key) => BOTTOM_TABS.find((tab) => tab.key === key))
@@ -219,6 +275,7 @@ export function appRailTabsForRole(role: AccountRole): typeof BOTTOM_TABS {
  */
 export function BottomTabNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { logoutAndRedirect, busy: logoutBusy } = useStoreLogout();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -301,7 +358,11 @@ export function BottomTabNav() {
         >
           <ul className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto px-1.5">
             {tabs.map((tab) => {
-              const active = bottomTabActive(tab.key as BottomTabKey, pathname);
+              const active = bottomTabActive(
+                tab.key as BottomTabKey,
+                pathname,
+                searchParams,
+              );
               const badge =
                 tab.key === "providerReview" && providerReviewBadge > 0
                   ? providerReviewBadge

@@ -6,16 +6,34 @@ import {
   fetchAdminWorkerZipRequestState,
   fetchAdminWorkerZipStatus,
   runAdminWorkerZipGeneration,
-  runAdminWorkerZipQualityRefresh,
   type AdminWorkerZipGenerationResult,
   type AdminWorkerZipQualityRefreshResult,
   type AdminWorkerZipRequestState,
   type AdminWorkerZipStatus,
 } from "@/lib/admin-review-api";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import {
+  clearQualityRefreshSessionJob,
+  getQualityRefreshSessionJob,
+  isQualityRefreshSessionRunning,
+  qualityRefreshProgressIndex,
+  startQualityRefreshSessionJob,
+} from "@/lib/admin-worker-zip-quality-refresh-session";
+import {
+  clearAdminQualityReviewAcknowledged,
+  isAdminQualityReviewAcknowledged,
+  setAdminQualityReviewAcknowledged,
+} from "@/lib/admin-quality-review-ack-session";
 import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
+import {
+  AdminPanelCollapseIcon,
+  AdminPanelDownloadIcon,
+  AdminPanelIconButton,
+  AdminPanelRefreshIcon,
+} from "@/components/AdminPanelToolbarIcons";
 import { AdminWorkerZipRunsPanel } from "@/components/AdminWorkerZipRunsPanel";
 import { buildQualityCheckHistoryMarkdown } from "@/lib/quality-check-history-markdown";
+import { buildAdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 import {
   formatDurationMs,
   WORKER_ZIP_UI_STEP_ORDER,
@@ -37,7 +55,7 @@ const QUALITY_PIPELINE_STEPS = [
 ] as const;
 
 /**
- * Workbench step2 — 지식데이터 생성 실행 + 품질점검.
+ * Workbench — 지식데이터 생성 실행 및/또는 품질점검.
  * 자료 접수/반려는 AdminMaterialAcceptancePanel(queue)에서 처리한다.
  */
 export function AdminWorkerZipGenerationCard({
@@ -45,7 +63,14 @@ export function AdminWorkerZipGenerationCard({
   onReviewDetailRefresh,
   onPhaseChange,
   qualityRefreshRequestKey = 0,
+  qualityResultsRevealKey = 0,
   preferQualitySection = false,
+  workbenchMode = "all",
+  autoStartGeneration = false,
+  onAutoStartGenerationConsumed,
+  onGoQuality: _onGoQuality,
+  onGoCorrection,
+  onGoProviderReview,
 }: {
   readonly packId: string;
   readonly onReviewDetailRefresh?: () => void | Promise<void>;
@@ -61,7 +86,17 @@ export function AdminWorkerZipGenerationCard({
   ) => void;
   /** Bump to trigger a quality refresh from a parent next-action CTA. */
   readonly qualityRefreshRequestKey?: number;
+  /** Bump to expand + scroll to 품질 점검 결과 (e.g. 「상세 결과로 이동」). */
+  readonly qualityResultsRevealKey?: number;
   readonly preferQualitySection?: boolean;
+  /** generation = Worker only; quality = quality only; all = legacy combined. */
+  readonly workbenchMode?: "generation" | "quality" | "all";
+  /** Start Worker generation once when the request is ready. */
+  readonly autoStartGeneration?: boolean;
+  readonly onAutoStartGenerationConsumed?: () => void;
+  readonly onGoQuality?: () => void;
+  readonly onGoCorrection?: () => void;
+  readonly onGoProviderReview?: () => void;
 }) {
   const [state, setState] = useState<AdminWorkerZipRequestState | null>(null);
   const [running, setRunning] = useState(false);
@@ -71,13 +106,45 @@ export function AdminWorkerZipGenerationCard({
   const [liveStatus, setLiveStatus] = useState<AdminWorkerZipStatus | null>(null);
   const [runsRefreshKey, setRunsRefreshKey] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
-  const [qualityRefreshing, setQualityRefreshing] = useState(false);
-  const [qualityResult, setQualityResult] = useState<AdminWorkerZipQualityRefreshResult | null>(null);
-  const [qualityActiveIndex, setQualityActiveIndex] = useState(0);
-  const [qualityStartedAt, setQualityStartedAt] = useState<number | null>(null);
+  const [qualityRefreshing, setQualityRefreshing] = useState(() =>
+    isQualityRefreshSessionRunning(packId),
+  );
+  const [qualityResult, setQualityResult] = useState<AdminWorkerZipQualityRefreshResult | null>(
+    () => {
+      const job = getQualityRefreshSessionJob(packId);
+      return job?.status === "done" ? job.result : null;
+    },
+  );
+  const [qualityActiveIndex, setQualityActiveIndex] = useState(() => {
+    const job = getQualityRefreshSessionJob(packId);
+    if (job?.status !== "running") return 0;
+    return qualityRefreshProgressIndex(
+      job.startedAt,
+      Date.now(),
+      QUALITY_PIPELINE_STEPS.length,
+      QUALITY_STEP_TICK_MS,
+    );
+  });
+  const [qualityStartedAt, setQualityStartedAt] = useState<number | null>(() => {
+    const job = getQualityRefreshSessionJob(packId);
+    return job?.status === "running" ? job.startedAt : null;
+  });
   const [evidenceDetail, setEvidenceDetail] = useState<AdminReviewDetailDto | null>(null);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [generationCollapsed, setGenerationCollapsed] = useState(false);
+  const [qualityCollapsed, setQualityCollapsed] = useState(false);
+  const [qualityReviewAcknowledged, setQualityReviewAcknowledged] = useState(() =>
+    isAdminQualityReviewAcknowledged(packId),
+  );
+  const packIdRef = useRef(packId);
+  packIdRef.current = packId;
+  const loadEvidenceForPackRef = useRef<
+    (targetPackId: string) => Promise<AdminReviewDetailDto | null>
+  >(async () => null);
+  const applyQualityRefreshResultRef = useRef<
+    (targetPackId: string, res: AdminWorkerZipQualityRefreshResult) => Promise<void>
+  >(async () => undefined);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,14 +183,82 @@ export function AdminWorkerZipGenerationCard({
   }, [loadState]);
 
   useEffect(() => {
+    setEvidenceDetail(null);
+    setEvidenceError(null);
+    setResult(null);
+    setError(null);
+    setQualityReviewAcknowledged(isAdminQualityReviewAcknowledged(packId));
+    const job = getQualityRefreshSessionJob(packId);
+    if (job?.status === "running") {
+      setQualityRefreshing(true);
+      setQualityStartedAt(job.startedAt);
+      setQualityActiveIndex(
+        qualityRefreshProgressIndex(
+          job.startedAt,
+          Date.now(),
+          QUALITY_PIPELINE_STEPS.length,
+          QUALITY_STEP_TICK_MS,
+        ),
+      );
+      setQualityResult(null);
+    } else if (job?.status === "done") {
+      setQualityRefreshing(false);
+      setQualityStartedAt(null);
+      setQualityActiveIndex(0);
+      setQualityResult(job.result);
+    } else {
+      setQualityRefreshing(false);
+      setQualityStartedAt(null);
+      setQualityActiveIndex(0);
+      setQualityResult(null);
+      if (job?.status === "error") setError(job.message);
+    }
+  }, [packId]);
+
+  useEffect(() => {
     if (state?.requestStatus) onPhaseChange?.(state.requestStatus);
   }, [state?.requestStatus, onPhaseChange]);
 
   useEffect(() => {
-    if (!preferQualitySection) return;
-    const el = document.getElementById("admin-quality-section");
+    if (!preferQualitySection && !qualityResultsRevealKey) return;
+    const targetId = qualityResult
+      ? "admin-quality-results"
+      : "admin-quality-section";
+    const el = document.getElementById(targetId);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [preferQualitySection]);
+  }, [preferQualitySection, qualityResultsRevealKey, qualityResult]);
+
+  const loadEvidenceForPack = useCallback(async (targetPackId: string) => {
+    setEvidenceLoading(true);
+    setEvidenceError(null);
+    try {
+      const data = await fetchAdminReviewDetail(targetPackId);
+      if (packIdRef.current !== targetPackId) return null;
+      setEvidenceDetail(data.detail);
+      return data.detail;
+    } catch (err) {
+      if (packIdRef.current !== targetPackId) return null;
+      setEvidenceError(
+        err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.",
+      );
+      setEvidenceDetail(null);
+      return null;
+    } finally {
+      if (packIdRef.current === targetPackId) setEvidenceLoading(false);
+    }
+  }, []);
+
+  const applyQualityRefreshResult = useCallback(
+    async (targetPackId: string, res: AdminWorkerZipQualityRefreshResult) => {
+      if (packIdRef.current !== targetPackId) return;
+      setQualityResult(res);
+      await loadEvidenceForPack(targetPackId);
+      if (packIdRef.current === targetPackId) void onReviewDetailRefresh?.();
+    },
+    [loadEvidenceForPack, onReviewDetailRefresh],
+  );
+  loadEvidenceForPackRef.current = loadEvidenceForPack;
+  applyQualityRefreshResultRef.current = applyQualityRefreshResult;
 
   const onExecute = async () => {
     if (running) return;
@@ -132,6 +267,15 @@ export function AdminWorkerZipGenerationCard({
     setResult(null);
     setLiveStatus(null);
     setNowTick(Date.now());
+    // New generation invalidates prior subsequent artifacts in the UI until re-run.
+    clearQualityRefreshSessionJob(packId);
+    clearAdminQualityReviewAcknowledged(packId);
+    setQualityReviewAcknowledged(false);
+    setQualityResult(null);
+    setEvidenceDetail(null);
+    setEvidenceError(null);
+    setQualityRefreshing(false);
+    setQualityStartedAt(null);
 
     // Poll the status API concurrently with the (synchronous) POST so the stepper
     // advances live while the run is in flight. Cleared once the POST resolves.
@@ -166,30 +310,36 @@ export function AdminWorkerZipGenerationCard({
   };
 
   const onQualityRefresh = async () => {
-    if (qualityRefreshing || running) return;
+    if (
+      qualityRefreshing ||
+      running ||
+      qualityReviewAcknowledged ||
+      isQualityRefreshSessionRunning(packId)
+    ) {
+      return;
+    }
+    const targetPackId = packId;
+    clearAdminQualityReviewAcknowledged(targetPackId);
+    setQualityReviewAcknowledged(false);
     setQualityRefreshing(true);
     setError(null);
     setEvidenceError(null);
+    setQualityResult(null);
+    setEvidenceDetail(null);
+    const startedAt = Date.now();
+    setQualityStartedAt(startedAt);
     setQualityActiveIndex(0);
-    setQualityStartedAt(Date.now());
     try {
-      const res = await runAdminWorkerZipQualityRefresh(packId);
-      setQualityResult(res);
-      setEvidenceLoading(true);
-      try {
-        const data = await fetchAdminReviewDetail(packId);
-        setEvidenceDetail(data.detail);
-      } catch (err) {
-        setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
-      } finally {
-        setEvidenceLoading(false);
-      }
-      void onReviewDetailRefresh?.();
+      const res = await startQualityRefreshSessionJob(targetPackId);
+      await applyQualityRefreshResult(targetPackId, res);
     } catch (err) {
+      if (packIdRef.current !== targetPackId) return;
       setError(err instanceof Error ? err.message : "품질 점검에 실패했습니다.");
     } finally {
-      setQualityRefreshing(false);
-      setQualityStartedAt(null);
+      if (packIdRef.current === targetPackId) {
+        setQualityRefreshing(false);
+        setQualityStartedAt(null);
+      }
     }
   };
 
@@ -205,33 +355,32 @@ export function AdminWorkerZipGenerationCard({
   }, [qualityRefreshRequestKey]);
 
   const reloadEvidenceDetail = async () => {
-    setEvidenceLoading(true);
-    setEvidenceError(null);
-    try {
-      const data = await fetchAdminReviewDetail(packId);
-      setEvidenceDetail(data.detail);
-      setQualityResult((prev) => prev ?? buildQualitySnapshotFromDetail(data.detail, packId));
-      void onReviewDetailRefresh?.();
-    } catch (err) {
-      setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
-      setEvidenceDetail(null);
-    } finally {
-      setEvidenceLoading(false);
-    }
+    const detail = await loadEvidenceForPack(packId);
+    if (!detail || packIdRef.current !== packId) return;
+    const snapshot = buildQualitySnapshotFromDetail(detail, packId);
+    if (snapshot) setQualityResult(snapshot);
+    void onReviewDetailRefresh?.();
   };
 
   useEffect(() => {
-    if (!qualityRefreshing) return;
+    if (!qualityRefreshing || qualityStartedAt == null) return;
     setNowTick(Date.now());
     const tickId = setInterval(() => setNowTick(Date.now()), 1000);
     const stepId = setInterval(() => {
-      setQualityActiveIndex((i) => Math.min(i + 1, QUALITY_PIPELINE_STEPS.length - 1));
-    }, QUALITY_STEP_TICK_MS);
+      setQualityActiveIndex(
+        qualityRefreshProgressIndex(
+          qualityStartedAt,
+          Date.now(),
+          QUALITY_PIPELINE_STEPS.length,
+          QUALITY_STEP_TICK_MS,
+        ),
+      );
+    }, 1000);
     return () => {
       clearInterval(tickId);
       clearInterval(stepId);
     };
-  }, [qualityRefreshing]);
+  }, [qualityRefreshing, qualityStartedAt]);
 
   const request = state?.request ?? null;
   const hasRequest = Boolean(request);
@@ -242,41 +391,185 @@ export function AdminWorkerZipGenerationCard({
   const completed = result?.ok === true && result.generationReady === true;
   const failed = result != null && result.ok === false;
   const generationDone = completed || status === "COMPLETED";
-  const canQualityRefresh = generationDone && !running && !qualityRefreshing;
+
+  const autoStartedRef = useRef(false);
+  const autoStartArmedRef = useRef(false);
+  useEffect(() => {
+    autoStartedRef.current = false;
+    autoStartArmedRef.current = false;
+  }, [packId]);
+
+  // Rising edge of autoStartGeneration: allow another forced run (e.g. create icon
+  // clicked again on the same pack, including after COMPLETED).
+  useEffect(() => {
+    if (autoStartGeneration && !autoStartArmedRef.current) {
+      autoStartedRef.current = false;
+    }
+    autoStartArmedRef.current = autoStartGeneration;
+  }, [autoStartGeneration]);
 
   useEffect(() => {
-    if (!generationDone || qualityRefreshing) return;
+    if (!autoStartGeneration || workbenchMode === "quality") return;
+    if (autoStartedRef.current || !state) return;
+    // Force regenerate even when already COMPLETED — create icon means "run now".
+    if (running || !hasRequest || inProgress || canAccept || isRejected) {
+      onAutoStartGenerationConsumed?.();
+      return;
+    }
+    autoStartedRef.current = true;
+    onAutoStartGenerationConsumed?.();
+    void onExecute();
+    // onExecute closes over latest handlers; fire once when request state is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot auto start
+  }, [
+    autoStartGeneration,
+    workbenchMode,
+    state,
+    hasRequest,
+    inProgress,
+    canAccept,
+    isRejected,
+    running,
+  ]);
+  const canQualityRefresh =
+    generationDone && !running && !qualityRefreshing && !qualityReviewAcknowledged;
+  const canAcknowledgeQualityReview =
+    generationDone &&
+    Boolean(qualityResult) &&
+    !qualityRefreshing &&
+    !qualityReviewAcknowledged;
+  const canCancelQualityReviewAck = qualityReviewAcknowledged && !qualityRefreshing;
+
+  const onAcknowledgeQualityReview = () => {
+    if (!canAcknowledgeQualityReview || !qualityResult) return;
+    setAdminQualityReviewAcknowledged(packId, true);
+    setQualityReviewAcknowledged(true);
+    const next = resolveQualityReviewCompleteDestination(qualityResult, evidenceDetail);
+    if (next === "correction") onGoCorrection?.();
+    else onGoProviderReview?.();
+  };
+
+  const onCancelQualityReviewAck = () => {
+    if (!canCancelQualityReviewAck) return;
+    clearAdminQualityReviewAcknowledged(packId);
+    setQualityReviewAcknowledged(false);
+  };
+
+  const showGenerationUi = workbenchMode === "generation" || workbenchMode === "all";
+  const showQualityUi = workbenchMode === "quality" || workbenchMode === "all";
+
+  // Reattach an in-flight session job, or load persisted final readiness for this pack.
+  // Dependency array length must stay fixed (HMR-safe). Callbacks are read via refs.
+  useEffect(() => {
+    if (!showQualityUi) return;
     let cancelled = false;
-    void (async () => {
+    const targetPackId = packId;
+
+    const rehydrate = async () => {
+      const job = getQualityRefreshSessionJob(targetPackId);
+      if (job?.status === "running") {
+        setQualityRefreshing(true);
+        setQualityStartedAt(job.startedAt);
+        setQualityActiveIndex(
+          qualityRefreshProgressIndex(
+            job.startedAt,
+            Date.now(),
+            QUALITY_PIPELINE_STEPS.length,
+            QUALITY_STEP_TICK_MS,
+          ),
+        );
+        try {
+          const res = await job.promise;
+          if (cancelled || packIdRef.current !== targetPackId) return;
+          await applyQualityRefreshResultRef.current(targetPackId, res);
+        } catch (err) {
+          if (cancelled || packIdRef.current !== targetPackId) return;
+          setError(err instanceof Error ? err.message : "품질 점검에 실패했습니다.");
+        } finally {
+          if (!cancelled && packIdRef.current === targetPackId) {
+            setQualityRefreshing(false);
+            setQualityStartedAt(null);
+          }
+        }
+        return;
+      }
+
+      if (job?.status === "done") {
+        if (cancelled) return;
+        setQualityResult(job.result);
+        await loadEvidenceForPackRef.current(targetPackId);
+        return;
+      }
+
+      if (job?.status === "error") {
+        if (cancelled) return;
+        setError(job.message);
+        return;
+      }
+
+      // No session job — show persisted final quality results when generation is done.
+      if (!generationDone) return;
       setEvidenceLoading(true);
       setEvidenceError(null);
       try {
-        const data = await fetchAdminReviewDetail(packId);
-        if (cancelled) return;
+        const data = await fetchAdminReviewDetail(targetPackId);
+        if (cancelled || packIdRef.current !== targetPackId) return;
+        // A concurrent refresh may have started while we were loading.
+        if (isQualityRefreshSessionRunning(targetPackId)) return;
         setEvidenceDetail(data.detail);
-        setQualityResult((prev) => prev ?? buildQualitySnapshotFromDetail(data.detail, packId));
+        setQualityResult(buildQualitySnapshotFromDetail(data.detail, targetPackId));
       } catch (err) {
-        if (cancelled) return;
-        setEvidenceError(err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.");
+        if (cancelled || packIdRef.current !== targetPackId) return;
+        setEvidenceError(
+          err instanceof Error ? err.message : "품질 점검 결과를 불러오지 못했습니다.",
+        );
       } finally {
-        if (!cancelled) setEvidenceLoading(false);
+        if (!cancelled && packIdRef.current === targetPackId) setEvidenceLoading(false);
       }
-    })();
+    };
+
+    void rehydrate();
     return () => {
       cancelled = true;
     };
-  }, [generationDone, packId, qualityRefreshing]);
+  }, [packId, showQualityUi, generationDone]);
 
   return (
     <div className="space-y-3">
+      {showGenerationUi ? (
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-        <div className="space-y-1">
-          <h2 className="text-sm font-bold text-slate-900">지식데이터 생성</h2>
-          <p className="text-xs text-slate-600">
-            접수된 ZIP으로 지식데이터를 생성합니다. 생성 완료 후 아래에서 품질점검을 실행하세요.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <AdminPanelIconButton
+              title={generationCollapsed ? "펼치기" : "접기"}
+              onClick={() => setGenerationCollapsed((v) => !v)}
+              aria-expanded={!generationCollapsed}
+            >
+              <AdminPanelCollapseIcon collapsed={generationCollapsed} />
+            </AdminPanelIconButton>
+            <h2 className="text-sm font-bold text-slate-900">지식데이터 생성</h2>
+            {generationCollapsed && hasRequest ? (
+              <span className="truncate text-[11px] text-store-muted">
+                {statusLabel(state!.requestStatus)}
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => void onExecute()}
+            disabled={running || !hasRequest || inProgress || canAccept || isRejected}
+            className="min-h-[36px] shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {running
+              ? "생성 실행 중…"
+              : status === "FAILED" || failed
+                ? "재생성 실행"
+                : "지식데이터 생성 실행"}
+          </button>
         </div>
 
+        {generationCollapsed ? null : (
+          <>
         {hasRequest ? (
           <dl className="space-y-1 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-700">
             <div className="flex justify-between gap-2">
@@ -328,19 +621,6 @@ export function AdminWorkerZipGenerationCard({
           </p>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => void onExecute()}
-          disabled={running || !hasRequest || inProgress || canAccept || isRejected}
-          className="min-h-[44px] w-full rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-60"
-        >
-          {running
-            ? "생성 실행 중…"
-            : status === "FAILED" || failed
-              ? "재생성 실행"
-              : "지식데이터 생성 실행"}
-        </button>
-
         {running ? <GenerationProgress status={liveStatus} nowMs={nowTick} /> : null}
 
         {error ? (
@@ -355,9 +635,11 @@ export function AdminWorkerZipGenerationCard({
             <p className="text-xs">
               지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
             </p>
-            <p className="mt-1 text-[11px] text-emerald-800">
-              Worker 작업 내역을 확인한 뒤, 아래 품질 점검을 실행해 주세요.
-            </p>
+            {workbenchMode !== "generation" ? (
+              <p className="mt-1 text-[11px] text-emerald-800">
+                Worker 작업 내역을 확인한 뒤, 아래 품질 점검을 실행해 주세요.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -413,60 +695,125 @@ export function AdminWorkerZipGenerationCard({
             ) : null}
           </div>
         ) : null}
+
+        <AdminWorkerZipRunsPanel
+          packId={packId}
+          refreshKey={runsRefreshKey}
+          embedded
+        />
+          </>
+        )}
       </section>
-
-      <AdminWorkerZipRunsPanel packId={packId} refreshKey={runsRefreshKey} />
-
-      {generationDone ? (
-        <section
-          id="admin-quality-section"
-          className="scroll-mt-24 space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
-        >
-          <p className="text-sm font-bold text-slate-900">품질 점검</p>
-          <p className="text-xs text-slate-600">
-            생성 완료 후 원천 검증 → 구조/품질 → 청킹 품질 → 검색 평가를 실행합니다.
-            차단 이슈가 있으면 아래 보정 패널에서 재생성을 진행하세요.
-          </p>
-          <button
-            type="button"
-            onClick={() => void onQualityRefresh()}
-            disabled={!canQualityRefresh}
-            className="min-h-[40px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-60"
-          >
-            {qualityRefreshing ? "품질 점검 실행 중…" : "품질 점검 실행"}
-          </button>
-
-          {qualityRefreshing ? (
-            <QualityPipelineProgress
-              mode="running"
-              activeIndex={qualityActiveIndex}
-              startedAtMs={qualityStartedAt}
-              nowMs={nowTick}
-            />
-          ) : null}
-
-          {!qualityRefreshing && !qualityResult && evidenceLoading ? (
-            <p className="text-xs text-store-muted">저장된 품질 점검 결과를 불러오는 중…</p>
-          ) : null}
-
-          {!qualityRefreshing && !qualityResult && !evidenceLoading ? (
-            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-store-muted">
-              아직 표시할 품질 점검 결과가 없습니다. 실행이 끝나면 이 아래에 readiness와 주의 이슈가
-              표시됩니다.
-            </p>
-          ) : null}
-        </section>
       ) : null}
 
-      {qualityResult && !qualityRefreshing ? (
-        <QualityCheckHistoryCard
-          packId={packId}
-          qualityResult={qualityResult}
-          detail={evidenceDetail}
-          loading={evidenceLoading}
-          error={evidenceError}
-          onRetry={() => void reloadEvidenceDetail()}
-        />
+      {showQualityUi ? (
+        <section
+          id="admin-quality-section"
+          className="scroll-mt-24 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <AdminPanelIconButton
+                title={qualityCollapsed ? "펼치기" : "접기"}
+                onClick={() => setQualityCollapsed((v) => !v)}
+                aria-expanded={!qualityCollapsed}
+              >
+                <AdminPanelCollapseIcon collapsed={qualityCollapsed} />
+              </AdminPanelIconButton>
+              <h2 className="text-sm font-bold text-slate-900">품질점검</h2>
+              {qualityCollapsed && qualityResult ? (
+                <span className="truncate text-[11px] text-store-muted">
+                  {qualityReviewAcknowledged ? "확인 완료" : "점검 완료"}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onQualityRefresh()}
+                disabled={!generationDone || !canQualityRefresh}
+                title={
+                  qualityReviewAcknowledged
+                    ? "완료를 취소한 뒤 다시 실행할 수 있습니다."
+                    : undefined
+                }
+                className="min-h-[36px] shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-60"
+              >
+                {qualityRefreshing ? "실행 중…" : "실행"}
+              </button>
+              <button
+                type="button"
+                onClick={onAcknowledgeQualityReview}
+                disabled={!canAcknowledgeQualityReview}
+                className="min-h-[36px] shrink-0 rounded-lg bg-store-accent px-3 text-xs font-bold text-white disabled:opacity-60"
+              >
+                완료
+              </button>
+              <button
+                type="button"
+                onClick={onCancelQualityReviewAck}
+                disabled={!canCancelQualityReviewAck}
+                className="min-h-[36px] shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 disabled:opacity-60"
+              >
+                완료취소
+              </button>
+            </div>
+          </div>
+
+          {qualityCollapsed ? null : (
+            <>
+              {qualityReviewAcknowledged ? (
+                <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                  품질점검 결과 확인을 완료했습니다. 보정 단계로 진행할 수 있습니다. 다시
+                  점검하려면 「완료취소」 후 「실행」하세요.
+                </p>
+              ) : null}
+              {!generationDone ? (
+                <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  지식데이터 생성이 완료된 뒤에 품질점검을 실행할 수 있습니다.
+                </p>
+              ) : null}
+
+              {error ? (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {error}
+                </div>
+              ) : null}
+
+              {qualityRefreshing ? (
+                <QualityPipelineProgress
+                  mode="running"
+                  activeIndex={qualityActiveIndex}
+                  startedAtMs={qualityStartedAt}
+                  nowMs={nowTick}
+                />
+              ) : null}
+
+              {qualityResult && !qualityRefreshing ? (
+                <QualityCheckHistoryCard
+                  packId={packId}
+                  qualityResult={qualityResult}
+                  detail={evidenceDetail}
+                  loading={evidenceLoading}
+                  error={evidenceError}
+                  revealKey={qualityResultsRevealKey}
+                  onRetry={() => void reloadEvidenceDetail()}
+                  embedded
+                />
+              ) : null}
+
+              {!qualityRefreshing && !qualityResult && evidenceLoading ? (
+                <p className="text-xs text-store-muted">품질점검 결과를 불러오는 중…</p>
+              ) : null}
+
+              {!qualityRefreshing && !qualityResult && !evidenceLoading && generationDone ? (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-store-muted">
+                  품질점검 결과가 없습니다. 「실행」으로 이번 생성분 점검을 시작하세요.
+                </p>
+              ) : null}
+            </>
+          )}
+        </section>
       ) : null}
     </div>
   );
@@ -619,17 +966,37 @@ function QualityCheckHistoryCard({
   detail,
   loading,
   error,
+  revealKey = 0,
   onRetry,
+  embedded = false,
 }: {
   readonly packId: string;
   readonly qualityResult: AdminWorkerZipQualityRefreshResult;
   readonly detail: AdminReviewDetailDto | null;
   readonly loading: boolean;
   readonly error: string | null;
+  /** Bump to force-expand and scroll this card into view. */
+  readonly revealKey?: number;
   readonly onRetry: () => void;
+  /** When true, render as an inner section (no outer card chrome). */
+  readonly embedded?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const readiness = qualityResult.readiness;
+  const revealKeyRef = useRef(0);
+
+  useEffect(() => {
+    if (!revealKey || revealKey === revealKeyRef.current) return;
+    revealKeyRef.current = revealKey;
+    setCollapsed(false);
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("admin-quality-results")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [revealKey]);
 
   const onDownloadMarkdown = useCallback(() => {
     const markdown = buildQualityCheckHistoryMarkdown({
@@ -642,49 +1009,32 @@ function QualityCheckHistoryCard({
   }, [packId, qualityResult, detail]);
 
   return (
-    <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+    <section
+      id="admin-quality-results"
+      className={
+        embedded
+          ? "scroll-mt-24 space-y-3 border-t border-slate-100 pt-3"
+          : "scroll-mt-24 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+      }
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
+            <AdminPanelIconButton
+              title={collapsed ? "펼치기" : "접기"}
               onClick={() => setCollapsed((v) => !v)}
               aria-expanded={!collapsed}
-              className="flex items-center gap-1.5 text-sm font-bold text-slate-900"
             >
-              <span
-                aria-hidden
-                className={`text-slate-400 transition-transform ${collapsed ? "" : "rotate-90"}`}
-              >
-                ▸
-              </span>
-              품질 점검 결과
-            </button>
-            <button
-              type="button"
-              onClick={onRetry}
-              disabled={loading}
-              title="새로고침"
-              aria-label="새로고침"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
-            >
-              <RefreshIcon spinning={loading} />
-            </button>
-            <button
-              type="button"
-              onClick={onDownloadMarkdown}
-              title="점검내역 MD 다운로드"
-              aria-label="점검내역 MD 다운로드"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            >
-              <DownloadIcon />
-            </button>
+              <AdminPanelCollapseIcon collapsed={collapsed} />
+            </AdminPanelIconButton>
+            <p className="text-sm font-bold text-slate-900">품질점검 결과</p>
+            <AdminPanelIconButton title="새로고침" onClick={onRetry} disabled={loading}>
+              <AdminPanelRefreshIcon spinning={loading} />
+            </AdminPanelIconButton>
+            <AdminPanelIconButton title="점검내역 MD 다운로드" onClick={onDownloadMarkdown}>
+              <AdminPanelDownloadIcon />
+            </AdminPanelIconButton>
           </div>
-          {!collapsed ? (
-            <p className="mt-0.5 text-xs text-store-muted">
-              최근 품질 점검의 파이프라인 결과, readiness 요약, 차단/주의 이슈입니다.
-            </p>
-          ) : null}
         </div>
       </div>
 
@@ -774,6 +1124,38 @@ function QualityCheckHistoryCard({
   );
 }
 
+/**
+ * After the admin reviews quality results, route FAIL/WARNING to correction
+ * and clean pass to provider review.
+ */
+function resolveQualityReviewCompleteDestination(
+  qualityResult: AdminWorkerZipQualityRefreshResult,
+  detail: AdminReviewDetailDto | null,
+): "correction" | "providerConfirm" {
+  if (detail) {
+    const gate = buildAdminQualityGateSnapshot(detail);
+    if (gate.hasBlockers || gate.failCount > 0 || gate.hasWarnings) return "correction";
+    return "providerConfirm";
+  }
+  const r = qualityResult.readiness;
+  const fail =
+    r.sourceValidation.failCount > 0 ||
+    r.structureCoverageStatus === "FAIL" ||
+    r.knowledgeQualityStatus === "FAIL" ||
+    r.chunkQualityStatus === "FAIL" ||
+    r.retrievalEvaluationStatus === "FAIL" ||
+    r.releaseGateStatus === "FAIL";
+  const warning =
+    r.sourceValidation.warningCount > 0 ||
+    r.structureCoverageStatus === "WARNING" ||
+    r.knowledgeQualityStatus === "WARNING" ||
+    r.chunkQualityStatus === "WARNING" ||
+    r.retrievalEvaluationStatus === "WARNING" ||
+    r.releaseGateStatus === "WARNING";
+  if (fail || warning) return "correction";
+  return "providerConfirm";
+}
+
 /** Rebuild a quality-refresh result snapshot from persisted review readiness. */
 function buildQualitySnapshotFromDetail(
   detail: AdminReviewDetailDto,
@@ -828,46 +1210,6 @@ function buildQualitySnapshotFromDetail(
       releaseGateMessage: r.releaseGateMessage,
     },
   };
-}
-
-function DownloadIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 20 20"
-      fill="none"
-      className="h-4 w-4"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RefreshIcon({ spinning = false }: { readonly spinning?: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 20 20"
-      fill="none"
-      className={`h-4 w-4 ${spinning ? "animate-spin" : ""}`}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M16.5 10a6.5 6.5 0 1 1-1.7-4.4M16.5 3.5V7H13"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function downloadTextFile(filename: string, contents: string): void {
@@ -927,6 +1269,8 @@ function exclusionReasonLabel(reason: string): string {
       return "용량 초과 파일";
     case "unsupported_entry_type":
       return "처리할 수 없는 항목";
+    case "admin_preflight_excluded":
+      return "사전정리 제외";
     default:
       return reason;
   }

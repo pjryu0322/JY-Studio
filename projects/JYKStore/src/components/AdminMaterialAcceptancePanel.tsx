@@ -303,7 +303,7 @@ export function AdminMaterialAcceptancePanel({
             }}
             className="min-h-[44px] w-full rounded-xl bg-slate-900 px-3 text-sm font-bold text-white"
           >
-            {status === "PROCESSING" ? "생성 진행상황 보기" : "생성·품질보정으로 이동"}
+            {status === "PROCESSING" ? "생성 진행상황 보기" : "생성으로 이동"}
           </button>
         ) : null}
 

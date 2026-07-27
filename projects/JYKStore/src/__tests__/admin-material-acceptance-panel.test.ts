@@ -19,11 +19,11 @@ function readSource(relativePath: string): string {
 }
 
 describe("admin material acceptance (workbench step1)", () => {
-  it("uses 자료 접수 / 생성·품질보정 copy for inbox sections", () => {
+  it("uses 자료 접수 / 지식데이터 생성 copy for inbox sections", () => {
     assert.equal(ADMIN_WORK_SECTION_ACCEPT_TITLE, "자료 접수 대기");
     assert.equal(ADMIN_WORK_SECTION_ACCEPT_CTA, "자료 접수");
-    assert.equal(ADMIN_WORK_SECTION_GENERATE_TITLE, "생성·품질보정 대기");
-    assert.equal(ADMIN_WORK_SECTION_GENERATE_CTA, "생성·품질보정");
+    assert.equal(ADMIN_WORK_SECTION_GENERATE_TITLE, "지식데이터 생성 대기");
+    assert.equal(ADMIN_WORK_SECTION_GENERATE_CTA, "지식데이터 생성");
   });
 
   it("maps REQUESTED to accept queue with 자료 접수 CTA", () => {
@@ -39,7 +39,7 @@ describe("admin material acceptance (workbench step1)", () => {
     assert.equal(view.isWaitingForAdmin, true);
   });
 
-  it("maps ACCEPTED and COMPLETED into 생성·품질보정 (not provider review)", () => {
+  it("maps ACCEPTED and COMPLETED into 지식데이터 생성 (not provider review)", () => {
     const accepted = buildAdminWorkInboxItemViewModel({
       packId: "a",
       packName: "A",
@@ -47,7 +47,7 @@ describe("admin material acceptance (workbench step1)", () => {
       workerZipPhase: "ACCEPTED",
     });
     assert.equal(accepted.adminQueueGroup, "GENERATE_REQUIRED");
-    assert.equal(accepted.ctaLabel, "생성·품질보정");
+    assert.equal(accepted.ctaLabel, "지식데이터 생성");
 
     const completed = buildAdminWorkInboxItemViewModel({
       packId: "c",
@@ -57,7 +57,7 @@ describe("admin material acceptance (workbench step1)", () => {
       providerReviewPhase: "NONE",
     });
     assert.equal(completed.adminQueueGroup, "GENERATE_REQUIRED");
-    assert.equal(completed.displayStatus, "생성·품질보정 대기");
+    assert.equal(completed.displayStatus, "지식데이터 생성 대기");
     assert.notEqual(completed.adminQueueGroup, "PROVIDER_REVIEW_IN_PROGRESS");
   });
 
@@ -81,15 +81,28 @@ describe("admin material acceptance (workbench step1)", () => {
     assert.ok(detail.includes("AdminQualityCheckPanel"));
     assert.ok(detail.includes('activeStep === "queue"'));
     assert.ok(detail.includes("showAcceptance"));
-    assert.ok(detail.includes("showGenerationWorkbench"));
+    assert.ok(detail.includes("showGeneration"));
+    assert.ok(detail.includes("showQuality"));
+    assert.ok(detail.includes("showCorrection"));
     assert.ok(detail.includes("parseAdminReviewStep"));
     const panel = readSource("src/components/AdminMaterialAcceptancePanel.tsx");
     assert.ok(panel.includes("자료 접수"));
     assert.ok(panel.includes("자료 반려"));
     assert.ok(panel.includes("cancelAdminWorkerZipRejection"));
-    assert.ok(panel.includes("생성·품질보정으로 이동"));
+    assert.ok(panel.includes("생성으로 이동") || panel.includes("생성·품질보정으로 이동"));
     assert.ok(panel.includes("acceptAdminWorkerZipRequest"));
     assert.ok(!panel.includes("runAdminWorkerZipGeneration"));
+  });
+
+  it("correction panel is an independent workbench with issue queue", () => {
+    const panel = readSource("src/components/AdminKnowledgeCorrectionPanel.tsx");
+    const icon = readSource("src/components/role-workspace/RoleRailIcon.tsx");
+    assert.ok(panel.includes("보정 큐"));
+    assert.ok(panel.includes("미리보기"));
+    assert.ok(panel.includes("보정 액션"));
+    assert.ok(!panel.includes("품질점검 다시 실행"));
+    assert.ok(!panel.includes("생성 화면으로 이동"));
+    assert.ok(icon.includes('case "correction"'));
   });
 
   it("generation card no longer exposes 자료 반려 CTA", () => {
@@ -98,6 +111,7 @@ describe("admin material acceptance (workbench step1)", () => {
     assert.doesNotMatch(card, /rejectAdminWorkerZipRequest/);
     assert.doesNotMatch(card, /cancelAdminWorkerZipRejection/);
     assert.match(card, /지식데이터 생성 실행/);
-    assert.match(card, /품질 점검 실행/);
+    assert.match(card, /실행/);
+    assert.match(card, /완료취소/);
   });
 });

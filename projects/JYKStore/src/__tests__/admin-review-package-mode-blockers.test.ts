@@ -375,5 +375,7 @@ describe("admin review blockers by package mode", () => {
     assert.ok(ui.includes("ADMIN_REVIEW_WARNINGS_EMPTY"));
     assert.ok(ui.includes("ADMIN_REVIEW_ISSUES_EMPTY"));
     assert.ok(ui.includes("hasDoclingReviewEvidence"));
+    assert.ok(ui.includes("buildReviewIssuesDetailMarkdown"));
+    assert.ok(ui.includes("차단/주의 이슈 상세 MD 다운로드"));
   });
 });

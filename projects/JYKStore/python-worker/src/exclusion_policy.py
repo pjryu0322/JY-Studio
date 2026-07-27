@@ -29,6 +29,8 @@ REASON_EXCLUDED_FILE_NAME = "excluded_file_name"
 REASON_EXCLUDED_EXTENSION = "excluded_extension"
 REASON_FILE_SIZE_EXCEEDED = "file_size_exceeded"
 REASON_UNSUPPORTED_ENTRY_TYPE = "unsupported_entry_type"
+# Admin 사전정리에서 선택한 경로 (Store options.adminExcludePaths).
+REASON_ADMIN_PREFLIGHT_EXCLUDED = "admin_preflight_excluded"
 
 MB = 1024 * 1024
 
@@ -158,19 +160,56 @@ def load_exclusion_policy(path: Path | str | None = None) -> ExclusionPolicy:
     return build_policy(raw)
 
 
+def normalize_zip_path(source_path: str) -> str:
+    """Normalize a ZIP entry path for comparison (posix, no leading/trailing slash)."""
+    return source_path.replace("\\", "/").strip("/")
+
+
+def match_admin_exclude_path(
+    source_path: str,
+    exclude_paths: list[str] | tuple[str, ...] | None,
+) -> str | None:
+    """Return the matching Admin exclude rule when ``source_path`` is covered.
+
+    A rule matches when the entry path equals the rule, or is nested under it
+    (``Samples`` excludes ``Samples/a.html``). Used for Admin 사전정리 selections.
+    """
+    if not exclude_paths:
+        return None
+    norm = normalize_zip_path(source_path)
+    if not norm:
+        return None
+    for raw in exclude_paths:
+        if not isinstance(raw, str):
+            continue
+        rule = normalize_zip_path(raw)
+        if not rule:
+            continue
+        if norm == rule or norm.startswith(rule + "/"):
+            return rule
+    return None
+
+
 def evaluate_entry(
     policy: ExclusionPolicy,
     source_path: str,
     file_size: int | None = None,
+    *,
+    admin_exclude_paths: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[str | None, str | None]:
     """Return ``(reason, detail)`` if the entry should be excluded, else ``(None, None)``.
 
     Evaluation order (business layer only; security guards run earlier):
+      0. Admin 사전정리 path exclusions (when provided)
       1. directory exclusion
       2. file name exclusion
       3. extension exclusion
       4. file size
     """
+    admin_rule = match_admin_exclude_path(source_path, admin_exclude_paths)
+    if admin_rule is not None:
+        return REASON_ADMIN_PREFLIGHT_EXCLUDED, admin_rule
+
     path = PurePosixPath(source_path.replace("\\", "/"))
     parts_lower = [p.lower() for p in path.parts]
     name_lower = path.name.lower()

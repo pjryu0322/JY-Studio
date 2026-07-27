@@ -54,7 +54,6 @@ export function AdminProviderReviewPanel({
   providerReviewConfirmedAt,
   supplementState,
   onChanged,
-  onGoGeneration,
   onGoQuality,
   onError,
 }: {
@@ -67,7 +66,6 @@ export function AdminProviderReviewPanel({
   readonly providerReviewConfirmedAt: string | null;
   readonly supplementState: ProviderSupplementRequestState | null;
   readonly onChanged: () => Promise<void> | void;
-  readonly onGoGeneration: () => void;
   readonly onGoQuality: () => void;
   readonly onError: (message: string) => void;
 }) {
@@ -146,22 +144,14 @@ export function AdminProviderReviewPanel({
           state={supplementState}
           providerName={detail.pack.providerName}
           onChanged={onChanged}
+          defaultCollapsed={false}
         />
       ) : null}
 
       {hasOpenSupplement ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onGoGeneration}
-            className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
-          >
-            생성·품질보정으로 이동
-          </button>
-          <p className="w-full text-xs text-amber-900">
-            제공자 보완요청이 처리되기 전에는 서비스 검증으로 진행할 수 없습니다.
-          </p>
-        </div>
+        <p className="text-xs text-amber-900">
+          제공자 보완요청이 처리되기 전에는 서비스 검증으로 진행할 수 없습니다.
+        </p>
       ) : null}
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
@@ -229,7 +219,7 @@ export function AdminProviderReviewPanel({
               onClick={onGoQuality}
               className="mt-2 text-[11px] font-bold underline"
             >
-              생성·품질보정에서 확인
+              품질점검에서 확인
             </button>
           </div>
         ) : null}

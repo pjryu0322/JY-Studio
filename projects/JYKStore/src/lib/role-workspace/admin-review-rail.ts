@@ -9,7 +9,7 @@ import type {
   NextReviewAction,
   RoleRailItem,
 } from "@/lib/role-workspace/types";
-import { ROUTES, adminReviewDetailPath } from "@/lib/routes";
+import { ROUTES, adminQueuePath, adminReviewDetailPath } from "@/lib/routes";
 import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import type {
   StoreProviderReviewPhase,
@@ -29,6 +29,7 @@ export type AdminReviewWorkflowStep =
   | "queue"
   | "generation"
   | "quality"
+  | "correction"
   | "providerConfirm"
   | "searchValidation"
   | "decision"
@@ -48,6 +49,7 @@ const STEP_ORDER: AdminReviewWorkflowStep[] = [
   "queue",
   "generation",
   "quality",
+  "correction",
   "providerConfirm",
   "searchValidation",
   "decision",
@@ -276,24 +278,27 @@ export function getAdminReviewRailState(input: {
   } else if (workerZipPhase === "COMPLETED" && !quality.completed) {
     completedThrough = "generation";
     current = "quality";
-  } else if (quality.completed && quality.hasBlockers) {
-    completedThrough = "generation";
-    current = "quality";
-  } else if (openSupplement) {
+  } else if (quality.completed && (quality.hasBlockers || quality.failCount > 0)) {
     completedThrough = "quality";
+    current = "correction";
+  } else if (quality.completed && quality.hasWarnings && providerReviewPhase === "NONE") {
+    completedThrough = "quality";
+    current = "correction";
+  } else if (openSupplement) {
+    completedThrough = "correction";
     current = "providerConfirm";
   } else if (
     quality.completed &&
     workerZipPhase === "COMPLETED" &&
     providerReviewPhase === "NONE"
   ) {
-    completedThrough = "quality";
+    completedThrough = "correction";
     current = "providerConfirm";
   } else if (quality.completed && providerReviewPhase === "NONE") {
     completedThrough = "generation";
     current = "quality";
   } else if (providerReviewPhase === "REQUESTED" || providerReviewPhase === "WITHDRAWN") {
-    completedThrough = "quality";
+    completedThrough = "correction";
     current = "providerConfirm";
   } else if (providerReviewPhase === "CONFIRMED" && !serviceDone) {
     completedThrough = "providerConfirm";
@@ -332,10 +337,9 @@ export function getAdminReviewRailState(input: {
     return "idle";
   };
 
-  const genQualityMembers = ["generation", "quality"] as const satisfies readonly AdminReviewWorkflowStep[];
   const decisionPublishMembers = ["decision", "publish"] as const satisfies readonly AdminReviewWorkflowStep[];
 
-  /** Visible 5-stage workbench rail. Internal step ids remain URL-compatible aliases. */
+  /** Visible workbench rail — generation / quality / correction are independent stages. */
   const items: RoleRailItem[] = [
     {
       id: "queue",
@@ -345,16 +349,32 @@ export function getAdminReviewRailState(input: {
     },
     {
       id: "generation",
-      label: "생성·품질보정",
-      href:
-        activeStep === "quality"
-          ? `${detailPath}?step=quality`
-          : `${detailPath}?step=generation`,
-      status: foldStageStatus(genQualityMembers, qualityWarning),
+      label: "생성",
+      href: `${detailPath}?step=generation`,
+      status: foldStageStatus(["generation"]),
+      blockedReason:
+        foldStageStatus(["generation"]) === "blocked"
+          ? "자료 접수를 먼저 완료하세요."
+          : undefined,
+    },
+    {
+      id: "quality",
+      label: "점검",
+      href: `${detailPath}?step=quality`,
+      status: foldStageStatus(["quality"], qualityWarning),
       badge: qualityWarning ? "WARNING" : undefined,
-      blockedReason: blockedNext && foldStageStatus(genQualityMembers) === "blocked"
-        ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
-        : undefined,
+      blockedReason:
+        workerZipPhase !== "COMPLETED"
+          ? "지식데이터 생성을 먼저 완료하세요."
+          : undefined,
+    },
+    {
+      id: "correction",
+      label: "보정",
+      href: `${detailPath}?step=correction`,
+      status: foldStageStatus(["correction"], qualityWarning || blockedNext),
+      badge: blockedNext ? "차단" : qualityWarning ? "WARNING" : undefined,
+      blockedReason: undefined,
     },
     {
       id: "providerConfirm",
@@ -371,7 +391,7 @@ export function getAdminReviewRailState(input: {
       badge: providerSupplementAttention ? "보완요청" : undefined,
       blockedReason:
         !quality.completed || blockedNext
-          ? "품질 점검을 먼저 통과하세요."
+          ? "품질 점검·보정을 먼저 통과하세요."
           : undefined,
     },
     {
@@ -413,7 +433,7 @@ export function getAdminReviewRailState(input: {
     },
     {
       id: "ops",
-      label: "운영 로그",
+      label: "공개/운영",
       href: ROUTES.adminOps,
       status: "idle",
     },
@@ -426,25 +446,43 @@ export function getAdminReviewRailState(input: {
 }
 
 /**
- * Internal step ids still accepted via `?step=` (aliased into the 5-stage display rail).
+ * Internal step ids still accepted via `?step=` (aliased into the display rail).
  * Kept for deep-link / test compatibility — do not remove without a migration.
  */
 export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = [
   "queue",
   "generation",
   "quality",
+  "correction",
   "providerConfirm",
   "searchValidation",
   "decision",
   "publish",
 ] as const;
 
-/** Static admin console rail (list / ops pages). */
+/** Admin console / left-rail stage queue links (list pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {
   const items: Array<{ id: string; label: string; href: string }> = [
-    { id: "home", label: "작업함", href: ROUTES.admin },
-    { id: "reviews", label: "검수 대기", href: ROUTES.adminReviews },
-    { id: "ops", label: "운영 로그", href: ROUTES.adminOps },
+    { id: "home", label: "지식데이터 접수", href: adminQueuePath("accept") },
+    { id: "generation", label: "지식데이터 생성", href: adminQueuePath("generation") },
+    { id: "quality", label: "점검", href: adminQueuePath("quality") },
+    { id: "correction", label: "보정", href: adminQueuePath("correction") },
+    {
+      id: "provider-review",
+      label: "제공자 검토",
+      href: adminQueuePath("provider-review"),
+    },
+    {
+      id: "service-validation",
+      label: "서비스 검증",
+      href: adminQueuePath("service-validation"),
+    },
+    {
+      id: "approval-publish",
+      label: "승인·게시",
+      href: adminQueuePath("approval-publish"),
+    },
+    { id: "ops", label: "공개/운영", href: ROUTES.adminOps },
   ];
   return items.map((item) => ({
     ...item,

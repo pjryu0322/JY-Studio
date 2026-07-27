@@ -35,6 +35,24 @@ export type WorkerZipRequestRejection = {
   previousMarkerStatus?: "PENDING" | "RUNNING" | "PASS";
 };
 
+/** Admin 사전정리에서 선택한 제외 경로 (request.json sidecar, no schema change). */
+export type WorkerZipAdminPreflightExclusionItem = {
+  path: string;
+  /** Admin이 기재한 제외사유 (필수 저장). */
+  reason: string;
+};
+
+export type WorkerZipAdminPreflightExclusions = {
+  /** Excluded ZIP paths — consumed by Worker generation. */
+  paths: string[];
+  /** Path → 제외사유. Older sidecars may omit this. */
+  reasons?: Record<string, string>;
+  /** Structured items (preferred). When present, paths/reasons are derived from it. */
+  items?: WorkerZipAdminPreflightExclusionItem[];
+  savedAt: string;
+  savedByUserId: string;
+};
+
 export type WorkerZipRequestMetadata = {
   originalFileName: string;
   fileSize: number;
@@ -47,6 +65,8 @@ export type WorkerZipRequestMetadata = {
    * for audit; a fresh Provider submission overwrites this sidecar (clearing it).
    */
   rejection?: WorkerZipRequestRejection;
+  /** Admin 사전정리 제외 선택. Fresh Provider re-upload clears this with the sidecar. */
+  adminPreflightExclusions?: WorkerZipAdminPreflightExclusions;
 };
 
 export type WorkerZipRequestLocator = {
@@ -229,6 +249,65 @@ export async function acknowledgeWorkerZipRequestRejection(
       acknowledgedByUserId: input.acknowledgedByUserId,
     },
   };
+  return writeRequestMetadata({ ...input, metadata: updated });
+}
+
+/**
+ * Persist Admin 사전정리 exclusion path selections on the request sidecar.
+ * Requires an existing request.json (ZIP request). Empty items clear the selection.
+ */
+export async function saveWorkerZipAdminPreflightExclusions(
+  input: WorkerZipRequestLocator & {
+    /** @deprecated Prefer `items` with reasons. */
+    paths?: readonly string[];
+    items?: readonly WorkerZipAdminPreflightExclusionItem[];
+    savedByUserId: string;
+    now?: () => Date;
+  },
+): Promise<WorkerZipRequestMetadata | null> {
+  const existing = await getWorkerZipRequestMetadata(input);
+  if (!existing) return null;
+
+  const rawItems =
+    input.items?.map((item) => ({
+      path: item.path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim(),
+      reason: item.reason.trim(),
+    })) ??
+    (input.paths ?? []).map((path) => ({
+      path: path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim(),
+      reason: "",
+    }));
+
+  const byPath = new Map<string, string>();
+  for (const item of rawItems) {
+    if (!item.path) continue;
+    byPath.set(item.path, item.reason);
+  }
+  const normalizedItems = [...byPath.entries()]
+    .map(([path, reason]) => ({ path, reason }))
+    .sort((a, b) => a.path.localeCompare(b.path, "ko"));
+  const normalizedPaths = normalizedItems.map((item) => item.path);
+  const reasons: Record<string, string> = {};
+  for (const item of normalizedItems) {
+    if (item.reason) reasons[item.path] = item.reason;
+  }
+
+  const updated: WorkerZipRequestMetadata = {
+    ...existing,
+    adminPreflightExclusions:
+      normalizedItems.length === 0
+        ? undefined
+        : {
+            paths: normalizedPaths,
+            items: normalizedItems,
+            reasons,
+            savedAt: (input.now?.() ?? new Date()).toISOString(),
+            savedByUserId: input.savedByUserId,
+          },
+  };
+  if (normalizedItems.length === 0) {
+    delete updated.adminPreflightExclusions;
+  }
   return writeRequestMetadata({ ...input, metadata: updated });
 }
 

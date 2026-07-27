@@ -100,8 +100,9 @@ export function AdminWorkerZipRequestQueue() {
 function fallbackCtaLabel(phase: AdminWorkerZipRequestListItem["phase"]): string {
   switch (phase) {
     case "COMPLETED":
+      return "점검";
     case "ACCEPTED":
-      return "생성·품질보정";
+      return "생성";
     default:
       return "자료 접수";
   }

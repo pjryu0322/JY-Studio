@@ -1091,6 +1091,33 @@ class ExclusionPolicyLoaderTests(unittest.TestCase):
         )
         self.assertIsNone(evaluate_entry(policy, "Docs/api/Grid.html")[0])
 
+    def test_evaluate_entry_admin_preflight_paths(self):
+        from src.exclusion_policy import (
+            REASON_ADMIN_PREFLIGHT_EXCLUDED,
+            match_admin_exclude_path,
+        )
+
+        policy = build_policy(None)
+        self.assertEqual(match_admin_exclude_path("Samples/a.js", ["Samples"]), "Samples")
+        self.assertEqual(
+            match_admin_exclude_path("Docs/a.html", ["Docs/a.html"]), "Docs/a.html"
+        )
+        self.assertIsNone(match_admin_exclude_path("Docs/a.html", ["Samples"]))
+        reason, detail = evaluate_entry(
+            policy,
+            "Samples/demo.html",
+            admin_exclude_paths=["Samples"],
+        )
+        self.assertEqual(reason, REASON_ADMIN_PREFLIGHT_EXCLUDED)
+        self.assertEqual(detail, "Samples")
+        # Admin rule wins before extension policy.
+        reason2, _ = evaluate_entry(
+            policy,
+            "bin/tool.exe",
+            admin_exclude_paths=["bin/tool.exe"],
+        )
+        self.assertEqual(reason2, REASON_ADMIN_PREFLIGHT_EXCLUDED)
+
     def test_evaluate_entry_size(self):
         policy = build_policy({"maxFileSizeMb": 1})
         reason, _ = evaluate_entry(policy, "Docs/big.html", file_size=2 * 1024 * 1024)

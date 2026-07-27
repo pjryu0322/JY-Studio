@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ROUTES } from "../lib/routes.ts";
+import { getAdminConsoleRailItems } from "../lib/role-workspace/admin-review-rail.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(here, "..", "..");
@@ -56,7 +57,24 @@ describe("admin account review console UX", () => {
     const menu = readSource("src/lib/account-menu.ts");
     assert.ok(header.includes("isAdminAccountRole") || header.includes("accountMenuLinksForRole"));
     assert.ok(menu.includes("검수 대기 목록"));
-    assert.ok(menu.includes("작업함"));
+    assert.ok(menu.includes("지식데이터 접수"));
     assert.ok(header.includes("useStoreLogout"));
+  });
+
+  it("exposes getAdminConsoleRailItems stage queues", () => {
+    const labels = getAdminConsoleRailItems("home").map((i) => i.label);
+    for (const label of [
+      "지식데이터 접수",
+      "지식데이터 생성",
+      "점검",
+      "보정",
+      "제공자 검토",
+      "서비스 검증",
+      "승인·게시",
+      "공개/운영",
+    ]) {
+      assert.ok(labels.includes(label), label);
+    }
+    assert.ok(!labels.includes("자료 접수"));
   });
 });

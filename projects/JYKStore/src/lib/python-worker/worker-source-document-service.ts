@@ -10,6 +10,9 @@
  * checksum, else fileName) instead of creating duplicates. When reusing, empty
  * `content` is backfilled from the Worker normalized document so legacy quality
  * gates (source validation / structure coverage) can actually run.
+ *
+ * License / review-only documents are not persisted (not knowledge/quality targets).
+ * Orphan WORKER_ZIP rows from prior imports (e.g. Admin 사전정리 exclusions) are removed.
  */
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +22,7 @@ import {
   resolveWorkerSourceDocumentFormat,
   resolveWorkerSourceDocumentType,
 } from "@/lib/python-worker/worker-source-document-content";
+import { isWorkerReviewOnlyDocument } from "@/lib/python-worker/worker-license-like";
 
 /** legacySourceType marker for SourceDocuments created from the ZIP Worker path. */
 export const WORKER_ZIP_SOURCE_LEGACY_TYPE = "WORKER_ZIP_SOURCE";
@@ -62,6 +66,7 @@ export async function ensureWorkerSourceDocuments(
   for (const doc of input.payload.normalizedDocuments) {
     const sourcePath = doc.sourcePath;
     if (!sourcePath || mapping[sourcePath]) continue;
+    if (isWorkerReviewOnlyDocument(doc)) continue;
 
     const checksum = checksumByPath.get(sourcePath) ?? null;
     const fileName = basename(sourcePath);
@@ -115,6 +120,15 @@ export async function ensureWorkerSourceDocuments(
     });
     mapping[sourcePath] = created.id;
   }
+
+  const keptIds = Object.values(mapping);
+  await client.sourceDocument.deleteMany({
+    where: {
+      versionId,
+      legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+      ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
+    },
+  });
 
   return mapping;
 }

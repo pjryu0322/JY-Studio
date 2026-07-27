@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +18,11 @@ export type PythonWorkerRunInput = {
   timeoutMs?: number;
   maxFileBytes?: number;
   maxTotalBytes?: number;
+  /**
+   * Admin 사전정리에서 선택한 ZIP 경로. Passed via --options-json as
+   * options.adminExcludePaths so the Worker skips them during extract.
+   */
+  adminExcludePaths?: readonly string[];
   env?: NodeJS.ProcessEnv;
 };
 
@@ -44,6 +51,17 @@ function defaultScriptPath(): string {
   return path.resolve(here, "../../../python-worker/parse_archive.py");
 }
 
+function normalizeAdminExcludePaths(paths: readonly string[] | undefined): string[] {
+  if (!paths?.length) return [];
+  return [
+    ...new Set(
+      paths
+        .map((p) => p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 /**
  * Run Python Worker CLI locally. Does not touch Object Storage or DB.
  *
@@ -57,6 +75,7 @@ export async function runPythonWorkerCli(
   const scriptPath = input.scriptPath?.trim() || defaultScriptPath();
   const timeoutMs = input.timeoutMs ?? 30 * 60 * 1000;
   const language = input.language?.trim() || "ko";
+  const adminExcludePaths = normalizeAdminExcludePaths(input.adminExcludePaths);
 
   const args = [
     scriptPath,
@@ -78,12 +97,35 @@ export async function runPythonWorkerCli(
     args.push("--max-total-bytes", String(input.maxTotalBytes));
   }
 
+  let optionsTempDir: string | null = null;
+  if (adminExcludePaths.length > 0) {
+    optionsTempDir = mkdtempSync(path.join(tmpdir(), "jyk-worker-opts-"));
+    const optionsJsonPath = path.join(optionsTempDir, "options.json");
+    writeFileSync(
+      optionsJsonPath,
+      JSON.stringify({ options: { adminExcludePaths } }, null, 0),
+      "utf8",
+    );
+    args.push("--options-json", optionsJsonPath);
+  }
+
   const started = Date.now();
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
     let timedOut = false;
+
+    const finish = (result: PythonWorkerRunResult) => {
+      if (optionsTempDir) {
+        try {
+          rmSync(optionsTempDir, { recursive: true, force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      }
+      resolve(result);
+    };
 
     const child = spawn(pythonPath, args, {
       env: { ...process.env, ...input.env },
@@ -111,7 +153,7 @@ export async function runPythonWorkerCli(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({
+      finish({
         ok: false,
         exitCode: null,
         stdout,
@@ -128,7 +170,7 @@ export async function runPythonWorkerCli(
       clearTimeout(timer);
       const durationMs = Date.now() - started;
       if (timedOut) {
-        resolve({
+        finish({
           ok: false,
           exitCode: code,
           stdout,
@@ -140,7 +182,7 @@ export async function runPythonWorkerCli(
         return;
       }
       if (code === 0) {
-        resolve({
+        finish({
           ok: true,
           exitCode: 0,
           stdout,
@@ -150,7 +192,7 @@ export async function runPythonWorkerCli(
         });
         return;
       }
-      resolve({
+      finish({
         ok: false,
         exitCode: code,
         stdout,

@@ -54,26 +54,89 @@ describe("admin work inbox UX", () => {
     assert.ok(packAt < returnedAt);
   });
 
-  it("puts 작업함 first in the admin console rail", () => {
+  it("puts 지식데이터 접수 first in the admin console rail", () => {
     const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
-    assert.ok(rail.includes('label: "작업함"'));
+    assert.ok(rail.includes('label: "지식데이터 접수"'));
     assert.ok(!rail.includes('label: "할 일"'));
     assert.ok(!rail.includes('label: "오늘 처리할 일"'));
-    assert.ok(rail.indexOf('id: "home"') < rail.indexOf('id: "reviews"'));
+    const consoleRail = rail.slice(rail.indexOf("getAdminConsoleRailItems"));
+    assert.ok(consoleRail.indexOf('id: "home"') < consoleRail.indexOf('id: "generation"'));
+    assert.ok(consoleRail.indexOf('id: "generation"') < consoleRail.indexOf('id: "quality"'));
+    assert.ok(consoleRail.indexOf('id: "quality"') < consoleRail.indexOf('id: "correction"'));
   });
 
-  it("exposes an admin 작업함 Inbox icon on the app left rail", () => {
+  it("exposes an admin 지식데이터 접수 Inbox icon on the app left rail", () => {
     const routes = readSource("src/lib/routes.ts");
     const nav = readSource("src/components/BottomTabNav.tsx");
     assert.ok(routes.includes('"admin"'));
-    assert.ok(routes.includes('label: "작업함"'));
+    assert.ok(routes.includes('label: "지식데이터 접수"'));
     assert.ok(!routes.includes('label: "할 일"'));
     assert.ok(nav.includes('"admin"'));
-    assert.ok(nav.includes('"categories"'));
+    assert.ok(nav.includes('"categories"') || nav.includes('"adminAccept"'));
     assert.ok(nav.includes('case "admin":'));
     // Inbox silhouette (not checklist / home)
     assert.ok(nav.includes("M22 12h-6l-2 3h-4l-2-3H2"));
     assert.ok(nav.includes("aria-label=") || nav.includes("title="));
+  });
+
+  it("exposes admin-only stage rails for 생성 / 점검 / 보정 queues", () => {
+    const routes = readSource("src/lib/routes.ts");
+    const nav = readSource("src/components/BottomTabNav.tsx");
+    const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
+    const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
+    assert.ok(routes.includes("adminQueuePath"));
+    assert.ok(routes.includes('queue=${encodeURIComponent(queue)}') || routes.includes("queue="));
+    assert.ok(routes.includes('label: "지식데이터 생성"'));
+    assert.ok(routes.includes('label: "점검"'));
+    assert.ok(routes.includes('label: "보정"'));
+    assert.ok(!routes.includes('label: "생성·품질보정"'));
+    assert.ok(nav.includes('"adminGeneration"'));
+    assert.ok(nav.includes('"adminQuality"'));
+    assert.ok(nav.includes('"adminCorrection"'));
+    const adminOrder = nav.slice(
+      nav.indexOf('role === "ADMIN"'),
+      nav.indexOf('role === "PROVIDER"'),
+    );
+    assert.ok(adminOrder.includes('"adminGeneration"'));
+    assert.ok(adminOrder.includes('"adminQuality"'));
+    assert.ok(adminOrder.includes('"adminCorrection"'));
+    assert.ok(inbox.includes("filterAdminWorkQueue"));
+    assert.ok(inbox.includes("parseAdminWorkQueue"));
+    assert.ok(inbox.includes("WorkInboxTable") || inbox.includes("접수요청일"));
+    assert.ok(inbox.includes("접수일"));
+    assert.ok(!inbox.includes("접수일자"));
+    assert.ok(inbox.includes("품질점검일"));
+    assert.ok(inbox.includes("품질점검상태"));
+    assert.ok(inbox.includes("ADMIN_WORK_GENERATION_TARGETS_TITLE"));
+    assert.ok(inbox.includes("ADMIN_WORK_QUALITY_TARGETS_TITLE"));
+    assert.ok(inbox.includes("formatInboxDate"));
+    assert.ok(inbox.includes("현재상태"));
+    assert.ok(inbox.includes("QualityCheckIcon"));
+    assert.ok(inbox.includes("selectedQualityPackId"));
+    assert.ok(inbox.includes(">번호<") || inbox.includes('"번호"') || inbox.includes("번호"));
+    assert.ok(inbox.includes("sortWorkInboxItems") || inbox.includes("SortableHeader"));
+    assert.ok(inbox.includes("AdminKnowledgeGenerationPanel"));
+    assert.ok(inbox.includes("workbenchMode=\"generation\"") || inbox.includes('workbenchMode="generation"'));
+    assert.ok(inbox.includes('workbenchMode="quality"') || inbox.includes("workbenchMode=\"quality\""));
+    assert.ok(!inbox.includes(">닫기<"));
+    const genCard = readSource("src/components/AdminWorkerZipGenerationCard.tsx");
+    assert.ok(!genCard.includes("접수된 ZIP으로 지식데이터를 생성합니다."));
+    assert.ok(!genCard.includes("점검으로 이동"));
+    assert.ok(genCard.includes("generationCollapsed"));
+    assert.ok(genCard.includes("qualityCollapsed"));
+    assert.ok(genCard.includes("품질점검"));
+    assert.ok(genCard.includes("완료취소"));
+    assert.ok(genCard.includes('{qualityRefreshing ? "실행 중…" : "실행"}'));
+    assert.ok(genCard.includes("embedded"));
+    assert.ok(rail.includes('label: "생성"'));
+    assert.ok(rail.includes('label: "점검"'));
+    assert.ok(rail.includes('label: "보정"'));
+    assert.ok(inbox.includes("AdminCorrectionQueuePanel"));
+    assert.ok(inbox.includes("조치하기"));
+    assert.ok(inbox.includes("selectedCorrectionPack"));
+    assert.ok(inbox.includes("filterAdminCorrectionQueue"));
+    const copy = readSource("src/lib/role-based-ux-copy.ts");
+    assert.ok(copy.includes('ADMIN_CORRECTION_QUEUE_TITLE = "지식데이터 보정"'));
   });
 
   it("removes nested console rail and restores inbox chrome title", () => {

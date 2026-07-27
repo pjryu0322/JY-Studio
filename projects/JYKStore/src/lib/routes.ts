@@ -16,6 +16,8 @@ export const ROUTES = {
   providerReviews: "/provider/reviews",
   providerPackNew: "/provider/packs/new",
   admin: "/admin",
+  /** @deprecated Prefer `/admin?queue=generation`. Kept for old bookmarks. */
+  adminGeneration: "/admin/generation",
   /** @deprecated Use `login`. Kept as alias so old links resolve to the shared login page. */
   adminLogin: "/login",
   adminReviews: "/admin/reviews",
@@ -33,6 +35,40 @@ export const ROUTES = {
   retrievalApiDocs: "/docs/api/retrieval",
   sdkDocs: "/docs/sdk",
 } as const;
+
+export type AdminWorkQueueKey =
+  | "all"
+  | "accept"
+  | "generation"
+  | "quality"
+  | "correction"
+  | "provider-review"
+  | "service-validation"
+  | "approval-publish"
+  | "ops";
+
+export function adminQueuePath(queue: AdminWorkQueueKey = "accept"): string {
+  if (queue === "ops") return ROUTES.adminOps;
+  if (queue === "all") return `${ROUTES.admin}?queue=accept`;
+  return `${ROUTES.admin}?queue=${encodeURIComponent(queue)}`;
+}
+
+export function parseAdminWorkQueue(raw: string | null | undefined): AdminWorkQueueKey {
+  switch (raw) {
+    case "all":
+    case "accept":
+    case "generation":
+    case "quality":
+    case "correction":
+    case "provider-review":
+    case "service-validation":
+    case "approval-publish":
+    case "ops":
+      return raw;
+    default:
+      return "accept";
+  }
+}
 
 export function adminOpsUsagePath(params?: { status?: string; endpoint?: string }): string {
   const search = new URLSearchParams();
@@ -84,6 +120,13 @@ export type BottomTabKey =
   | "provider"
   | "providerReview"
   | "admin"
+  | "adminAccept"
+  | "adminGeneration"
+  | "adminQuality"
+  | "adminCorrection"
+  | "adminProviderReview"
+  | "adminServiceValidation"
+  | "adminApproval"
   | "account"
   | "opsUsage"
   | "opsAudit"
@@ -99,20 +142,47 @@ export const BOTTOM_TABS: readonly {
   { key: "search", href: ROUTES.search, label: "검색", icon: "⌕" },
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
-  { key: "admin", href: ROUTES.admin, label: "작업함", icon: "📥" },
+  { key: "admin", href: adminQueuePath("accept"), label: "지식데이터 접수", icon: "📥" },
+  { key: "adminAccept", href: adminQueuePath("accept"), label: "지식데이터 접수", icon: "📁" },
+  { key: "adminGeneration", href: adminQueuePath("generation"), label: "지식데이터 생성", icon: "▶" },
+  { key: "adminQuality", href: adminQueuePath("quality"), label: "점검", icon: "☑" },
+  { key: "adminCorrection", href: adminQueuePath("correction"), label: "보정", icon: "🔧" },
+  {
+    key: "adminProviderReview",
+    href: adminQueuePath("provider-review"),
+    label: "제공자 검토",
+    icon: "👤",
+  },
+  {
+    key: "adminServiceValidation",
+    href: adminQueuePath("service-validation"),
+    label: "서비스 검증",
+    icon: "⌕",
+  },
+  {
+    key: "adminApproval",
+    href: adminQueuePath("approval-publish"),
+    label: "승인·게시",
+    icon: "✓",
+  },
   { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
   { key: "providerReview", href: ROUTES.providerReviews, label: "검토대상", icon: "☑" },
   { key: "account", href: ROUTES.account, label: "계정", icon: "👤" },
   { key: "opsUsage", href: ROUTES.adminOpsUsage, label: "운영 사용량", icon: "📊" },
   { key: "opsAudit", href: ROUTES.adminOpsAudit, label: "AuditLog", icon: "📋" },
-  { key: "ops", href: ROUTES.adminOps, label: "Ops 대시보드", icon: "⚙" },
+  { key: "ops", href: ROUTES.adminOps, label: "공개/운영", icon: "⚙" },
 ];
 
 export function isTodayPath(pathname: string): boolean {
   return pathname === ROUTES.home || pathname === ROUTES.today;
 }
 
-export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
+export function bottomTabActive(
+  key: BottomTabKey,
+  pathname: string,
+  searchParams?: URLSearchParams | { get(name: string): string | null },
+): boolean {
+  const queue = searchParams?.get("queue") ?? null;
   switch (key) {
     case "today":
       return isTodayPath(pathname);
@@ -134,8 +204,24 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
         pathname.startsWith(`${ROUTES.providerReviews}/`)
       );
     case "admin":
-      // Only the work inbox — detail/reviews pages should not keep this icon active.
-      return pathname === ROUTES.admin;
+    case "adminAccept":
+      return pathname === ROUTES.admin && (queue === "accept" || queue == null);
+    case "adminGeneration":
+      return (
+        (pathname === ROUTES.admin && queue === "generation") ||
+        pathname === ROUTES.adminGeneration ||
+        pathname.startsWith(`${ROUTES.adminGeneration}/`)
+      );
+    case "adminQuality":
+      return pathname === ROUTES.admin && queue === "quality";
+    case "adminCorrection":
+      return pathname === ROUTES.admin && queue === "correction";
+    case "adminProviderReview":
+      return pathname === ROUTES.admin && queue === "provider-review";
+    case "adminServiceValidation":
+      return pathname === ROUTES.admin && queue === "service-validation";
+    case "adminApproval":
+      return pathname === ROUTES.admin && queue === "approval-publish";
     case "account":
       return (
         pathname === ROUTES.account ||

@@ -8,6 +8,7 @@ import {
   updatePackPipelineStatus,
 } from "@/lib/pipeline-service";
 import { prisma } from "@/lib/prisma";
+import { isLicenseLikeSourceDocument } from "@/lib/python-worker/worker-license-like";
 import { validateSourceDocumentContent } from "@/lib/source-validation/source-validation-runner";
 import type { SourceValidationRunResult } from "@/lib/source-validation/source-validation-types";
 
@@ -250,7 +251,7 @@ export async function validateAllSourceDocumentsForPack(
 ): Promise<{ validatedCount: number; reports: SourceValidationReportDto[] }> {
   const docs = await prisma.sourceDocument.findMany({
     where: { version: { packId } },
-    select: { id: true },
+    select: { id: true, title: true, fileName: true },
   });
 
   const reports: SourceValidationReportDto[] = [];
@@ -259,6 +260,21 @@ export async function validateAllSourceDocumentsForPack(
   let failCount = 0;
 
   for (const doc of docs) {
+    // License / EULA-like docs are Worker review inventory (or Admin 사전정리
+    // exclusions). Do not run quality rules; clear prior WARNING so readiness
+    // and the correction queue stop counting them.
+    if (isLicenseLikeSourceDocument(doc)) {
+      await prisma.sourceDocument.update({
+        where: { id: doc.id },
+        data: {
+          validationStatus: "PASS",
+          validationSummary: "라이선스/검토 전용 문서는 품질점검 대상에서 제외됩니다.",
+        },
+      });
+      passCount += 1;
+      continue;
+    }
+
     const res = await validateAndPersistSourceDocument(doc.id, {
       actorClientId: options?.actorClientId,
       triggerType: "SOURCE_DOCUMENT_VALIDATE_ALL",

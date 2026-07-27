@@ -1,7 +1,18 @@
+import { redirect } from "next/navigation";
 import { AdminWorkInboxPageClient } from "@/components/AdminWorkInboxPageClient";
 import { AdminConsoleWorkspace } from "@/components/role-workspace/AdminConsoleWorkspace";
+import { adminQueuePath } from "@/lib/routes";
 
-export default function AdminPage() {
+type PageProps = {
+  searchParams: Promise<{ queue?: string }>;
+};
+
+export default async function AdminPage({ searchParams }: PageProps) {
+  const { queue } = await searchParams;
+  if (!queue?.trim()) {
+    redirect(adminQueuePath("accept"));
+  }
+
   return (
     <AdminConsoleWorkspace activeId="home">
       <AdminWorkInboxPageClient />

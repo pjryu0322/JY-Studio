@@ -38,6 +38,7 @@ export function parseAdminReviewStep(raw: string | null): AdminReviewWorkflowSte
     case "queue":
     case "generation":
     case "quality":
+    case "correction":
     case "providerConfirm":
     case "searchValidation":
     case "decision":
@@ -72,6 +73,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     useState<ProviderSupplementRequestState | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
+  const [qualityResultsRevealKey, setQualityResultsRevealKey] = useState(0);
   const [channelRefreshBusy, setChannelRefreshBusy] = useState(false);
   const [channelGates, setChannelGates] = useState<AdminServiceChannelGatesSnapshot | null>(
     null,
@@ -142,6 +144,9 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     [workerZipPhase, quality, workflowMarkers, detail],
   );
 
+  // bindingStatus:
+  // 최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다.
+
   const resolvedWorkflowStep = useMemo(() => {
     const probe = getAdminReviewRailState({
       packId,
@@ -166,21 +171,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [loading, requestedStep, resolvedWorkflowStep, pathname, router, searchParams]);
 
-  const workflow = useMemo(
-    () =>
-      getAdminReviewRailState({
-        packId,
-        workerZipPhase,
-        quality,
-        providerReviewPhase: workflowMarkers.providerReviewPhase,
-        serviceValidationPhase: workflowMarkers.serviceValidationPhase,
-        providerSupplementPhase: workflowMarkers.providerSupplementPhase,
-        detail,
-        activeStep,
-      }),
-    [packId, workerZipPhase, quality, workflowMarkers, detail, activeStep],
-  );
-
   if (loading) {
     return <p className="text-sm text-store-muted">불러오는 중…</p>;
   }
@@ -190,8 +180,9 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   }
 
   const showAcceptance = activeStep === "queue";
-  const showGenerationWorkbench =
-    activeStep === "generation" || activeStep === "quality";
+  const showGeneration = activeStep === "generation";
+  const showQuality = activeStep === "quality";
+  const showCorrection = activeStep === "correction";
   const showProviderConfirm = activeStep === "providerConfirm";
   const showSearch = activeStep === "searchValidation";
   const showDecision = activeStep === "decision" || activeStep === "publish";
@@ -212,41 +203,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
 
       <AdminReviewPageHeader detail={detail} />
 
-      <div className="rounded-2xl border border-store-border bg-white px-4 py-3 text-xs text-slate-700 shadow-card">
-        <p>
-          <span className="font-semibold text-slate-900">현재 단계:</span>{" "}
-          {workflow.items.find((i) => i.status === "current")?.label ?? "-"}
-        </p>
-        <p className="mt-1">
-          <span className="font-semibold text-slate-900">다음 단계:</span>{" "}
-          {workflow.items.find((i) => i.status === "next")?.label ??
-            workflow.items.find((i) => i.status === "current")?.label ??
-            "-"}
-        </p>
-        <nav className="mt-3 flex flex-wrap gap-1.5" aria-label="검수 단계">
-          {workflow.items
-            .filter((item) => item.id !== "ops")
-            .map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={item.status === "blocked"}
-                onClick={() => goStep(item.id as AdminReviewWorkflowStep)}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                  item.status === "current"
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : item.status === "blocked"
-                      ? "border-slate-200 text-slate-400"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-                title={item.blockedReason}
-              >
-                {item.label}
-              </button>
-            ))}
-        </nav>
-      </div>
-
       {activeStep !== "queue" && (nextAction.kind !== "NONE" || nextAction.message) ? (
         <NextActionPanel
           action={nextAction}
@@ -259,14 +215,14 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             if (nextAction.kind === "GO_SEARCH_VALIDATION") goStep("searchValidation");
             else if (nextAction.kind === "GO_FINAL_DECISION") goStep("decision");
             else if (nextAction.kind === "REGENERATE_KNOWLEDGE") goStep("generation");
-            else if (nextAction.kind === "REQUEST_PROVIDER_FIX") goStep("generation");
+            else if (nextAction.kind === "REQUEST_PROVIDER_FIX") goStep("correction");
           }}
           onSecondary={() => {
             if (nextAction.secondaryKind === "RERUN_QUALITY") {
               goStep("quality");
               setQualityRefreshKey((k) => k + 1);
             } else if (nextAction.secondaryKind === "REQUEST_PROVIDER_FIX") {
-              goStep("generation");
+              goStep("correction");
             }
           }}
         />
@@ -282,44 +238,62 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         />
       ) : null}
 
-      {showGenerationWorkbench ? (
+      {showGeneration ? (
         <div className="space-y-3">
           <AdminKnowledgeGenerationPanel
             packId={packId}
             onReviewDetailRefresh={refreshSilently}
             onPhaseChange={setWorkerZipPhase}
+            workbenchMode="generation"
+            onGoQuality={() => goStep("quality")}
+          />
+        </div>
+      ) : null}
+
+      {showQuality ? (
+        <div className="space-y-3">
+          <AdminKnowledgeGenerationPanel
+            packId={packId}
+            onReviewDetailRefresh={refreshSilently}
+            onPhaseChange={setWorkerZipPhase}
+            workbenchMode="quality"
             qualityRefreshRequestKey={qualityRefreshKey}
-            preferQualitySection={activeStep === "quality"}
+            qualityResultsRevealKey={qualityResultsRevealKey}
+            preferQualitySection
+            onGoCorrection={() => goStep("correction")}
+            onGoProviderReview={() => goStep("providerConfirm")}
           />
           <AdminQualityCheckPanel
             quality={quality}
             generationDone={generationDone}
             onRerunQuality={() => {
-              goStep("quality");
               setQualityRefreshKey((k) => k + 1);
             }}
             onScrollToQuality={() => {
-              goStep("quality");
-              requestAnimationFrame(() => {
-                document.getElementById("admin-quality-section")?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
-              });
+              setQualityResultsRevealKey((k) => k + 1);
             }}
-          />
-          <AdminKnowledgeCorrectionPanel
-            packId={packId}
-            workerZipPhase={workerZipPhase}
-            quality={quality}
-            onGoGeneration={() => goStep("generation")}
-            onRerunQuality={() => {
-              goStep("quality");
-              setQualityRefreshKey((k) => k + 1);
-            }}
+            onGoCorrection={() => goStep("correction")}
             onGoProviderReview={() => goStep("providerConfirm")}
           />
         </div>
+      ) : null}
+
+      {showCorrection ? (
+        <AdminKnowledgeCorrectionPanel
+          packId={packId}
+          packName={detail.pack.name}
+          detail={detail}
+          workerZipPhase={workerZipPhase}
+          quality={quality}
+          providerReviewPhase={workflowMarkers.providerReviewPhase}
+          onGoGeneration={() => goStep("generation")}
+          onRerunQuality={() => {
+            goStep("quality");
+            setQualityRefreshKey((k) => k + 1);
+          }}
+          onGoProviderReview={() => goStep("providerConfirm")}
+          onGoSearchValidation={() => goStep("searchValidation")}
+        />
       ) : null}
 
       {showProviderConfirm ? (
@@ -333,7 +307,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           providerReviewConfirmedAt={workflowMarkers.providerReviewConfirmedAt}
           supplementState={supplementState}
           onChanged={refreshSilently}
-          onGoGeneration={() => goStep("generation")}
           onGoQuality={() => goStep("quality")}
           onError={setError}
         />
@@ -378,6 +351,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           }}
           onGoGeneration={() => goStep("generation")}
           onGoQuality={() => goStep("quality")}
+          onGoCorrection={() => goStep("correction")}
           onGoProviderReview={() => goStep("providerConfirm")}
           onGoServiceValidation={() => goStep("searchValidation")}
         />

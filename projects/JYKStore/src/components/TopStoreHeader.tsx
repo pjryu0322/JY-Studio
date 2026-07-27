@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { resolveStorePageChrome } from "@/lib/store-page-chrome";
 
 /**
@@ -8,7 +8,8 @@ import { resolveStorePageChrome } from "@/lib/store-page-chrome";
  */
 export function TopStoreHeader() {
   const pathname = usePathname();
-  const chrome = resolveStorePageChrome(pathname);
+  const searchParams = useSearchParams();
+  const chrome = resolveStorePageChrome(pathname, searchParams);
 
   return (
     <div className="mb-1 min-w-0">

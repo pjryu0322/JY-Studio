@@ -9,7 +9,13 @@ describe("resolveStorePageChrome", () => {
     assert.equal(resolveStorePageChrome(ROUTES.accountProfile).title, "프로필 관리");
     assert.equal(resolveStorePageChrome(ROUTES.packs).title, "지식팩 둘러보기");
     assert.equal(resolveStorePageChrome(ROUTES.adminReviews).title.includes("관리자"), true);
-    assert.equal(resolveStorePageChrome(`${ROUTES.adminReviews}/pack-1`).title, "검수 상세");
+    assert.equal(resolveStorePageChrome(`${ROUTES.adminReviews}/pack-1`).title, "지식데이터 생성 및 편집");
+    assert.equal(resolveStorePageChrome(ROUTES.adminGeneration).title, "지식데이터 생성");
+    assert.equal(resolveStorePageChrome(ROUTES.admin, "queue=accept").title, "지식데이터 접수");
+    assert.equal(
+      resolveStorePageChrome(ROUTES.admin, "queue=generation").title,
+      "지식데이터 생성",
+    );
   });
 
   it("never returns empty chrome", () => {

@@ -3,12 +3,19 @@ import { describe, it } from "node:test";
 import {
   buildAdminWorkInboxItemViewModel,
   countAdminWorkInboxWaiting,
+  filterAdminCorrectionQueue,
+  filterAdminGenerationQualityQueue,
+  filterAdminWorkQueue,
+  isAdminCorrectionQueueItem,
+  isAdminGenerationQualityQueueItem,
+  isAdminGenerationQueueItem,
+  isAdminQualityQueueItem,
   mergeAdminWorkInboxViewModels,
   partitionAdminReviewRequiredByServicePhase,
 } from "../lib/admin-work-inbox-view-model.ts";
 
 describe("admin work inbox view model", () => {
-  it("maps worker completed before provider review to 생성·품질보정 waiting", () => {
+  it("maps worker completed before provider review to 지식데이터 생성 waiting", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pack-1",
       packName: "Sample Pack",
@@ -16,8 +23,8 @@ describe("admin work inbox view model", () => {
       workerZipPhase: "COMPLETED",
       providerReviewPhase: "NONE",
     });
-    assert.equal(view.displayStatus, "생성·품질보정 대기");
-    assert.equal(view.ctaLabel, "생성·품질보정");
+    assert.equal(view.displayStatus, "지식데이터 생성 대기");
+    assert.equal(view.ctaLabel, "지식데이터 생성");
     assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
     assert.equal(view.isWaitingForAdmin, true);
     assert.notEqual(view.displayStatus, "생성 완료");
@@ -132,7 +139,7 @@ describe("admin work inbox view model", () => {
     assert.equal(view.workflowStatus, "PROVIDER_WITHDRAWN");
   });
 
-  it("keeps pre-request COMPLETED packs in 생성·품질보정 (not provider waiting)", () => {
+  it("keeps pre-request COMPLETED packs in 지식데이터 생성 (not provider waiting)", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pre-request",
       packName: "Pre",
@@ -142,7 +149,7 @@ describe("admin work inbox view model", () => {
       providerSupplementPhase: "NONE",
     });
     assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
-    assert.equal(view.displayStatus, "생성·품질보정 대기");
+    assert.equal(view.displayStatus, "지식데이터 생성 대기");
     assert.notEqual(view.adminQueueGroup, "PROVIDER_REVIEW_IN_PROGRESS");
   });
 
@@ -220,5 +227,120 @@ describe("admin work inbox view model", () => {
     );
     assert.equal(parts.serviceValidationWaiting[0]?.displayStatus, "서비스 검증 대기");
     assert.equal(parts.approvalWaiting[0]?.displayStatus, "승인·게시 대기");
+  });
+
+  it("includes open supplement packs on the generation/quality stage rail", () => {
+    const generate = buildAdminWorkInboxItemViewModel({
+      packId: "gen",
+      packName: "Generate",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "NONE",
+    });
+    const supplement = buildAdminWorkInboxItemViewModel({
+      packId: "rmategridh5webv60",
+      packName: "리아모어",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "WITHDRAWN",
+      providerSupplementPhase: "PENDING",
+    });
+    const providerWaiting = buildAdminWorkInboxItemViewModel({
+      packId: "wait",
+      packName: "Waiting provider",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "REQUESTED",
+    });
+    const accept = buildAdminWorkInboxItemViewModel({
+      packId: "accept",
+      packName: "Accept first",
+      packStatus: "DRAFT",
+      workerZipPhase: "REQUESTED",
+    });
+    assert.equal(isAdminGenerationQualityQueueItem(generate), true);
+    assert.equal(isAdminGenerationQualityQueueItem(supplement), true);
+    assert.equal(isAdminGenerationQualityQueueItem(providerWaiting), false);
+    assert.equal(isAdminGenerationQualityQueueItem(accept), false);
+    assert.deepEqual(
+      filterAdminGenerationQualityQueue([generate, supplement, providerWaiting, accept]).map(
+        (i) => i.packId,
+      ),
+      ["gen", "rmategridh5webv60"],
+    );
+  });
+
+  it("splits generation / quality / correction queue membership", () => {
+    const accepted = buildAdminWorkInboxItemViewModel({
+      packId: "a",
+      packName: "A",
+      packStatus: "DRAFT",
+      workerZipPhase: "ACCEPTED",
+    });
+    const completed = buildAdminWorkInboxItemViewModel({
+      packId: "c",
+      packName: "C",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "NONE",
+    });
+    const supplement = buildAdminWorkInboxItemViewModel({
+      packId: "s",
+      packName: "S",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "WITHDRAWN",
+      providerSupplementPhase: "PENDING",
+    });
+    assert.equal(isAdminGenerationQueueItem(accepted), true);
+    assert.equal(isAdminGenerationQueueItem(completed), true);
+    assert.equal(isAdminGenerationQueueItem(supplement), true);
+    assert.equal(isAdminQualityQueueItem(completed), true);
+    assert.equal(isAdminQualityQueueItem(supplement), true);
+    assert.equal(isAdminCorrectionQueueItem(supplement), true);
+    assert.equal(isAdminCorrectionQueueItem(completed), false);
+    assert.equal(
+      isAdminCorrectionQueueItem(completed, { qualityAcknowledged: true }),
+      true,
+    );
+    assert.deepEqual(
+      filterAdminWorkQueue([accepted, completed, supplement], "generation").map((i) => i.packId),
+      ["a", "c", "s"],
+    );
+    assert.deepEqual(
+      filterAdminWorkQueue([accepted, completed, supplement], "quality").map((i) => i.packId),
+      ["c", "s"],
+    );
+    assert.deepEqual(
+      filterAdminWorkQueue([accepted, completed, supplement], "correction").map((i) => i.packId),
+      ["s"],
+    );
+  });
+
+  it("includes quality-acknowledged packs in correction queue filter", () => {
+    const completed = buildAdminWorkInboxItemViewModel({
+      packId: "c",
+      packName: "C",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "NONE",
+    });
+    const supplement = buildAdminWorkInboxItemViewModel({
+      packId: "s",
+      packName: "S",
+      packStatus: "DRAFT",
+      workerZipPhase: "COMPLETED",
+      providerReviewPhase: "WITHDRAWN",
+      providerSupplementPhase: "ACCEPTED",
+    });
+    const ack = new Set(["c"]);
+    assert.deepEqual(
+      filterAdminCorrectionQueue([completed, supplement], (id) => ack.has(id)).map((i) => i.packId),
+      ["c", "s"],
+    );
+    assert.deepEqual(
+      filterAdminCorrectionQueue([completed, supplement], () => false).map((i) => i.packId),
+      ["s"],
+    );
   });
 });

@@ -137,13 +137,15 @@ def safe_extract_zip(
     max_file_bytes: int,
     max_total_bytes: int,
     policy: ExclusionPolicy | None = None,
+    admin_exclude_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Safely extract a ZIP into dest_root with Korean filename recovery.
 
-    Applies, per entry, in order: hardcoded security guards → default exclusion
-    policy (directory / file name / extension / size) → extract. The original
-    archive is never modified; only what is extracted is limited.
+    Applies, per entry, in order: hardcoded security guards → Admin 사전정리
+    path exclusions → default exclusion policy (directory / file name /
+    extension / size) → extract. The original archive is never modified; only
+    what is extracted is limited.
 
     Returns extraction stats including excluded/failed entries, structured
     ``excludedFiles`` (path/reason/detail), and path_meta keyed by recovered
@@ -151,6 +153,7 @@ def safe_extract_zip(
     """
     dest_root.mkdir(parents=True, exist_ok=True)
     active_policy = policy if policy is not None else load_exclusion_policy()
+    admin_paths = [p for p in (admin_exclude_paths or []) if isinstance(p, str) and p.strip()]
     result: dict[str, Any] = {
         "ok": False,
         "extracted": [],
@@ -233,9 +236,13 @@ def safe_extract_zip(
                     record_exclusion(name, raw_name, REASON_BLOCKED_SYMLINK, None)
                     continue
 
-                # 2-4. Default exclusion policy: directory → file name → extension → size.
+                # 2-5. Admin 사전정리 paths + default exclusion policy
+                # (directory → file name → extension → size).
                 policy_reason, policy_detail = evaluate_entry(
-                    active_policy, name, info.file_size
+                    active_policy,
+                    name,
+                    info.file_size,
+                    admin_exclude_paths=admin_paths,
                 )
                 if policy_reason is not None:
                     record_exclusion(name, raw_name, policy_reason, policy_detail)
@@ -330,6 +337,14 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
     max_total = int(opts.get("maxTotalBytes", DEFAULT_MAX_TOTAL_BYTES))
     # P7.4: default exclusion policy (config file, merged over built-in defaults).
     exclusion_policy = load_exclusion_policy(opts.get("exclusionPolicyPath"))
+    raw_admin_paths = opts.get("adminExcludePaths")
+    admin_exclude_paths: list[str] = []
+    if isinstance(raw_admin_paths, list):
+        admin_exclude_paths = [
+            str(p).replace("\\", "/").strip("/")
+            for p in raw_admin_paths
+            if isinstance(p, (str, int, float)) and str(p).strip()
+        ]
     excluded_files: list[dict[str, Any]] = []
 
     extract_root = output_dir / "_extracted"
@@ -386,6 +401,7 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         max_file_bytes=max_file,
         max_total_bytes=max_total,
         policy=exclusion_policy,
+        admin_exclude_paths=admin_exclude_paths,
     )
     excluded_files = extraction.get("excludedFiles") or []
     for item in extraction.get("excluded") or []:

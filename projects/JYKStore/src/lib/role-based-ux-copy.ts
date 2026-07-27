@@ -190,22 +190,27 @@ export const ADMIN_LOGIN_DESCRIPTION =
 export const ADMIN_ACCESS_REQUIRED_TITLE = "관리자 권한이 필요합니다.";
 export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 주세요.";
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
-export const ADMIN_WORK_INBOX_TITLE = "작업함";
-export const ADMIN_WORK_INBOX_DESCRIPTION =
-  "자료 접수, 생성·품질보정, 제공자 검토, 서비스 검증, 승인·게시 등 조치가 필요한 지식팩을 확인합니다.";
+export const ADMIN_WORK_INBOX_TITLE = "지식데이터 접수";
+export const ADMIN_WORK_INBOX_DESCRIPTION = "";
+export const ADMIN_GENERATION_QUEUE_TITLE = "지식데이터 생성";
+export const ADMIN_GENERATION_QUEUE_DESCRIPTION = "";
+export const ADMIN_QUALITY_QUEUE_TITLE = "자동품질점검";
+export const ADMIN_QUALITY_QUEUE_DESCRIPTION = "";
+export const ADMIN_CORRECTION_QUEUE_TITLE = "지식데이터 보정";
+export const ADMIN_CORRECTION_QUEUE_DESCRIPTION = "";
 export const ADMIN_WORK_SECTION_ACCEPT_TITLE = "자료 접수 대기";
 export const ADMIN_WORK_SECTION_ACCEPT_BODY =
   "제공자가 ZIP/원본 자료를 제출했습니다. 자료를 확인한 뒤 접수하거나 반려하세요.";
 export const ADMIN_WORK_SECTION_ACCEPT_CTA = "자료 접수";
-export const ADMIN_WORK_SECTION_GENERATE_TITLE = "생성·품질보정 대기";
+export const ADMIN_WORK_SECTION_GENERATE_TITLE = "지식데이터 생성 대기";
 export const ADMIN_WORK_SECTION_GENERATE_BODY =
-  "접수가 끝난 지식팩입니다. 생성 실행과 품질보정을 진행하세요.";
-export const ADMIN_WORK_SECTION_GENERATE_CTA = "생성·품질보정";
-/** @deprecated Step1 workbench folds quality into 생성·품질보정. Kept for filter compat. */
-export const ADMIN_WORK_SECTION_QUALITY_TITLE = "생성·품질보정 대기";
+  "접수가 끝난 지식팩입니다. Worker 실행으로 지식데이터를 생성하세요.";
+export const ADMIN_WORK_SECTION_GENERATE_CTA = "지식데이터 생성";
+/** @deprecated Prefer generation / quality / correction stage queues. Kept for filter compat. */
+export const ADMIN_WORK_SECTION_QUALITY_TITLE = "점검 대기";
 export const ADMIN_WORK_SECTION_QUALITY_BODY =
-  "접수가 끝난 지식팩입니다. 생성 실행과 품질보정을 진행하세요.";
-export const ADMIN_WORK_SECTION_QUALITY_CTA = "생성·품질보정";
+  "생성이 끝난 지식팩입니다. 자동 품질점검 결과를 확인하세요.";
+export const ADMIN_WORK_SECTION_QUALITY_CTA = "점검";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE = "제공자 확인 대기";
 export const ADMIN_WORK_SECTION_PROVIDER_REVIEW_BODY =
   "제공자가 생성 결과를 확인 중입니다. 관리자 조치 대기가 아닙니다.";
@@ -233,8 +238,8 @@ export const ADMIN_WORK_SECTION_RETURNED_CTA = "요청사항 확인";
 export const ADMIN_WORK_FILTER_CATEGORY_ALL = "전체 카테고리";
 export const ADMIN_WORK_FILTER_STATUS_ALL = "전체 상태";
 export const ADMIN_WORK_FILTER_STATUS_ACCEPT = "자료 접수 대기";
-export const ADMIN_WORK_FILTER_STATUS_GENERATE = "생성·품질보정";
-export const ADMIN_WORK_FILTER_STATUS_QUALITY = "생성·품질보정";
+export const ADMIN_WORK_FILTER_STATUS_GENERATE = "지식데이터 생성";
+export const ADMIN_WORK_FILTER_STATUS_QUALITY = "점검";
 export const ADMIN_WORK_FILTER_STATUS_PROVIDER_REVIEW = "제공자 검토";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW = "승인·게시 대기";
 export const ADMIN_WORK_FILTER_STATUS_PACK_REVIEW_IN_PROGRESS = "승인·게시 진행 중";
@@ -243,6 +248,12 @@ export const ADMIN_WORK_FILTER_STATUS_RETURNED = "제공자 보완요청";
 export const ADMIN_WORK_FILTER_NO_MATCH = "조건에 맞는 지식팩이 없습니다.";
 export const ADMIN_WORK_EMPTY = "현재 처리 대기 중인 작업이 없습니다.";
 export const ADMIN_WORK_SUMMARY_LABEL = "대기";
+/** 지식데이터 생성 큐 목록 소타이틀 */
+export const ADMIN_WORK_GENERATION_TARGETS_TITLE = "지식데이터 생성 대상";
+/** 품질점검 큐 목록 소타이틀 */
+export const ADMIN_WORK_QUALITY_TARGETS_TITLE = "품질점검 대상";
+/** 보정 큐 목록 소타이틀 */
+export const ADMIN_WORK_CORRECTION_TARGETS_TITLE = "지식데이터 보정 대상";
 export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
 export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
 export const ADMIN_REVIEWS_STATUS_PENDING = "접수 대기";

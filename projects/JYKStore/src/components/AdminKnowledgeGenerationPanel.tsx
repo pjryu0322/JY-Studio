@@ -3,16 +3,22 @@
 import { AdminWorkerZipGenerationCard } from "@/components/AdminWorkerZipGenerationCard";
 
 /**
- * Workbench step2 — 지식데이터 생성 영역.
- * 상태/폴링은 AdminWorkerZipGenerationCard가 소유하며, 품질 섹션도 동일 카드에 포함된다.
- * (이중 폴링 방지를 위해 생성·품질을 한 인스턴스로 유지)
+ * Workbench — 지식데이터 생성 또는 품질점검 영역.
+ * 상태/폴링은 AdminWorkerZipGenerationCard가 소유한다.
  */
 export function AdminKnowledgeGenerationPanel({
   packId,
   onReviewDetailRefresh,
   onPhaseChange,
   qualityRefreshRequestKey = 0,
+  qualityResultsRevealKey = 0,
   preferQualitySection = false,
+  workbenchMode = "all",
+  autoStartGeneration = false,
+  onAutoStartGenerationConsumed,
+  onGoQuality,
+  onGoCorrection,
+  onGoProviderReview,
 }: {
   readonly packId: string;
   readonly onReviewDetailRefresh?: () => void | Promise<void>;
@@ -27,7 +33,15 @@ export function AdminKnowledgeGenerationPanel({
       | "FAILED",
   ) => void;
   readonly qualityRefreshRequestKey?: number;
+  readonly qualityResultsRevealKey?: number;
   readonly preferQualitySection?: boolean;
+  readonly workbenchMode?: "generation" | "quality" | "all";
+  /** When true, start Worker generation once the request is ready. */
+  readonly autoStartGeneration?: boolean;
+  readonly onAutoStartGenerationConsumed?: () => void;
+  readonly onGoQuality?: () => void;
+  readonly onGoCorrection?: () => void;
+  readonly onGoProviderReview?: () => void;
 }) {
   return (
     <AdminWorkerZipGenerationCard
@@ -35,7 +49,14 @@ export function AdminKnowledgeGenerationPanel({
       onReviewDetailRefresh={onReviewDetailRefresh}
       onPhaseChange={onPhaseChange}
       qualityRefreshRequestKey={qualityRefreshRequestKey}
+      qualityResultsRevealKey={qualityResultsRevealKey}
       preferQualitySection={preferQualitySection}
+      workbenchMode={workbenchMode}
+      autoStartGeneration={autoStartGeneration}
+      onAutoStartGenerationConsumed={onAutoStartGenerationConsumed}
+      onGoQuality={onGoQuality}
+      onGoCorrection={onGoCorrection}
+      onGoProviderReview={onGoProviderReview}
     />
   );
 }

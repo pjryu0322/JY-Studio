@@ -77,14 +77,22 @@ describe("worker source document content (quality-gate wiring)", () => {
       path.join(root, "src/components/AdminWorkerZipGenerationCard.tsx"),
       "utf8",
     );
-    assert.match(card, /runAdminWorkerZipQualityRefresh/);
+    assert.match(card, /runAdminWorkerZipQualityRefresh|startQualityRefreshSessionJob/);
+    assert.match(card, /startQualityRefreshSessionJob/);
     assert.match(card, /품질 점검/);
     assert.match(card, /QualityPipelineProgress/);
     assert.match(card, /QualityCheckHistoryCard/);
+    assert.match(card, /admin-quality-results/);
+    assert.match(card, /qualityResultsRevealKey/);
     assert.match(card, /buildQualitySnapshotFromDetail/);
     assert.match(card, /buildQualityCheckHistoryMarkdown/);
     assert.match(card, /새로고침/);
     assert.match(card, /점검내역 MD 다운로드/);
+    assert.match(card, /완료취소/);
+    assert.match(card, /onAcknowledgeQualityReview/);
+    assert.match(card, /setAdminQualityReviewAcknowledged/);
+    assert.match(card, /\{qualityRefreshing \? "실행 중…" : "실행"\}/);
+    assert.doesNotMatch(card, /품질점검 실행/);
     assert.doesNotMatch(card, /세부 판단 근거 보기/);
     assert.doesNotMatch(card, /JudgmentEvidenceModal/);
   });
@@ -160,10 +168,30 @@ describe("AdminWorkerZipRunsPanel markdown export", () => {
       "utf8",
     );
     assert.doesNotMatch(src, /과거 작업 내역 \$\{/);
-    assert.doesNotMatch(src, /showPastRuns/);
     assert.doesNotMatch(src, /단계 로그 접기/);
     assert.doesNotMatch(src, /단계 로그 펼치기/);
+    assert.doesNotMatch(src, /이전 작업 내역 보기/);
+    assert.doesNotMatch(src, /이전 작업 내역 숨기기/);
+    assert.doesNotMatch(src, /showPriorHistory/);
+    assert.doesNotMatch(src, /revealLatest/);
     assert.match(src, /buildWorkerZipRunsMarkdown/);
     assert.match(src, /작업 내역 MD 다운로드/);
+  });
+});
+
+describe("generation / quality session continuity", () => {
+  it("reattaches in-flight quality jobs and loads persisted results on pack select", () => {
+    const card = readFileSync(
+      path.join(root, "src/components/AdminWorkerZipGenerationCard.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(card, /이전 점검 결과 보기/);
+    assert.doesNotMatch(card, /loadPriorQualityResults/);
+    assert.doesNotMatch(card, /showPriorQuality/);
+    assert.match(card, /startQualityRefreshSessionJob/);
+    assert.match(card, /getQualityRefreshSessionJob/);
+    assert.match(card, /clearQualityRefreshSessionJob/);
+    assert.match(card, /buildQualitySnapshotFromDetail\(data\.detail/);
+    assert.match(card, /setQualityResult\(null\)/);
   });
 });

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { AdminReviewDetailDto } from "../lib/admin-review-dto.ts";
 import {
   buildAdminQualityGateSnapshot,
@@ -8,6 +11,8 @@ import {
 } from "../lib/role-workspace/admin-review-rail.ts";
 import { getConsumerRailState } from "../lib/role-workspace/consumer-rail.ts";
 import { getProviderPackRailState } from "../lib/role-workspace/provider-pack-rail.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewDetailDto {
   const readiness = {
@@ -282,5 +287,17 @@ describe("getConsumerRailState", () => {
     assert.equal(labels.includes("제공자"), false);
     assert.ok(items.some((i) => i.id === "explore"));
     assert.ok(items.some((i) => i.id === "apiKeys"));
+  });
+});
+
+describe("RoleRailIcon admin stages", () => {
+  it("defines distinct icons for generation, quality, and correction", () => {
+    const src = readFileSync(
+      join(here, "../components/role-workspace/RoleRailIcon.tsx"),
+      "utf8",
+    );
+    assert.ok(src.includes('case "generation"'));
+    assert.ok(src.includes('case "quality"'));
+    assert.ok(src.includes('case "correction"'));
   });
 });

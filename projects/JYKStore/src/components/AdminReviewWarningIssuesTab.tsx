@@ -1,9 +1,14 @@
+"use client";
+
+import { useCallback } from "react";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   collectReviewBlockers,
   collectReviewWarnings,
 } from "@/lib/admin-review-decision";
+import { buildReviewIssuesDetailMarkdown } from "@/lib/admin-review-issues-markdown";
 import { hasDoclingReviewEvidence, isPendingAdminReview } from "@/lib/admin-review-tabs";
+import { downloadTextFile } from "@/lib/provider-review-markdown";
 import {
   ADMIN_REVIEW_BLOCKER_ISSUES_TITLE,
   ADMIN_REVIEW_BLOCKERS_EMPTY,
@@ -14,6 +19,10 @@ import {
   ADMIN_REVIEW_WARNING_TAB_HINT_DOCLING,
   ADMIN_REVIEW_WARNINGS_EMPTY,
 } from "@/lib/role-based-ux-copy";
+import {
+  AdminPanelDownloadIcon,
+  AdminPanelIconButton,
+} from "@/components/AdminPanelToolbarIcons";
 
 export function AdminReviewWarningIssuesTab({
   detail,
@@ -33,11 +42,26 @@ export function AdminReviewWarningIssuesTab({
 
   const empty = blockers.length === 0 && warnings.length === 0;
 
+  const onDownloadMarkdown = useCallback(() => {
+    const markdown = buildReviewIssuesDetailMarkdown({ detail });
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadTextFile(`review-issues-${detail.pack.packId}-${stamp}.md`, markdown);
+  }, [detail]);
+
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_WARNING_ISSUES_TITLE}</h2>
-        <p className="mt-1 text-xs text-store-muted">{hint}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_WARNING_ISSUES_TITLE}</h2>
+          <p className="mt-1 text-xs text-store-muted">{hint}</p>
+        </div>
+        <AdminPanelIconButton
+          title="차단/주의 이슈 상세 MD 다운로드"
+          onClick={onDownloadMarkdown}
+          disabled={empty}
+        >
+          <AdminPanelDownloadIcon />
+        </AdminPanelIconButton>
       </div>
 
       {empty ? (

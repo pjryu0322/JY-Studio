@@ -1,5 +1,5 @@
 import type { AccountRole } from "@/lib/account-role";
-import { ROUTES } from "@/lib/routes";
+import { adminQueuePath, ROUTES } from "@/lib/routes";
 
 export type LogoutDestination = "login" | "home";
 
@@ -36,7 +36,7 @@ export function accountMenuLinksForRole(role: AccountRole): AccountMenuLink[] {
     case "ADMIN":
       return [
         { href: ROUTES.accountProfile, label: "계정 정보" },
-        { href: ROUTES.admin, label: "작업함" },
+        { href: adminQueuePath("accept"), label: "지식데이터 접수" },
         { href: ROUTES.adminOpsUsage, label: "운영 사용량" },
         { href: ROUTES.adminOpsAudit, label: "AuditLog" },
         { href: ROUTES.adminOps, label: "Ops 대시보드" },

@@ -5,25 +5,30 @@ import {
   fetchAdminWorkerZipRuns,
   type AdminWorkerZipRunView,
 } from "@/lib/admin-review-api";
+import {
+  AdminPanelCollapseIcon,
+  AdminPanelDownloadIcon,
+  AdminPanelIconButton,
+  AdminPanelRefreshIcon,
+} from "@/components/AdminPanelToolbarIcons";
 import { buildWorkerZipRunsMarkdown } from "@/lib/worker-zip-runs-markdown";
 import { describeWorkerZipStepLabel, formatDurationMs } from "@/lib/worker-zip-step-labels";
 
 /**
  * P7.5: Admin "Worker 작업 내역" — recent ZIP generation runs for a pack. Shows the
- * running/completed/failed history with the current step, timing, result summary,
- * and (for failures) the failing step + error. `refreshKey` lets the parent force
- * a reload after an execution finishes.
- *
- * Default view: only the current (latest) run with step logs always visible.
- * Past runs are not listed in the UI; the title-adjacent download still exports
- * current + past runs as Markdown.
+ * latest (or in-flight) run with the current step, timing, result summary, and
+ * (for failures) the failing step + error. Markdown download still includes past
+ * runs. `refreshKey` lets the parent force a reload after an execution finishes.
  */
 export function AdminWorkerZipRunsPanel({
   packId,
   refreshKey = 0,
+  embedded = false,
 }: {
   readonly packId: string;
   readonly refreshKey?: number;
+  /** When true, render as an inner section (no outer card chrome). */
+  readonly embedded?: boolean;
 }) {
   const [runs, setRuns] = useState<AdminWorkerZipRunView[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,6 +59,8 @@ export function AdminWorkerZipRunsPanel({
     return { currentRun: current, pastRuns: past };
   }, [runs]);
 
+  const runCount = runs.length;
+
   const onDownloadMarkdown = useCallback(() => {
     if (runs.length === 0) return;
     const markdown = buildWorkerZipRunsMarkdown({
@@ -66,56 +73,52 @@ export function AdminWorkerZipRunsPanel({
   }, [packId, runs.length, currentRun, pastRuns]);
 
   return (
-    <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
+    <section
+      className={
+        embedded
+          ? "space-y-2 border-t border-slate-100 pt-3"
+          : "space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+      }
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <AdminPanelIconButton
+            title={collapsed ? "펼치기" : "접기"}
             onClick={() => setCollapsed((v) => !v)}
             aria-expanded={!collapsed}
-            className="flex items-center gap-1.5 text-sm font-bold text-slate-900"
           >
-            <span
-              aria-hidden
-              className={`text-slate-400 transition-transform ${collapsed ? "" : "rotate-90"}`}
-            >
-              ▸
-            </span>
+            <AdminPanelCollapseIcon collapsed={collapsed} />
+          </AdminPanelIconButton>
+          <p className="text-sm font-bold text-slate-900">
             Worker 작업 내역
-            {collapsed && runs.length > 0 ? (
-              <span className="text-xs font-normal text-slate-400">({runs.length})</span>
+            {collapsed && runCount > 0 ? (
+              <span className="ml-1 text-xs font-normal text-slate-400">({runCount})</span>
             ) : null}
-          </button>
-          <button
-            type="button"
+          </p>
+          <AdminPanelIconButton
+            title="새로고침"
             onClick={() => void load()}
             disabled={loading}
-            title="새로고침"
-            aria-label="새로고침"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
           >
-            <RefreshIcon spinning={loading} />
-          </button>
-          <button
-            type="button"
+            <AdminPanelRefreshIcon spinning={loading} />
+          </AdminPanelIconButton>
+          <AdminPanelIconButton
+            title="작업 내역 MD 다운로드"
             onClick={onDownloadMarkdown}
             disabled={runs.length === 0}
-            title="작업 내역 MD 다운로드"
-            aria-label="작업 내역 MD 다운로드"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
           >
-            <DownloadIcon />
-          </button>
+            <AdminPanelDownloadIcon />
+          </AdminPanelIconButton>
         </div>
       </div>
 
-      {collapsed ? null : runs.length === 0 ? (
+      {collapsed ? null : loading && runs.length === 0 ? (
+        <p className="text-xs text-slate-500">불러오는 중…</p>
+      ) : runs.length === 0 ? (
         <p className="text-xs text-slate-500">아직 실행된 작업이 없습니다.</p>
-      ) : (
-        <div className="space-y-2">
-          {currentRun ? <RunCard run={currentRun} /> : null}
-        </div>
-      )}
+      ) : currentRun ? (
+        <RunCard run={currentRun} />
+      ) : null}
     </section>
   );
 }
@@ -210,46 +213,6 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
       <dt className="text-slate-500">{label}</dt>
       <dd className="font-medium text-slate-900">{value}</dd>
     </div>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 20 20"
-      fill="none"
-      className="h-4 w-4"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RefreshIcon({ spinning = false }: { readonly spinning?: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 20 20"
-      fill="none"
-      className={`h-4 w-4 ${spinning ? "animate-spin" : ""}`}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M16.5 10a6.5 6.5 0 1 1-1.7-4.4M16.5 3.5V7H13"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

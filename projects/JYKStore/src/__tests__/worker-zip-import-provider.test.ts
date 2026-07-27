@@ -280,6 +280,7 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
   it("happy path: preps generation via bridge, imports, marks READY, PASS", async () => {
     const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
     let resolvedGenerationId = "";
+    let resetCalled: { packId: string; versionId: string } | null = null;
 
     const result = await runProviderWorkerZipImport({
       userId: "u1",
@@ -289,6 +290,21 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
       prismaClient: makeServicePrisma(harness),
       findProfile: async () => ({ id: "prof-1" }),
       transitions: makeTransitions(harness),
+      resetSuccessorState: async (input) => {
+        resetCalled = { packId: input.packId, versionId: input.versionId };
+        return {
+          sourceDocumentsReset: 0,
+          sourceValidationReportsDeleted: 0,
+          structureCoverageReportsDeleted: 0,
+          knowledgeQualityReportsDeleted: 0,
+          chunkQualityReportsDeleted: 0,
+          releaseGateRunsDeleted: 0,
+          retrievalEvaluationSetsDeleted: 0,
+          serviceValidationsInvalidated: 0,
+          providerReviewMarkersRetired: 0,
+          serviceValidationMarkersRetired: 0,
+        };
+      },
       synthesizeGeneration: (async ({ generationId }: { generationId: string }) => {
         harness.synthCalledWith.push(generationId);
         return { searchIndexGenerationId: generationId, bundleId: "b", normalizedDocumentId: "n" };
@@ -317,10 +333,13 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     // allows one active DRAFT per version), so no separate post-READY stale step.
     assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY"]);
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
+    assert.deepEqual(resetCalled, { packId: "packA", versionId: "verA" });
+    assert.ok(result.warnings.some((w) => w.code === "QUALITY_REFRESH_PENDING"));
   });
 
   it("READY-transition failure: ok=false, RETRY, generationReady=false, run FAIL", async () => {
     const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
+    let resetCalled = false;
 
     const result = await runProviderWorkerZipImport({
       userId: "u1",
@@ -335,6 +354,21 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
           throw new Error("count mismatch internal detail");
         },
       }),
+      resetSuccessorState: async () => {
+        resetCalled = true;
+        return {
+          sourceDocumentsReset: 0,
+          sourceValidationReportsDeleted: 0,
+          structureCoverageReportsDeleted: 0,
+          knowledgeQualityReportsDeleted: 0,
+          chunkQualityReportsDeleted: 0,
+          releaseGateRunsDeleted: 0,
+          retrievalEvaluationSetsDeleted: 0,
+          serviceValidationsInvalidated: 0,
+          providerReviewMarkersRetired: 0,
+          serviceValidationMarkersRetired: 0,
+        };
+      },
       synthesizeGeneration: (async ({ generationId }: { generationId: string }) => {
         harness.synthCalledWith.push(generationId);
         return { searchIndexGenerationId: generationId, bundleId: "b", normalizedDocumentId: "n" };
@@ -364,6 +398,7 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     assert.equal(/count mismatch internal detail/.test(result.error?.message ?? ""), false);
     // P7.1.1: run is recorded as FAIL (a valid PipelineStepStatus), never WARNING.
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "FAIL");
+    assert.equal(resetCalled, false);
   });
 
   it("failure after generation created: marks FAILED + FAIL, maps user error", async () => {
@@ -596,7 +631,7 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(queue, /fetchAdminWorkerZipRequests/);
     assert.match(queue, /item\.displayStatus/);
     assert.match(queue, /item\.ctaLabel/);
-    assert.match(queue, /자료 접수|생성·품질보정/);
+    assert.match(queue, /자료 접수|지식데이터 생성|생성·품질보정/);
   });
 });
 
@@ -846,15 +881,79 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal(items[0]!.originalFileName, "a.zip");
     assert.equal(items[0]!.providerName, "Prov A");
     assert.equal(items[0]!.phase, "REQUESTED");
+    assert.equal(items[0]!.acceptedAt, null);
     assert.equal(items[0]!.categoryId, "ui");
     assert.equal(items[0]!.categoryName, "UI");
     assert.equal(items[1]!.packId, "packB");
     assert.equal(items[1]!.originalFileName, null);
     assert.equal(items[1]!.phase, "COMPLETED");
     assert.equal(items[1]!.accepted, true);
+    assert.ok(items[1]!.requestedAt);
     assert.equal(items[1]!.displayStatus, "제공자 검토 중");
     assert.equal(items[1]!.isWaitingForAdmin, false);
     assert.notEqual(items[1]!.displayStatus, "생성 완료");
+  });
+
+  it("listAdminWorkerZipRequests recovers COMPLETED packs from WORKER_ZIP_IMPORT PASS", async () => {
+    let call = 0;
+    const items = await listAdminWorkerZipRequests({
+      prismaClient: {
+        pipelineRun: {
+          findMany: async (args: { where?: { triggerType?: string } }) => {
+            call += 1;
+            if (args?.where?.triggerType === "WORKER_ZIP_REQUEST" && call === 1) {
+              return [];
+            }
+            if (args?.where?.triggerType === "WORKER_ZIP_IMPORT") {
+              return [
+                {
+                  packId: "riamore",
+                  createdAt: new Date("2026-07-21T10:00:00.000Z"),
+                  startedAt: new Date("2026-07-21T10:05:00.000Z"),
+                  finishedAt: new Date("2026-07-21T10:10:00.000Z"),
+                  status: "PASS",
+                  pack: {
+                    status: "DRAFT",
+                    name: "리아모어",
+                    categoryId: "grid",
+                    category: { name: "Grid" },
+                    providerProfile: { displayName: "Prov" },
+                    versions: [{ id: "ver1", version: "6.0.0" }],
+                  },
+                },
+              ];
+            }
+            if (args?.where?.triggerType === "WORKER_ZIP_REQUEST") {
+              return [
+                {
+                  packId: "riamore",
+                  createdAt: new Date("2026-07-21T09:00:00.000Z"),
+                  startedAt: new Date("2026-07-21T09:30:00.000Z"),
+                  updatedAt: new Date("2026-07-21T09:30:00.000Z"),
+                  status: "SKIPPED",
+                },
+              ];
+            }
+            return [];
+          },
+        },
+      } as never,
+      resolveWorkflowMarkers: async () => new Map(),
+      getRequestMetadata: (async () => ({
+        originalFileName: "grid.zip",
+        fileSize: 1,
+        checksumSha256: "h",
+        uploadedAt: "2026-07-21T09:00:00.000Z",
+        uploadedByUserId: "u1",
+      })) as never,
+    });
+    assert.equal(items.length, 1);
+    assert.equal(items[0]!.packId, "riamore");
+    assert.equal(items[0]!.phase, "COMPLETED");
+    assert.equal(items[0]!.accepted, true);
+    assert.equal(items[0]!.originalFileName, "grid.zip");
+    assert.equal(items[0]!.requestedAt, "2026-07-21T09:00:00.000Z");
+    assert.equal(items[0]!.acceptedAt, "2026-07-21T09:30:00.000Z");
   });
 
   it("withdrawProviderWorkerZipRequest removes a pending request and retires the marker", async () => {
@@ -1139,6 +1238,18 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
         version: { id: "verA", version: "1.0.0", language: "KO" },
       }),
       getRequestBytes: (async () => new Uint8Array([1, 2, 3])) as never,
+      getRequestMetadata: (async () => ({
+        originalFileName: "a.zip",
+        fileSize: 3,
+        checksumSha256: "abc",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        uploadedByUserId: "u1",
+        adminPreflightExclusions: {
+          paths: ["Samples", "bin/setup.exe"],
+          savedAt: "2026-01-02T00:00:00.000Z",
+          savedByUserId: "admin-1",
+        },
+      })) as never,
       runImport: (async (input: Record<string, unknown>) => {
         importInput = input;
         return { ok: true, importedChunkCount: 3, generationReady: true } as never;
@@ -1147,6 +1258,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal((result as { ok: boolean }).ok, true);
     assert.equal(importInput!.packId, "packA");
     assert.equal(importInput!.userId, "admin-1");
+    assert.deepEqual(importInput!.adminExcludePaths, ["Samples", "bin/setup.exe"]);
     // Admin execution must resolve the pack via the admin resolver, not by profile.
     assert.equal(typeof importInput!.resolvePack, "function");
   });

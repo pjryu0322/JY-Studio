@@ -38,13 +38,23 @@ describe("admin provider review workbench (step3)", () => {
     assert.ok(panel.includes("!hasOpenSupplement"));
     assert.ok(panel.includes("isOpenProviderSupplementPhase"));
     assert.match(panel, /canSubmitRequest[\s\S]*!hasOpenSupplement/);
+    assert.ok(!panel.includes("생성·품질보정으로 이동"));
   });
 
-  it("quality panel summarizes gates instead of placeholder-only copy", () => {
+  it("quality panel summarizes gates and routes into correction", () => {
     const quality = readSource("src/components/AdminQualityCheckPanel.tsx");
+    const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    const card = readSource("src/components/AdminWorkerZipGenerationCard.tsx");
     assert.ok(quality.includes("품질점검 요약"));
-    assert.ok(quality.includes("onRerunQuality"));
     assert.ok(quality.includes("onScrollToQuality"));
+    assert.ok(quality.includes("상세 결과로 이동"));
+    assert.ok(quality.includes("완료") || quality.includes("상단"));
+    assert.ok(card.includes("완료취소"));
+    assert.ok(card.includes("onAcknowledgeQualityReview"));
     assert.ok(!quality.includes("위에서 확인하세요"));
+    assert.ok(detail.includes("qualityResultsRevealKey"));
+    assert.ok(detail.includes("setQualityResultsRevealKey"));
+    assert.ok(card.includes('id="admin-quality-results"'));
+    assert.ok(card.includes("revealKey"));
   });
 });

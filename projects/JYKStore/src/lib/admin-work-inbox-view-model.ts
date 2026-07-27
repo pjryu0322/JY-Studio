@@ -51,6 +51,14 @@ export type AdminWorkInboxItemSource = {
   categoryName?: string | null;
   providerName?: string | null;
   versionLabel?: string | null;
+  /** Provider 생성 요청(ZIP) 시각 — ISO. */
+  requestedAt?: string | null;
+  /** Admin 접수 시각 — ISO. */
+  acceptedAt?: string | null;
+  /** Quality refresh confirmed 시각 — ISO. */
+  qualityCheckedAt?: string | null;
+  /** NOT_CHECKED / IN_PROGRESS / PASS / WARNING / FAIL */
+  qualityStatus?: string | null;
 };
 
 export type AdminWorkInboxItemViewModel = {
@@ -72,6 +80,10 @@ export type AdminWorkInboxItemViewModel = {
   categoryName: string | null;
   providerName: string | null;
   versionLabel: string | null;
+  requestedAt: string | null;
+  acceptedAt: string | null;
+  qualityCheckedAt: string | null;
+  qualityStatus: string | null;
 };
 
 export function buildAdminWorkInboxItemViewModel(
@@ -137,6 +149,10 @@ export function buildAdminWorkInboxItemViewModel(
     categoryName: input.categoryName ?? null,
     providerName: input.providerName ?? null,
     versionLabel: input.versionLabel ?? null,
+    requestedAt: input.requestedAt?.trim() || null,
+    acceptedAt: input.acceptedAt?.trim() || null,
+    qualityCheckedAt: input.qualityCheckedAt?.trim() || null,
+    qualityStatus: input.qualityStatus?.trim() || null,
   };
 }
 
@@ -263,8 +279,8 @@ function mapQueuePresentation(input: {
   if (input.workerZipPhase === "COMPLETED" || input.workerZipPhase === "ACCEPTED") {
     return {
       adminQueueGroup: "GENERATE_REQUIRED",
-      displayStatus: "생성·품질보정 대기",
-      ctaLabel: "생성·품질보정",
+      displayStatus: "지식데이터 생성 대기",
+      ctaLabel: "지식데이터 생성",
       isWaitingForAdmin: true,
     };
   }
@@ -302,12 +318,36 @@ export function mergeAdminWorkInboxViewModels(
     PUBLISHED: 8,
     OTHER: 9,
   };
+  const phaseRank: Record<"REQUESTED" | "ACCEPTED" | "COMPLETED", number> = {
+    REQUESTED: 1,
+    ACCEPTED: 2,
+    COMPLETED: 3,
+  };
+  const preferPhase = (
+    a: AdminWorkInboxItemViewModel["workerZipPhase"],
+    b: AdminWorkInboxItemViewModel["workerZipPhase"],
+  ): AdminWorkInboxItemViewModel["workerZipPhase"] => {
+    if (!a) return b;
+    if (!b) return a;
+    return phaseRank[a] >= phaseRank[b] ? a : b;
+  };
+
   const byPack = new Map<string, AdminWorkInboxItemViewModel>();
   for (const item of items) {
     const prev = byPack.get(item.packId);
-    if (!prev || rank[item.adminQueueGroup] < rank[prev.adminQueueGroup]) {
+    if (!prev) {
       byPack.set(item.packId, item);
+      continue;
     }
+    const takeIncoming = rank[item.adminQueueGroup] < rank[prev.adminQueueGroup];
+    const primary = takeIncoming ? item : prev;
+    const secondary = takeIncoming ? prev : item;
+    byPack.set(item.packId, {
+      ...primary,
+      workerZipPhase: preferPhase(primary.workerZipPhase, secondary.workerZipPhase),
+      requestedAt: primary.requestedAt ?? secondary.requestedAt,
+      acceptedAt: primary.acceptedAt ?? secondary.acceptedAt,
+    });
   }
   return [...byPack.values()];
 }
@@ -323,6 +363,135 @@ export function filterAdminWorkInboxByQueueGroup(
   group: AdminWorkInboxQueueGroup,
 ): AdminWorkInboxItemViewModel[] {
   return items.filter((item) => item.adminQueueGroup === group);
+}
+
+/**
+ * Packs that belong on the admin 생성·품질보정 stage rail (legacy combined).
+ * Prefer the split helpers below for new stage rails.
+ */
+export function isAdminGenerationQualityQueueItem(
+  item: AdminWorkInboxItemViewModel,
+): boolean {
+  return (
+    isAdminGenerationQueueItem(item) ||
+    isAdminQualityQueueItem(item) ||
+    isAdminCorrectionQueueItem(item)
+  );
+}
+
+export function filterAdminGenerationQualityQueue(
+  items: readonly AdminWorkInboxItemViewModel[],
+): AdminWorkInboxItemViewModel[] {
+  return items.filter(isAdminGenerationQualityQueueItem);
+}
+
+/** 자료 접수 후 Worker 생성 필요/진행·완료(제공자 검토 전) 대상 */
+export function isAdminGenerationQueueItem(item: AdminWorkInboxItemViewModel): boolean {
+  if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
+  if (item.adminQueueGroup === "ACCEPT_REQUIRED") return false;
+  // Keep admin-accepted / generation-complete packs visible even when a
+  // provider supplement overlay is the higher-priority inbox group.
+  if (item.workerZipPhase === "ACCEPTED" || item.workerZipPhase === "COMPLETED") {
+    if (item.providerReviewPhase === "REQUESTED" || item.providerReviewPhase === "CONFIRMED") {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** 생성 완료 후 품질점검 대상 (제공자 검토 진행 중·게시 완료 제외) */
+export function isAdminQualityQueueItem(item: AdminWorkInboxItemViewModel): boolean {
+  if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
+  if (item.providerReviewPhase === "REQUESTED" || item.providerReviewPhase === "CONFIRMED") {
+    return false;
+  }
+  // Keep visible even when a provider-supplement overlay wins the inbox group —
+  // admin can still run quality checks after Worker generation completes.
+  return item.workerZipPhase === "COMPLETED";
+}
+
+/** 제공자 보완요청(구조화) — 보정 큐 포함 */
+export function isAdminCorrectionSupplementItem(
+  item: AdminWorkInboxItemViewModel,
+): boolean {
+  if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
+  return item.adminQueueGroup === "PROVIDER_SUPPLEMENT_REQUIRED";
+}
+
+/**
+ * 보정 큐 후보.
+ * - 제공자 보완요청
+ * - 자동품질점검에서 「완료」한 건 (`qualityAcknowledged`)
+ */
+export function isAdminCorrectionQueueItem(
+  item: AdminWorkInboxItemViewModel,
+  options?: { readonly qualityAcknowledged?: boolean },
+): boolean {
+  if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
+  if (isAdminCorrectionSupplementItem(item)) return true;
+  if (options?.qualityAcknowledged && item.workerZipPhase === "COMPLETED") {
+    return true;
+  }
+  return false;
+}
+
+/** Client filter: supplements + quality-review-acknowledged packs. */
+export function filterAdminCorrectionQueue(
+  items: readonly AdminWorkInboxItemViewModel[],
+  isQualityAcknowledged: (packId: string) => boolean,
+): AdminWorkInboxItemViewModel[] {
+  return items.filter((item) =>
+    isAdminCorrectionQueueItem(item, {
+      qualityAcknowledged: isQualityAcknowledged(item.packId),
+    }),
+  );
+}
+
+export function filterAdminWorkQueue(
+  items: readonly AdminWorkInboxItemViewModel[],
+  queue:
+    | "all"
+    | "accept"
+    | "generation"
+    | "quality"
+    | "correction"
+    | "provider-review"
+    | "service-validation"
+    | "approval-publish",
+): AdminWorkInboxItemViewModel[] {
+  switch (queue) {
+    case "accept":
+      return items.filter((i) => i.adminQueueGroup === "ACCEPT_REQUIRED");
+    case "generation":
+      return items.filter(isAdminGenerationQueueItem);
+    case "quality":
+      return items.filter(isAdminQualityQueueItem);
+    case "correction":
+      // Session quality-ack is applied in the inbox client via filterAdminCorrectionQueue.
+      return items.filter(isAdminCorrectionSupplementItem);
+    case "provider-review":
+      return items.filter(
+        (i) =>
+          i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
+          i.adminQueueGroup === "PROVIDER_SUPPLEMENT_REQUIRED",
+      );
+    case "service-validation":
+      return items.filter(
+        (i) =>
+          i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+          i.serviceValidationPhase !== "PASSED",
+      );
+    case "approval-publish":
+      return items.filter(
+        (i) =>
+          i.adminQueueGroup === "ADMIN_REVIEW_IN_PROGRESS" ||
+          (i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+            i.serviceValidationPhase === "PASSED"),
+      );
+    default:
+      return items;
+  }
 }
 
 /** Split ADMIN_REVIEW_REQUIRED by Store service-validation marker. */

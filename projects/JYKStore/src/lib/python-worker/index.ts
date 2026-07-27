@@ -148,3 +148,8 @@ export {
   type WorkerZipImportUserError,
   type WorkerZipPackResolver,
 } from "@/lib/python-worker/worker-zip-import-provider-service";
+
+export {
+  resetWorkerZipSuccessorStateAfterGeneration,
+  type WorkerZipSuccessorResetResult,
+} from "@/lib/python-worker/worker-zip-successor-reset";
