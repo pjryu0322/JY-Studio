@@ -723,6 +723,8 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
         },
         pipelineRun: {
           findFirst: async () => null,
+          updateMany: async () => ({ count: 0 }),
+          create: async () => ({ id: "req-1" }),
         },
       } as never,
       findProfile: async () => ({ id: "prof-1" }),
@@ -735,6 +737,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
           checksumSha256: "h",
           uploadedAt: "2026-01-01T00:00:00.000Z",
           uploadedByUserId: input.uploadedByUserId as string,
+          sourceRevisionId: "srev_test",
         };
       }) as never,
     });
@@ -807,11 +810,14 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
         checksumSha256: "h",
         uploadedAt: "2026-01-01T00:00:00.000Z",
         uploadedByUserId: i.uploadedByUserId as string,
+        sourceRevisionId: "srev_marker",
       })) as never,
     });
     assert.equal(created.length, 1);
     assert.equal(created[0]!.triggerType, WORKER_ZIP_REQUEST_TRIGGER);
     assert.equal(created[0]!.status, "PENDING");
+    assert.equal(created[0]!.sourceRevisionId, "srev_marker");
+    assert.equal(created[0]!.versionId, "verA");
   });
 
   it("listAdminWorkerZipRequests dedupes DRAFT requests by pack (newest first)", async () => {
@@ -1215,12 +1221,14 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
             version: { id: "verA", version: "1.0.0", language: "KO" },
           }),
           getRequestBytes: (async () => null) as never,
+          getRequestMetadata: (async () => null) as never,
           runImport: (async () => {
             throw new Error("should not run");
           }) as never,
         }),
       (err: unknown) =>
-        err instanceof WorkerZipImportServiceError && err.code === "REQUEST_NOT_FOUND",
+        err instanceof WorkerZipImportServiceError &&
+        err.code === "REQUEST_SOURCE_REVISION_MISSING",
     );
   });
 
@@ -1231,7 +1239,19 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
       clientId: "cl1",
       packId: "packA",
       prismaClient: {
-        pipelineRun: { findFirst: async () => null },
+        pipelineRun: {
+          findFirst: async () => null,
+          updateMany: async () => ({ count: 0 }),
+        },
+        knowledgePackVersion: { update: async () => ({}) },
+        workerZipSourceRevision: { update: async () => ({}) },
+        workerZipWorkingCopy: { update: async () => ({}) },
+        $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            knowledgePackVersion: { update: async () => ({}) },
+            workerZipSourceRevision: { update: async () => ({}) },
+            workerZipWorkingCopy: { update: async () => ({}) },
+          }),
       } as never,
       resolvePack: async () => ({
         pack: { packId: "packA", name: "A", status: "DRAFT" as never },
@@ -1244,12 +1264,25 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
         checksumSha256: "abc",
         uploadedAt: "2026-01-01T00:00:00.000Z",
         uploadedByUserId: "u1",
+        sourceRevisionId: "srev_a",
         adminPreflightExclusions: {
           paths: ["Samples", "bin/setup.exe"],
           savedAt: "2026-01-02T00:00:00.000Z",
           savedByUserId: "admin-1",
         },
       })) as never,
+      testOverrides: {
+        sourceRevision: {
+          id: "srev_a",
+          packId: "packA",
+          versionId: "verA",
+          storageKey:
+            "payloads/packs/packA/versions/verA/source-revisions/srev_a/source.zip",
+          checksumSha256: "abc",
+          sizeBytes: 3,
+        },
+        skipWorkingCopyPersistence: true,
+      },
       runImport: (async (input: Record<string, unknown>) => {
         importInput = input;
         return { ok: true, importedChunkCount: 3, generationReady: true } as never;
@@ -1258,6 +1291,8 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal((result as { ok: boolean }).ok, true);
     assert.equal(importInput!.packId, "packA");
     assert.equal(importInput!.userId, "admin-1");
+    assert.equal(importInput!.sourceRevisionId, "srev_a");
+    assert.equal(importInput!.workingCopyId, "swc_test_srev_a");
     assert.deepEqual(importInput!.adminExcludePaths, ["Samples", "bin/setup.exe"]);
     // Admin execution must resolve the pack via the admin resolver, not by profile.
     assert.equal(typeof importInput!.resolvePack, "function");

@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
+  CopyObjectCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -32,6 +33,7 @@ import type {
   AbortMultipartUploadInput,
   CompleteMultipartUploadInput,
   CompleteMultipartUploadResult,
+  CopyObjectInput,
   CreateMultipartUploadInput,
   CreateMultipartUploadResult,
   ListUploadedPartsInput,
@@ -270,6 +272,116 @@ export class S3ObjectStorage implements ObjectStorageBackend {
 
   delete(input: { objectKey: string }): Promise<void> {
     return this.deleteObject(input);
+  }
+
+  async copyObject(input: CopyObjectInput): Promise<StoredObjectDescriptor> {
+    const destHead = await this.headObject({ objectKey: input.destinationObjectKey });
+    if (destHead.exists) {
+      const metaOk =
+        destHead.checksumSha256Metadata === input.expectedChecksumSha256 &&
+        destHead.contentLength === input.expectedSizeBytes;
+      if (metaOk) {
+        return {
+          objectKey: input.destinationObjectKey,
+          fileSize: input.expectedSizeBytes,
+          checksumSha256: input.expectedChecksumSha256,
+          etag: destHead.etag ?? null,
+        };
+      }
+      throw new PayloadServiceError(
+        "PAYLOAD_ALREADY_REGISTERED",
+        "대상 object가 이미 존재하며 기대 checksum과 다릅니다.",
+        409,
+      );
+    }
+
+    const sourceHead = await this.headObject({ objectKey: input.sourceObjectKey });
+    if (!sourceHead.exists) {
+      throw new PayloadServiceError(
+        "PAYLOAD_NOT_FOUND",
+        "복사할 원본 object를 찾을 수 없습니다.",
+        404,
+      );
+    }
+    if (
+      sourceHead.contentLength != null &&
+      sourceHead.contentLength !== input.expectedSizeBytes
+    ) {
+      throw new PayloadServiceError(
+        "PAYLOAD_OBJECT_SIZE_MISMATCH",
+        "원본 object 크기가 기대값과 다릅니다.",
+        409,
+      );
+    }
+    if (
+      sourceHead.checksumSha256Metadata &&
+      sourceHead.checksumSha256Metadata !== input.expectedChecksumSha256
+    ) {
+      throw new PayloadServiceError(
+        "PAYLOAD_OBJECT_CHECKSUM_MISMATCH",
+        "원본 object checksum이 기대값과 다릅니다.",
+        409,
+      );
+    }
+
+    try {
+      const metadata: Record<string, string> = {
+        ...input.metadata,
+        [META_CHECKSUM]: input.expectedChecksumSha256,
+      };
+      const result = await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.config.bucket,
+          Key: input.destinationObjectKey,
+          CopySource: `${this.config.bucket}/${input.sourceObjectKey}`,
+          MetadataDirective: "REPLACE",
+          Metadata: metadata,
+          ContentType: "application/zip",
+          ...(this.config.serverSideEncryption
+            ? { ServerSideEncryption: this.config.serverSideEncryption }
+            : {}),
+        }),
+      );
+
+      const verified = await this.headObject({ objectKey: input.destinationObjectKey });
+      if (!verified.exists) {
+        throw new PayloadServiceError(
+          "PAYLOAD_STORAGE_UNAVAILABLE",
+          "복사 후 대상 object를 확인할 수 없습니다.",
+          503,
+        );
+      }
+      if (verified.contentLength !== input.expectedSizeBytes) {
+        await this.deleteObject({ objectKey: input.destinationObjectKey }).catch(() => undefined);
+        throw new PayloadServiceError(
+          "PAYLOAD_OBJECT_SIZE_MISMATCH",
+          "복사본 크기가 기대값과 다릅니다.",
+          409,
+        );
+      }
+      if (
+        verified.checksumSha256Metadata &&
+        verified.checksumSha256Metadata !== input.expectedChecksumSha256
+      ) {
+        await this.deleteObject({ objectKey: input.destinationObjectKey }).catch(() => undefined);
+        throw new PayloadServiceError(
+          "PAYLOAD_OBJECT_CHECKSUM_MISMATCH",
+          "복사본 checksum metadata가 기대값과 다릅니다.",
+          409,
+        );
+      }
+
+      return {
+        objectKey: input.destinationObjectKey,
+        fileSize: input.expectedSizeBytes,
+        checksumSha256: input.expectedChecksumSha256,
+        etag: verified.etag ?? result.CopyObjectResult?.ETag ?? null,
+        versionId: result.VersionId ?? null,
+      };
+    } catch (error) {
+      if (isPayloadServiceError(error)) throw error;
+      throw mapS3StorageError(error, "copy");
+    }
   }
 
   async createMultipartUpload(

@@ -31,8 +31,6 @@ import {
   createWorkerZipStepRecorder,
   finalizeWorkerZipSteps,
 } from "@/lib/python-worker/worker-zip-step-log";
-import { Readable } from "node:stream";
-import { withTempFileFromStream } from "@/lib/object-storage/stream-object-helpers";
 import { synthesizeWorkerZipSearchGeneration } from "@/lib/python-worker/worker-zip-generation-bridge";
 import {
   acknowledgeWorkerZipRequestRejection,
@@ -112,6 +110,8 @@ export type RunProviderWorkerZipImportInput = {
   adminExcludePaths?: readonly string[];
   /** P1: immutable source revision that produced this ZIP run. */
   sourceRevisionId?: string | null;
+  /** P1.1: Working Copy that owns this execution's SourceDocuments. */
+  workingCopyId?: string | null;
   requirePgvector?: boolean;
   env?: NodeJS.ProcessEnv;
   prismaClient?: typeof prisma;
@@ -552,24 +552,30 @@ export async function submitProviderWorkerZipRequest(
   }
 
   // Retire any prior open marker, then record a fresh PENDING request marker so
-  // the Admin queue can surface this DRAFT pack. Non-fatal if it fails.
-  try {
-    await client.pipelineRun.updateMany({
-      where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
-      data: { status: "SKIPPED", finishedAt: new Date() },
-    });
-    await client.pipelineRun.create({
-      data: {
-        packId: pack.packId,
-        triggerType: WORKER_ZIP_REQUEST_TRIGGER,
-        triggeredByClientId: input.clientId,
-        status: "PENDING",
-        summary: `지식데이터 생성 요청: ${stored.originalFileName}`,
-      },
-    });
-  } catch {
-    // The request ZIP is stored regardless; the marker is best-effort.
+  // the Admin queue can surface this DRAFT pack. Marker persistence is required
+  // for authoritative versionId + sourceRevisionId binding (P1.1).
+  if (!stored.sourceRevisionId) {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_SOURCE_REVISION_MISSING",
+      "원본 revision이 없어 생성 요청을 기록할 수 없습니다.",
+      500,
+    );
   }
+  await client.pipelineRun.updateMany({
+    where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
+    data: { status: "SKIPPED", finishedAt: new Date() },
+  });
+  await client.pipelineRun.create({
+    data: {
+      packId: pack.packId,
+      versionId: version.id,
+      sourceRevisionId: stored.sourceRevisionId,
+      triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+      triggeredByClientId: input.clientId,
+      status: "PENDING",
+      summary: `지식데이터 생성 요청: ${stored.originalFileName}`,
+    },
+  });
 
   return {
     ok: true,
@@ -790,6 +796,9 @@ export async function runProviderWorkerZipImport(
   const pipelineRun = await client.pipelineRun.create({
     data: {
       packId: pack.packId,
+      versionId: version.id,
+      sourceRevisionId: input.sourceRevisionId ?? null,
+      workingCopyId: input.workingCopyId ?? null,
       triggerType: "WORKER_ZIP_IMPORT",
       triggeredByClientId: input.clientId,
       status: "RUNNING",
@@ -814,6 +823,7 @@ export async function runProviderWorkerZipImport(
     language: version.language ?? undefined,
     adminExcludePaths: input.adminExcludePaths,
     sourceRevisionId: input.sourceRevisionId,
+    workingCopyId: input.workingCopyId,
     requirePgvector: input.requirePgvector,
     env: input.env,
     prismaClient: input.prismaClient,
@@ -1018,24 +1028,50 @@ export type RunAdminWorkerZipGenerationInput = {
   requirePgvector?: boolean;
   env?: NodeJS.ProcessEnv;
   prismaClient?: typeof prisma;
-  /** Injectable for tests. */
+  /** @deprecated P1.1 uses Working Copy streaming; retained only for older call sites. */
   getRequestBytes?: typeof getWorkerZipRequestBytes;
   getRequestMetadata?: typeof getWorkerZipRequestMetadata;
   runImport?: typeof runProviderWorkerZipImport;
   resolvePack?: WorkerZipPackResolver;
+  /**
+   * Test hook: bypass revision lookup / Working Copy object I/O.
+   * Production callers must omit this.
+   */
+  testOverrides?: {
+    sourceRevision?: {
+      id: string;
+      clientId?: string | null;
+      packId: string;
+      versionId: string;
+      revisionNo?: number;
+      storageKey: string;
+      checksumSha256: string;
+      sizeBytes: number;
+      originalFileName?: string | null;
+      submittedById?: string | null;
+      reason?: string | null;
+      status?: "UPLOADED" | "PROCESSING" | "READY" | "REJECTED" | "SUPERSEDED";
+      supersedesRevisionId?: string | null;
+      createdAt?: Date;
+      readyAt?: Date | null;
+      supersededAt?: Date | null;
+    };
+    adminExcludePaths?: string[];
+    skipWorkingCopyPersistence?: boolean;
+  };
 };
 
 /**
  * Execute the ZIP Worker for an Admin-received request. The Admin route is gated
  * by `requireAdminSession`; this function is the only place Worker execution is
- * driven for the ZIP path. It downloads the Provider-submitted ZIP, guards
- * against a concurrent run, and runs the pipeline against the DRAFT pack.
+ * driven for the ZIP path. It binds the request marker's source revision, creates
+ * a Working Copy (copy + frozen exclusions), streams the copy to a temp file, and
+ * runs the pipeline against the DRAFT pack.
  */
 export async function runAdminWorkerZipGeneration(
   input: RunAdminWorkerZipGenerationInput,
 ): Promise<ProviderWorkerZipImportResult> {
   const client = input.prismaClient ?? prisma;
-  const getRequestBytes = input.getRequestBytes ?? getWorkerZipRequestBytes;
   const getRequestMetadata = input.getRequestMetadata ?? getWorkerZipRequestMetadata;
   const runImport = input.runImport ?? runProviderWorkerZipImport;
   const resolvePack = input.resolvePack ?? resolveAdminDraftPack;
@@ -1059,56 +1095,184 @@ export async function runAdminWorkerZipGeneration(
     );
   }
 
+  // Unit-test seam: exercise Admin orchestration without Object Storage I/O.
+  if (input.testOverrides?.sourceRevision && input.testOverrides.skipWorkingCopyPersistence) {
+    const { withTempFileFromStream } = await import("@/lib/object-storage/stream-object-helpers");
+    const { Readable } = await import("node:stream");
+    const revision = {
+      ...input.testOverrides.sourceRevision,
+      clientId: input.testOverrides.sourceRevision.clientId ?? input.clientId,
+      revisionNo: input.testOverrides.sourceRevision.revisionNo ?? 1,
+      originalFileName: input.testOverrides.sourceRevision.originalFileName ?? "source.zip",
+      submittedById: input.testOverrides.sourceRevision.submittedById ?? null,
+      reason: input.testOverrides.sourceRevision.reason ?? null,
+      status: input.testOverrides.sourceRevision.status ?? "UPLOADED",
+      supersedesRevisionId: input.testOverrides.sourceRevision.supersedesRevisionId ?? null,
+      createdAt: input.testOverrides.sourceRevision.createdAt ?? new Date(),
+      readyAt: input.testOverrides.sourceRevision.readyAt ?? null,
+      supersededAt: input.testOverrides.sourceRevision.supersededAt ?? null,
+      reused: false as const,
+    };
+    const getRequestBytes = input.getRequestBytes ?? getWorkerZipRequestBytes;
+    const bytes =
+      (await getRequestBytes({
+        packId: pack.packId,
+        packVersionId: version.id,
+        env: input.env,
+      })) ?? new Uint8Array();
+    if (bytes.byteLength === 0) {
+      throw new WorkerZipImportServiceError(
+        "REQUEST_SOURCE_REVISION_MISSING",
+        "생성 요청에 연결된 원본 revision이 없습니다. 제공자에게 자료 등록을 요청하세요.",
+        404,
+      );
+    }
+    const requestMeta = await getRequestMetadata({
+      packId: pack.packId,
+      packVersionId: version.id,
+      env: input.env,
+    });
+    const adminExcludePaths =
+      input.testOverrides.adminExcludePaths ??
+      requestMeta?.adminPreflightExclusions?.paths ??
+      [];
+    const workingCopyId = `swc_test_${revision.id}`;
+    const result = await withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
+      runImport({
+        userId: input.adminUserId,
+        clientId: input.clientId,
+        packId: pack.packId,
+        inputZipPath,
+        adminExcludePaths,
+        sourceRevisionId: revision.id,
+        workingCopyId,
+        requirePgvector: input.requirePgvector,
+        env: input.env,
+        prismaClient: input.prismaClient,
+        resolvePack: resolveAdminDraftPack,
+      }),
+    );
+    if (result.ok) {
+      const { activateWorkerZipSourceRevision } = await import(
+        "@/lib/python-worker/worker-zip-source-revision-service"
+      );
+      await activateWorkerZipSourceRevision({
+        revisionId: revision.id,
+        versionId: version.id,
+        workingCopyId,
+        prismaClient: client,
+      }).catch(() => undefined);
+      await client.pipelineRun
+        .updateMany({
+          where: {
+            packId: pack.packId,
+            triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+            status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+          },
+          data: { status: "PASS", finishedAt: new Date() },
+        })
+        .catch(() => undefined);
+    }
+    return result;
+  }
+
   const {
     lazyBackfillWorkerZipSourceRevisionFromLegacy,
-    getLatestWorkerZipSourceRevision,
-    getWorkerZipSourceRevisionBytes,
-    markWorkerZipSourceRevisionProcessing,
+    getWorkerZipSourceRevisionById,
+    repairUnsafeWorkerZipSourceRevisionStorageKey,
     activateWorkerZipSourceRevision,
+    WorkerZipSourceRevisionError,
   } = await import("@/lib/python-worker/worker-zip-source-revision-service");
+  const {
+    createWorkerZipWorkingCopyFromRevision,
+    markWorkerZipWorkingCopyProcessing,
+    markWorkerZipWorkingCopyFailed,
+    withVerifiedWorkingCopyTempFile,
+    adminExcludePathsFromDirectiveSnapshot,
+    buildWorkerWorkingCopyDirectiveSnapshot,
+    buildWorkerWorkingCopyIdempotencyKey,
+    WorkerZipWorkingCopyError,
+  } = await import("@/lib/python-worker/worker-zip-working-copy-service");
 
-  let revision =
-    (await getLatestWorkerZipSourceRevision({
-      versionId: version.id,
-      prismaClient: client,
-    })) ??
-    (await lazyBackfillWorkerZipSourceRevisionFromLegacy({
+  const openMarker = await client.pipelineRun.findFirst({
+    where: {
+      packId: pack.packId,
+      triggerType: WORKER_ZIP_REQUEST_TRIGGER,
+      status: { in: ["PENDING", WORKER_ZIP_REQUEST_ACCEPTED_STATUS] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, sourceRevisionId: true, versionId: true, status: true },
+  });
+
+  let sourceRevisionId = openMarker?.sourceRevisionId ?? null;
+  if (!sourceRevisionId) {
+    const requestMeta = await getRequestMetadata({
+      packId: pack.packId,
+      packVersionId: version.id,
+      env: input.env,
+    });
+    sourceRevisionId = requestMeta?.sourceRevisionId ?? null;
+  }
+
+  let revision = sourceRevisionId
+    ? await getWorkerZipSourceRevisionById({
+        revisionId: sourceRevisionId,
+        clientId: input.clientId,
+        packId: pack.packId,
+        versionId: version.id,
+        prismaClient: client,
+        requireSafeStorageKey: false,
+      })
+    : null;
+
+  if (!revision) {
+    revision = await lazyBackfillWorkerZipSourceRevisionFromLegacy({
       packId: pack.packId,
       versionId: version.id,
       clientId: input.clientId,
       env: input.env,
       prismaClient: client,
-    }));
+    });
+    if (revision && openMarker) {
+      await client.pipelineRun.update({
+        where: { id: openMarker.id },
+        data: { sourceRevisionId: revision.id, versionId: version.id },
+      });
+    }
+  }
 
-  let bytes: Uint8Array | null = null;
-  if (revision) {
-    bytes = await getWorkerZipSourceRevisionBytes({
-      revision,
-      packId: pack.packId,
-      versionId: version.id,
-      env: input.env,
-    });
-  }
-  if (!bytes) {
-    bytes = await getRequestBytes({
-      packId: pack.packId,
-      packVersionId: version.id,
-      env: input.env,
-    });
-  }
-  if (!bytes) {
+  if (!revision) {
     throw new WorkerZipImportServiceError(
-      "REQUEST_NOT_FOUND",
-      "생성 요청된 ZIP 자료가 없습니다. 제공자에게 자료 등록을 요청하세요.",
+      "REQUEST_SOURCE_REVISION_MISSING",
+      "생성 요청에 연결된 원본 revision이 없습니다. 제공자에게 자료 등록을 요청하세요.",
       404,
     );
   }
 
-  if (revision) {
-    await markWorkerZipSourceRevisionProcessing({
-      revisionId: revision.id,
-      prismaClient: client,
-    }).catch(() => undefined);
+  if (revision.versionId !== version.id || revision.packId !== pack.packId) {
+    throw new WorkerZipImportServiceError(
+      "REQUEST_SOURCE_REVISION_MISMATCH",
+      "요청 marker의 원본 revision이 현재 팩/버전과 일치하지 않습니다.",
+      409,
+    );
+  }
+
+  try {
+    const { isWorkerRequestStableZipObjectKey } = await import(
+      "@/lib/python-worker/worker-output-object-keys"
+    );
+    if (isWorkerRequestStableZipObjectKey(revision.storageKey)) {
+      revision = await repairUnsafeWorkerZipSourceRevisionStorageKey({
+        revisionId: revision.id,
+        env: input.env,
+        prismaClient: client,
+      });
+    }
+  } catch (error) {
+    if (error instanceof WorkerZipSourceRevisionError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
+    throw error;
   }
 
   const requestMeta = await getRequestMetadata({
@@ -1116,44 +1280,137 @@ export async function runAdminWorkerZipGeneration(
     packVersionId: version.id,
     env: input.env,
   });
-  const adminExcludePaths = requestMeta?.adminPreflightExclusions?.paths ?? [];
+  const liveExcludePaths = requestMeta?.adminPreflightExclusions?.paths ?? [];
+  const liveReasons = requestMeta?.adminPreflightExclusions?.reasons ?? {};
 
   // Executing implies acceptance: lock the request (접수완료) before running so the
   // Provider can no longer withdraw it mid-generation.
-  try {
-    await client.pipelineRun.updateMany({
-      where: { packId: pack.packId, triggerType: WORKER_ZIP_REQUEST_TRIGGER, status: "PENDING" },
-      data: { status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS },
+  if (openMarker?.status === "PENDING") {
+    await client.pipelineRun.update({
+      where: { id: openMarker.id },
+      data: {
+        status: WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
+        versionId: version.id,
+        sourceRevisionId: revision.id,
+      },
     });
-  } catch {
-    // Non-fatal: acceptance marker is best-effort.
+  } else if (openMarker && !openMarker.sourceRevisionId) {
+    await client.pipelineRun.update({
+      where: { id: openMarker.id },
+      data: { versionId: version.id, sourceRevisionId: revision.id },
+    });
   }
 
-  const result = await withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
-    runImport({
-      userId: input.adminUserId,
+  const { checksumSha256: directiveChecksum } = buildWorkerWorkingCopyDirectiveSnapshot({
+    sourceRevisionId: revision.id,
+    sourceArchiveChecksumSha256: revision.checksumSha256,
+    adminExcludePaths: liveExcludePaths,
+    adminExclusionReasons: liveReasons,
+    createdByUserId: input.adminUserId,
+  });
+  const attemptKey = `attempt_${Date.now()}`;
+  const idempotencyKey = buildWorkerWorkingCopyIdempotencyKey({
+    requestMarkerId: openMarker?.id ?? `legacy_${version.id}`,
+    sourceRevisionId: revision.id,
+    directiveChecksumSha256: directiveChecksum,
+    attemptKey,
+  });
+
+  let workingCopy;
+  try {
+    workingCopy = await createWorkerZipWorkingCopyFromRevision({
       clientId: input.clientId,
       packId: pack.packId,
-      inputZipPath,
-      adminExcludePaths,
-      sourceRevisionId: revision?.id ?? requestMeta?.sourceRevisionId ?? null,
-      requirePgvector: input.requirePgvector,
+      versionId: version.id,
+      sourceRevision: revision,
+      purpose: "INITIAL_GENERATION",
+      idempotencyKey,
+      adminExcludePaths: liveExcludePaths,
+      adminExclusionReasons: liveReasons,
+      createdById: input.adminUserId,
       env: input.env,
-      prismaClient: input.prismaClient,
-      resolvePack: resolveAdminDraftPack,
-    }),
+      prismaClient: client,
+    });
+  } catch (error) {
+    if (error instanceof WorkerZipWorkingCopyError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
+    if (error instanceof WorkerZipSourceRevisionError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
+    throw error;
+  }
+
+  await markWorkerZipWorkingCopyProcessing({
+    workingCopyId: workingCopy.id,
+    prismaClient: client,
+  });
+
+  const frozenExcludePaths = adminExcludePathsFromDirectiveSnapshot(
+    workingCopy.directiveSnapshot,
   );
 
-  // On success, retire the open request marker so it leaves the Admin queue.
+  let result: ProviderWorkerZipImportResult;
+  try {
+    result = await withVerifiedWorkingCopyTempFile({
+      workingCopy,
+      env: input.env,
+      fn: (inputZipPath) =>
+        runImport({
+          userId: input.adminUserId,
+          clientId: input.clientId,
+          packId: pack.packId,
+          inputZipPath,
+          adminExcludePaths: frozenExcludePaths,
+          sourceRevisionId: revision!.id,
+          workingCopyId: workingCopy.id,
+          requirePgvector: input.requirePgvector,
+          env: input.env,
+          prismaClient: input.prismaClient,
+          resolvePack: resolveAdminDraftPack,
+        }),
+    });
+  } catch (error) {
+    const code =
+      error instanceof WorkerZipWorkingCopyError
+        ? error.code
+        : "WORKING_COPY_STREAM_FAILED";
+    const message =
+      error instanceof Error ? error.message : "Working Copy 스트리밍에 실패했습니다.";
+    await markWorkerZipWorkingCopyFailed({
+      workingCopyId: workingCopy.id,
+      failureCode: code,
+      failureMessage: message,
+      prismaClient: client,
+    });
+    if (error instanceof WorkerZipWorkingCopyError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
+    throw error;
+  }
+
   if (result.ok) {
-    if (revision) {
+    try {
+      // Re-check marker still points at the same revision before pointer flip.
+      if (openMarker) {
+        const markerNow = await client.pipelineRun.findUnique({
+          where: { id: openMarker.id },
+          select: { sourceRevisionId: true },
+        });
+        if (markerNow?.sourceRevisionId && markerNow.sourceRevisionId !== revision.id) {
+          throw new WorkerZipImportServiceError(
+            "REQUEST_SOURCE_REVISION_MISMATCH",
+            "실행 중 요청 marker의 원본 revision이 변경되었습니다.",
+            409,
+          );
+        }
+      }
       await activateWorkerZipSourceRevision({
         revisionId: revision.id,
         versionId: version.id,
+        workingCopyId: workingCopy.id,
         prismaClient: client,
-      }).catch(() => undefined);
-    }
-    try {
+      });
       await client.pipelineRun.updateMany({
         where: {
           packId: pack.packId,
@@ -1162,9 +1419,27 @@ export async function runAdminWorkerZipGeneration(
         },
         data: { status: "PASS", finishedAt: new Date() },
       });
-    } catch {
-      // Non-fatal: the generation already succeeded.
+    } catch (error) {
+      await markWorkerZipWorkingCopyFailed({
+        workingCopyId: workingCopy.id,
+        failureCode: "SOURCE_ACTIVATION_FAILED",
+        failureMessage:
+          error instanceof Error ? error.message : "원본/작업본 활성화에 실패했습니다.",
+        prismaClient: client,
+      });
+      throw new WorkerZipImportServiceError(
+        "SOURCE_ACTIVATION_FAILED",
+        "생성은 완료됐지만 현재 원본·작업본 활성화에 실패했습니다. 기존 현재 pointer는 유지됩니다.",
+        500,
+      );
     }
+  } else {
+    await markWorkerZipWorkingCopyFailed({
+      workingCopyId: workingCopy.id,
+      failureCode: result.error?.code ?? "WORKER_ZIP_IMPORT_FAILED",
+      failureMessage: result.error?.message ?? "Worker 실행에 실패했습니다.",
+      prismaClient: client,
+    });
   }
 
   return result;

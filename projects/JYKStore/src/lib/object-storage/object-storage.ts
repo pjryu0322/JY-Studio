@@ -107,6 +107,14 @@ export type AbortMultipartUploadInput = {
   uploadId: string;
 };
 
+export type CopyObjectInput = {
+  sourceObjectKey: string;
+  destinationObjectKey: string;
+  expectedSizeBytes: number;
+  expectedChecksumSha256: string;
+  metadata: Record<string, string>;
+};
+
 /**
  * S3-compatible object store. Prefer streaming + multipart for large objects.
  * putSmallObject / getObject are for tests and tiny objects only.
@@ -120,6 +128,11 @@ export interface ObjectStorage {
   }): Promise<ObjectStorageStreamResult>;
   headObject(input: { objectKey: string }): Promise<ObjectStorageHeadResult>;
   deleteObject(input: { objectKey: string }): Promise<void>;
+  /**
+   * Server-side copy. Must not buffer the full object in memory.
+   * Verifies destination size + checksum metadata after copy.
+   */
+  copyObject(input: CopyObjectInput): Promise<StoredObjectDescriptor>;
 
   createMultipartUpload(
     input: CreateMultipartUploadInput,

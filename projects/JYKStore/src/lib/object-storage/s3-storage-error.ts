@@ -5,6 +5,7 @@ export type S3StorageOperation =
   | "get"
   | "delete"
   | "head"
+  | "copy"
   | "probe"
   | "createMultipartUpload"
   | "presignUploadPart"

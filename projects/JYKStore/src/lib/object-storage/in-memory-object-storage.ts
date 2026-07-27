@@ -5,6 +5,7 @@ import type {
   AbortMultipartUploadInput,
   CompleteMultipartUploadInput,
   CompleteMultipartUploadResult,
+  CopyObjectInput,
   CreateMultipartUploadInput,
   CreateMultipartUploadResult,
   ListUploadedPartsInput,
@@ -147,6 +148,50 @@ export class InMemoryObjectStorage implements ObjectStorageBackend {
 
   delete(input: { objectKey: string }): Promise<void> {
     return this.deleteObject(input);
+  }
+
+  async copyObject(input: CopyObjectInput): Promise<StoredObjectDescriptor> {
+    const existingDest = this.objects.get(input.destinationObjectKey);
+    if (existingDest) {
+      if (
+        existingDest.checksumSha256 === input.expectedChecksumSha256 &&
+        existingDest.bytes.byteLength === input.expectedSizeBytes
+      ) {
+        return {
+          objectKey: input.destinationObjectKey,
+          fileSize: existingDest.bytes.byteLength,
+          checksumSha256: existingDest.checksumSha256,
+          etag: existingDest.etag,
+        };
+      }
+      throw new Error(
+        `Destination object already exists with different bytes: ${input.destinationObjectKey}`,
+      );
+    }
+    const source = this.objects.get(input.sourceObjectKey);
+    if (!source) {
+      throw new Error(`Missing source object: ${input.sourceObjectKey}`);
+    }
+    if (source.bytes.byteLength !== input.expectedSizeBytes) {
+      throw new Error("Source object size does not match expectedSizeBytes");
+    }
+    if (source.checksumSha256 !== input.expectedChecksumSha256) {
+      throw new Error("Source object checksum does not match expectedChecksumSha256");
+    }
+    // In-memory copy of the byte array reference is fine for tests; production uses S3 CopyObject.
+    const copied = new Uint8Array(source.bytes);
+    const etag = `"${input.expectedChecksumSha256.slice(0, 16)}"`;
+    this.objects.set(input.destinationObjectKey, {
+      bytes: copied,
+      checksumSha256: input.expectedChecksumSha256,
+      etag,
+    });
+    return {
+      objectKey: input.destinationObjectKey,
+      fileSize: copied.byteLength,
+      checksumSha256: input.expectedChecksumSha256,
+      etag,
+    };
   }
 
   async createMultipartUpload(

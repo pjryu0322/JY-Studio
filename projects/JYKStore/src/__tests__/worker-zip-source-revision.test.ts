@@ -14,6 +14,7 @@ function makeMemoryStorage() {
     async putSmallObject(input: {
       objectKey?: string;
       bytes: Uint8Array;
+      checksumSha256?: string;
     }): Promise<{ objectKey: string }> {
       const objectKey = input.objectKey ?? `auto-${objects.size}`;
       objects.set(objectKey, input.bytes);
@@ -24,8 +25,17 @@ function makeMemoryStorage() {
       if (!bytes) throw new Error(`missing ${input.objectKey}`);
       return { bytes };
     },
-    async deleteObject(): Promise<void> {
-      /* no-op */
+    async headObject(input: { objectKey: string }) {
+      const bytes = objects.get(input.objectKey);
+      if (!bytes) return { exists: false };
+      return {
+        exists: true,
+        contentLength: bytes.byteLength,
+        checksumSha256Metadata: createHash("sha256").update(bytes).digest("hex"),
+      };
+    },
+    async deleteObject(input: { objectKey: string }): Promise<void> {
+      objects.delete(input.objectKey);
     },
   };
 }
@@ -38,6 +48,7 @@ function makePrismaMock(seed?: {
     checksumSha256: string;
     status: string;
     storageKey: string;
+    sizeBytes?: number;
   }>;
 }) {
   const revisions = [...(seed?.revisions ?? [])];
@@ -95,7 +106,7 @@ function makePrismaMock(seed?: {
           revisionNo: top.revisionNo,
           storageKey: top.storageKey,
           checksumSha256: top.checksumSha256,
-          sizeBytes: 4,
+          sizeBytes: top.sizeBytes ?? 4,
           originalFileName: "a.zip",
           submittedById: "user-1",
           reason: "PROVIDER_UPLOAD",
@@ -183,6 +194,9 @@ describe("storeWorkerZipSourceRevision", () => {
     const bytes = new TextEncoder().encode("zip-bytes");
     const checksum = createHash("sha256").update(bytes).digest("hex");
     const storage = makeMemoryStorage();
+    const storageKey =
+      "payloads/packs/pack-1/versions/ver-1/source-revisions/srev_existing/source.zip";
+    storage.objects.set(storageKey, bytes);
     const prisma = makePrismaMock({
       revisions: [
         {
@@ -190,7 +204,8 @@ describe("storeWorkerZipSourceRevision", () => {
           revisionNo: 1,
           checksumSha256: checksum,
           status: "UPLOADED",
-          storageKey: "payloads/packs/pack-1/versions/ver-1/source-revisions/srev_existing/source.zip",
+          storageKey,
+          sizeBytes: bytes.byteLength,
         },
       ],
     });

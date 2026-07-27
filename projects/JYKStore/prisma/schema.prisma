@@ -291,6 +291,7 @@ model KnowledgePack {
   normalizedDocuments      NormalizedDocument[]
   searchIndexGenerations   SearchIndexGeneration[]
   workerZipSourceRevisions WorkerZipSourceRevision[]
+  workerZipWorkingCopies   WorkerZipWorkingCopy[]
 
   @@index([status])
   @@index([categoryId])
@@ -335,6 +336,19 @@ enum WorkerZipSourceRevisionStatus {
   SUPERSEDED
 }
 
+enum WorkerZipWorkingCopyPurpose {
+  INITIAL_GENERATION
+  CORRECTION_REBUILD
+}
+
+enum WorkerZipWorkingCopyStatus {
+  CREATING
+  READY
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
 /// Immutable Provider ZIP submission for a pack version (correction-engine P1).
 model WorkerZipSourceRevision {
   id                   String                        @id @default(cuid())
@@ -360,14 +374,54 @@ model WorkerZipSourceRevision {
   supersededBy       WorkerZipSourceRevision[] @relation("WorkerZipSourceRevisionSupersede")
   currentForVersion  KnowledgePackVersion?     @relation("VersionCurrentSourceRevision")
   sourceDocuments    SourceDocument[]
+  workingCopies      WorkerZipWorkingCopy[]
+  pipelineRuns       PipelineRun[]
 
   @@unique([versionId, revisionNo])
+  @@unique([versionId, checksumSha256])
   @@index([packId])
   @@index([versionId])
   @@index([clientId])
   @@index([status])
   @@index([checksumSha256])
   @@index([supersedesRevisionId])
+}
+
+/// Execution-scoped copy of an immutable source revision (correction-engine P1.1).
+model WorkerZipWorkingCopy {
+  id                      String                      @id @default(cuid())
+  clientId                String
+  packId                  String
+  versionId               String
+  sourceRevisionId        String
+  purpose                 WorkerZipWorkingCopyPurpose
+  status                  WorkerZipWorkingCopyStatus  @default(CREATING)
+  storageKey              String                      @unique
+  checksumSha256          String
+  sizeBytes               Int
+  idempotencyKey          String
+  directiveSnapshot       Json
+  directiveChecksumSha256 String
+  createdById             String?
+  failureCode             String?
+  failureMessage          String?
+  createdAt               DateTime                    @default(now())
+  readyAt                 DateTime?
+  startedAt               DateTime?
+  finishedAt              DateTime?
+
+  pack            KnowledgePack            @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version         KnowledgePackVersion     @relation("VersionWorkerZipWorkingCopies", fields: [versionId], references: [id], onDelete: Cascade)
+  sourceRevision  WorkerZipSourceRevision  @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  currentForVersion KnowledgePackVersion?  @relation("VersionCurrentWorkingCopy")
+  sourceDocuments SourceDocument[]
+  pipelineRuns    PipelineRun[]
+
+  @@unique([versionId, idempotencyKey])
+  @@index([sourceRevisionId, createdAt])
+  @@index([versionId, status])
+  @@index([clientId, packId, versionId])
+  @@index([packId])
 }
 
 model KnowledgePackVersion {
@@ -385,12 +439,16 @@ model KnowledgePackVersion {
   language              PackLanguage?
   /// Current immutable Worker ZIP source revision used for generation/quality.
   currentSourceRevisionId String? @unique
+  /// Current working copy that produced the active generation result.
+  currentWorkingCopyId    String? @unique
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   pack            KnowledgePack    @relation(fields: [packId], references: [packId], onDelete: Cascade)
   currentSourceRevision WorkerZipSourceRevision? @relation("VersionCurrentSourceRevision", fields: [currentSourceRevisionId], references: [id], onDelete: SetNull)
+  currentWorkingCopy    WorkerZipWorkingCopy?    @relation("VersionCurrentWorkingCopy", fields: [currentWorkingCopyId], references: [id], onDelete: SetNull)
   workerZipSourceRevisions WorkerZipSourceRevision[] @relation("VersionWorkerZipSourceRevisions")
+  workerZipWorkingCopies   WorkerZipWorkingCopy[]    @relation("VersionWorkerZipWorkingCopies")
   sourceDocuments SourceDocument[]
   chunks          KnowledgeChunk[]
   embeddings      KnowledgeChunkEmbedding[]
@@ -410,6 +468,7 @@ model KnowledgePackVersion {
   knowledgePackFiles          KnowledgePackFile[]
   normalizedDocuments        NormalizedDocument[]
   searchIndexGenerations     SearchIndexGeneration[]
+  pipelineRuns               PipelineRun[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -925,6 +984,8 @@ model SourceDocument {
   versionId            String
   /// Worker ZIP source revision that produced this document (nullable for legacy rows).
   sourceRevisionId     String?
+  /// Working copy execution that produced this document (nullable for legacy rows).
+  workingCopyId        String?
   title                String
   sourceType           SourceType             @default(ETC)
   legacySourceType     String?
@@ -946,11 +1007,14 @@ model SourceDocument {
 
   version        KnowledgePackVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
   sourceRevision WorkerZipSourceRevision? @relation(fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  workingCopy    WorkerZipWorkingCopy?    @relation(fields: [workingCopyId], references: [id], onDelete: SetNull)
   chunks         KnowledgeChunk[]
   validationReports SourceValidationReport[]
 
   @@index([versionId])
   @@index([sourceRevisionId])
+  @@index([workingCopyId])
+  @@index([versionId, sourceRevisionId, workingCopyId])
   @@index([sourceType])
   @@index([validationStatus])
 }
@@ -1679,6 +1743,9 @@ model ReleaseGateIssue {
 model PipelineRun {
   id                  String             @id @default(cuid())
   packId              String
+  versionId           String?
+  sourceRevisionId    String?
+  workingCopyId       String?
   status              PipelineStepStatus @default(RUNNING)
   triggerType         String
   triggeredByClientId String?
@@ -1688,10 +1755,16 @@ model PipelineRun {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
-  pack  KnowledgePack     @relation(fields: [packId], references: [packId], onDelete: Cascade)
-  steps PipelineStepLog[]
+  pack           KnowledgePack            @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version        KnowledgePackVersion?    @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  sourceRevision WorkerZipSourceRevision? @relation(fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  workingCopy    WorkerZipWorkingCopy?    @relation(fields: [workingCopyId], references: [id], onDelete: SetNull)
+  steps          PipelineStepLog[]
 
   @@index([packId])
+  @@index([versionId])
+  @@index([sourceRevisionId])
+  @@index([workingCopyId])
   @@index([status])
   @@index([triggerType])
   @@index([startedAt])

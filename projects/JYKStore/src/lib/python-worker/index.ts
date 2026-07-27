@@ -38,6 +38,8 @@ export {
   buildWorkerRunRagExportObjectKey,
   buildWorkerRunSourceZipObjectKey,
   buildWorkerSourceRevisionZipObjectKey,
+  buildWorkerWorkingCopyZipObjectKey,
+  isWorkerRequestStableZipObjectKey,
   planWorkerOutputObjectKeys,
   type WorkerOutputStoredFilePlan,
   type WorkerRequestObjectKeyContext,
@@ -55,12 +57,26 @@ export {
 export {
   activateWorkerZipSourceRevision,
   getLatestWorkerZipSourceRevision,
+  getWorkerZipSourceRevisionById,
   getWorkerZipSourceRevisionBytes,
   lazyBackfillWorkerZipSourceRevisionFromLegacy,
   markWorkerZipSourceRevisionProcessing,
+  repairUnsafeWorkerZipSourceRevisionStorageKey,
   storeWorkerZipSourceRevision,
   type WorkerZipSourceRevisionRecord,
 } from "@/lib/python-worker/worker-zip-source-revision-service";
+
+export {
+  adminExcludePathsFromDirectiveSnapshot,
+  buildWorkerWorkingCopyDirectiveSnapshot,
+  buildWorkerWorkingCopyIdempotencyKey,
+  createWorkerZipWorkingCopyFromRevision,
+  markWorkerZipWorkingCopyFailed,
+  markWorkerZipWorkingCopyProcessing,
+  withVerifiedWorkingCopyTempFile,
+  type WorkerWorkingCopyDirectiveSnapshot,
+  type WorkerZipWorkingCopyRecord,
+} from "@/lib/python-worker/worker-zip-working-copy-service";
 
 export {
   prepareWorkerOutputImport,

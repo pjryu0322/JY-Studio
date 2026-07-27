@@ -12,8 +12,9 @@
  * legacy quality gates (source validation / structure coverage) can actually run.
  *
  * License / review-only documents are not persisted (not knowledge/quality targets).
- * Orphan WORKER_ZIP rows are removed only within the same sourceRevisionId so other
- * revisions are never deleted or overwritten.
+ * Orphan WORKER_ZIP rows are removed only within the same
+ * versionId+sourceRevisionId+workingCopyId so other revisions/copies are never
+ * deleted or overwritten.
  */
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -35,6 +36,8 @@ export type EnsureWorkerSourceDocumentsInput = {
   productVersion?: string | null;
   /** P1: scope create/reuse/orphan-delete to this immutable source revision. */
   sourceRevisionId?: string | null;
+  /** P1.1: scope create/reuse/orphan-delete to this Working Copy execution. */
+  workingCopyId?: string | null;
   prismaClient?: PrismaClientLike;
 };
 
@@ -55,6 +58,7 @@ export async function ensureWorkerSourceDocuments(
   const versionId = input.payload.packVersionId;
   const productVersion = input.productVersion?.trim() || null;
   const sourceRevisionId = input.sourceRevisionId?.trim() || null;
+  const workingCopyId = input.workingCopyId?.trim() || null;
 
   const checksumByPath = new Map<string, string>();
   for (const entry of input.payload.inventory) {
@@ -86,6 +90,9 @@ export async function ensureWorkerSourceDocuments(
         ...(sourceRevisionId
           ? { sourceRevisionId }
           : { sourceRevisionId: null }),
+        ...(workingCopyId
+          ? { workingCopyId }
+          : { workingCopyId: null }),
         ...(checksum ? { checksum } : { fileName }),
       },
       select: { id: true, content: true },
@@ -103,13 +110,17 @@ export async function ensureWorkerSourceDocuments(
             title,
             ...(productVersion ? { productVersion } : {}),
             ...(sourceRevisionId ? { sourceRevisionId } : {}),
+            ...(workingCopyId ? { workingCopyId } : {}),
             validationStatus: "NOT_CHECKED",
           },
         });
-      } else if (sourceRevisionId) {
+      } else if (sourceRevisionId || workingCopyId) {
         await client.sourceDocument.update({
           where: { id: existing.id },
-          data: { sourceRevisionId },
+          data: {
+            ...(sourceRevisionId ? { sourceRevisionId } : {}),
+            ...(workingCopyId ? { workingCopyId } : {}),
+          },
         });
       }
       mapping[sourcePath] = existing.id;
@@ -120,6 +131,7 @@ export async function ensureWorkerSourceDocuments(
       data: {
         versionId,
         sourceRevisionId,
+        workingCopyId,
         title,
         sourceType,
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
@@ -135,13 +147,26 @@ export async function ensureWorkerSourceDocuments(
     mapping[sourcePath] = created.id;
   }
 
-  // Never delete SourceDocuments belonging to other revisions.
-  if (sourceRevisionId) {
+  // Never delete SourceDocuments belonging to other revisions or working copies.
+  if (sourceRevisionId && workingCopyId) {
     const keptIds = Object.values(mapping);
     await client.sourceDocument.deleteMany({
       where: {
         versionId,
         sourceRevisionId,
+        workingCopyId,
+        legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+        ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
+      },
+    });
+  } else if (sourceRevisionId && !workingCopyId) {
+    // Legacy P1 rows without workingCopyId: keep prior revision-scoped orphan delete.
+    const keptIds = Object.values(mapping);
+    await client.sourceDocument.deleteMany({
+      where: {
+        versionId,
+        sourceRevisionId,
+        workingCopyId: null,
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
         ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
       },

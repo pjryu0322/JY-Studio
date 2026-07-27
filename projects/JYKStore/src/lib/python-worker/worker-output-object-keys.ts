@@ -80,6 +80,30 @@ export function buildWorkerSourceRevisionZipObjectKey(
   return `${prefix}/packs/${ctx.packId}/versions/${ctx.packVersionId}/source-revisions/${ctx.sourceRevisionId}/source.zip`;
 }
 
+export type WorkerWorkingCopyObjectKeyContext = WorkerSourceRevisionObjectKeyContext & {
+  workingCopyId: string;
+};
+
+/**
+ * Per-execution Working Copy ZIP key:
+ * .../source-revisions/{revisionId}/working-copies/{workingCopyId}/source.zip
+ */
+export function buildWorkerWorkingCopyZipObjectKey(
+  ctx: WorkerWorkingCopyObjectKeyContext,
+): string {
+  assertSafeId("packId", ctx.packId);
+  assertSafeId("packVersionId", ctx.packVersionId);
+  assertSafeId("sourceRevisionId", ctx.sourceRevisionId);
+  assertSafeId("workingCopyId", ctx.workingCopyId);
+  const prefix = sanitizePrefix(ctx.prefix || "payloads");
+  return `${prefix}/packs/${ctx.packId}/versions/${ctx.packVersionId}/source-revisions/${ctx.sourceRevisionId}/working-copies/${ctx.workingCopyId}/source.zip`;
+}
+
+/** True when a revision row still points at the mutable stable mirror key. */
+export function isWorkerRequestStableZipObjectKey(objectKey: string): boolean {
+  return /\/worker-request\/source\.zip$/i.test(objectKey.replace(/\\/g, "/"));
+}
+
 /**
  * Relative path under worker-output/ (posix, no leading slash).
  * e.g. "chunks.json", "parser_artifacts/foo.json"

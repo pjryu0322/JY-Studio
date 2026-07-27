@@ -126,6 +126,7 @@ export type WorkerZipPipelineDeps = {
     payload: WorkerOutputImportPayload;
     productVersion?: string | null;
     sourceRevisionId?: string | null;
+    workingCopyId?: string | null;
     prismaClient?: typeof prisma;
   }) => Promise<Record<string, string>>;
   /** Deferred generation creation hook; when absent, input.searchIndexGenerationId is required. */
@@ -160,6 +161,8 @@ export type WorkerZipPipelineInput = {
   adminExcludePaths?: readonly string[];
   /** P1: immutable source revision for SourceDocument scoping. */
   sourceRevisionId?: string | null;
+  /** P1.1: Working Copy execution for SourceDocument scoping. */
+  workingCopyId?: string | null;
   /** Upload size guard for the source ZIP (default 200MB). */
   maxSourceZipUploadBytes?: number;
   /** Upload size guard per worker output file (default 100MB). */
@@ -558,6 +561,7 @@ function persistSourceDocuments(
     payload,
     productVersion: ctx.input.productVersion,
     sourceRevisionId: ctx.input.sourceRevisionId,
+    workingCopyId: ctx.input.workingCopyId,
     prismaClient: ctx.input.prismaClient,
   });
 }

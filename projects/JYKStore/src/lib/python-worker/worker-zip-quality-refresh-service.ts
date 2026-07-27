@@ -49,17 +49,21 @@ export async function backfillWorkerSourceDocumentContentFromChunks(input: {
       versions: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { id: true },
+        select: { id: true, currentWorkingCopyId: true },
       },
     },
   });
-  const versionId = pack?.versions[0]?.id;
+  const version = pack?.versions[0];
+  const versionId = version?.id;
   if (!versionId) return 0;
 
   const emptyDocs = await client.sourceDocument.findMany({
     where: {
       versionId,
       legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+      ...(version.currentWorkingCopyId
+        ? { workingCopyId: version.currentWorkingCopyId }
+        : {}),
       OR: [{ content: null }, { content: "" }],
     },
     select: { id: true, title: true, fileName: true },
@@ -124,17 +128,21 @@ export async function retypeWorkerEtcSourceDocuments(input: {
       versions: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { id: true },
+        select: { id: true, currentWorkingCopyId: true },
       },
     },
   });
-  const versionId = pack?.versions[0]?.id;
+  const version = pack?.versions[0];
+  const versionId = version?.id;
   if (!versionId) return 0;
 
   const etcDocs = await client.sourceDocument.findMany({
     where: {
       versionId,
       legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+      ...(version.currentWorkingCopyId
+        ? { workingCopyId: version.currentWorkingCopyId }
+        : {}),
       sourceType: "ETC",
     },
     select: { id: true, title: true, fileName: true },
