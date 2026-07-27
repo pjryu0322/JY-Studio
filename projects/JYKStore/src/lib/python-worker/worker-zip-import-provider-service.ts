@@ -110,6 +110,8 @@ export type RunProviderWorkerZipImportInput = {
   inputZipPath: string;
   /** Admin 사전정리 제외 경로 — forwarded to the Worker pipeline. */
   adminExcludePaths?: readonly string[];
+  /** P1: immutable source revision that produced this ZIP run. */
+  sourceRevisionId?: string | null;
   requirePgvector?: boolean;
   env?: NodeJS.ProcessEnv;
   prismaClient?: typeof prisma;
@@ -477,7 +479,6 @@ export async function submitProviderWorkerZipRequest(
 ): Promise<{ ok: true; packId: string; versionId: string; request: WorkerZipRequestMetadata }> {
   const client = input.prismaClient ?? prisma;
   const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
-  const storeRequest = input.storeRequest ?? storeWorkerZipRequest;
 
   const { pack, version } = await requireOwnedDraftPack(client, findProfile, {
     userId: input.userId,
@@ -494,14 +495,61 @@ export async function submitProviderWorkerZipRequest(
     );
   }
 
-  const stored = await storeRequest({
-    packId: pack.packId,
-    packVersionId: version.id,
-    bytes: input.bytes,
-    originalFileName: input.originalFileName,
-    uploadedByUserId: input.userId,
-    env: input.env,
-  });
+  // P1: immutable source revision (checksum idempotency + unique object key).
+  // Injectable `storeRequest` keeps the legacy path for existing unit tests.
+  let stored: {
+    originalFileName: string;
+    fileSize: number;
+    checksumSha256: string;
+    uploadedAt: string;
+    uploadedByUserId: string;
+    sourceRevisionId?: string;
+    objectKey?: string;
+  };
+
+  if (input.storeRequest) {
+    const legacy = await input.storeRequest({
+      packId: pack.packId,
+      packVersionId: version.id,
+      bytes: input.bytes,
+      originalFileName: input.originalFileName,
+      uploadedByUserId: input.userId,
+      env: input.env,
+    });
+    stored = {
+      originalFileName: legacy.originalFileName,
+      fileSize: legacy.fileSize,
+      checksumSha256: legacy.checksumSha256,
+      uploadedAt: legacy.uploadedAt,
+      uploadedByUserId: legacy.uploadedByUserId,
+      sourceRevisionId: legacy.sourceRevisionId,
+      objectKey: legacy.objectKey,
+    };
+  } else {
+    const { storeWorkerZipSourceRevision } = await import(
+      "@/lib/python-worker/worker-zip-source-revision-service"
+    );
+    const revision = await storeWorkerZipSourceRevision({
+      packId: pack.packId,
+      versionId: version.id,
+      clientId: input.clientId,
+      bytes: input.bytes,
+      originalFileName: input.originalFileName,
+      submittedById: input.userId,
+      reason: "PROVIDER_UPLOAD",
+      env: input.env,
+      prismaClient: client,
+    });
+    stored = {
+      originalFileName: revision.originalFileName ?? input.originalFileName,
+      fileSize: revision.sizeBytes,
+      checksumSha256: revision.checksumSha256,
+      uploadedAt: revision.createdAt.toISOString(),
+      uploadedByUserId: revision.submittedById ?? input.userId,
+      sourceRevisionId: revision.id,
+      objectKey: revision.storageKey,
+    };
+  }
 
   // Retire any prior open marker, then record a fresh PENDING request marker so
   // the Admin queue can surface this DRAFT pack. Non-fatal if it fails.
@@ -533,6 +581,7 @@ export async function submitProviderWorkerZipRequest(
       checksumSha256: stored.checksumSha256,
       uploadedAt: stored.uploadedAt,
       uploadedByUserId: stored.uploadedByUserId,
+      sourceRevisionId: stored.sourceRevisionId,
     },
   };
 }
@@ -764,6 +813,7 @@ export async function runProviderWorkerZipImport(
     productVersion: version.version,
     language: version.language ?? undefined,
     adminExcludePaths: input.adminExcludePaths,
+    sourceRevisionId: input.sourceRevisionId,
     requirePgvector: input.requirePgvector,
     env: input.env,
     prismaClient: input.prismaClient,
@@ -1009,17 +1059,56 @@ export async function runAdminWorkerZipGeneration(
     );
   }
 
-  const bytes = await getRequestBytes({
-    packId: pack.packId,
-    packVersionId: version.id,
-    env: input.env,
-  });
+  const {
+    lazyBackfillWorkerZipSourceRevisionFromLegacy,
+    getLatestWorkerZipSourceRevision,
+    getWorkerZipSourceRevisionBytes,
+    markWorkerZipSourceRevisionProcessing,
+    activateWorkerZipSourceRevision,
+  } = await import("@/lib/python-worker/worker-zip-source-revision-service");
+
+  let revision =
+    (await getLatestWorkerZipSourceRevision({
+      versionId: version.id,
+      prismaClient: client,
+    })) ??
+    (await lazyBackfillWorkerZipSourceRevisionFromLegacy({
+      packId: pack.packId,
+      versionId: version.id,
+      clientId: input.clientId,
+      env: input.env,
+      prismaClient: client,
+    }));
+
+  let bytes: Uint8Array | null = null;
+  if (revision) {
+    bytes = await getWorkerZipSourceRevisionBytes({
+      revision,
+      packId: pack.packId,
+      versionId: version.id,
+      env: input.env,
+    });
+  }
+  if (!bytes) {
+    bytes = await getRequestBytes({
+      packId: pack.packId,
+      packVersionId: version.id,
+      env: input.env,
+    });
+  }
   if (!bytes) {
     throw new WorkerZipImportServiceError(
       "REQUEST_NOT_FOUND",
       "생성 요청된 ZIP 자료가 없습니다. 제공자에게 자료 등록을 요청하세요.",
       404,
     );
+  }
+
+  if (revision) {
+    await markWorkerZipSourceRevisionProcessing({
+      revisionId: revision.id,
+      prismaClient: client,
+    }).catch(() => undefined);
   }
 
   const requestMeta = await getRequestMetadata({
@@ -1047,6 +1136,7 @@ export async function runAdminWorkerZipGeneration(
       packId: pack.packId,
       inputZipPath,
       adminExcludePaths,
+      sourceRevisionId: revision?.id ?? requestMeta?.sourceRevisionId ?? null,
       requirePgvector: input.requirePgvector,
       env: input.env,
       prismaClient: input.prismaClient,
@@ -1056,6 +1146,13 @@ export async function runAdminWorkerZipGeneration(
 
   // On success, retire the open request marker so it leaves the Admin queue.
   if (result.ok) {
+    if (revision) {
+      await activateWorkerZipSourceRevision({
+        revisionId: revision.id,
+        versionId: version.id,
+        prismaClient: client,
+      }).catch(() => undefined);
+    }
     try {
       await client.pipelineRun.updateMany({
         where: {

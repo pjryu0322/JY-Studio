@@ -37,6 +37,7 @@ export {
   buildWorkerRunOutputObjectKey,
   buildWorkerRunRagExportObjectKey,
   buildWorkerRunSourceZipObjectKey,
+  buildWorkerSourceRevisionZipObjectKey,
   planWorkerOutputObjectKeys,
   type WorkerOutputStoredFilePlan,
   type WorkerRequestObjectKeyContext,
@@ -50,6 +51,16 @@ export {
   type StoredWorkerZipRequest,
   type WorkerZipRequestMetadata,
 } from "@/lib/python-worker/worker-zip-request-storage";
+
+export {
+  activateWorkerZipSourceRevision,
+  getLatestWorkerZipSourceRevision,
+  getWorkerZipSourceRevisionBytes,
+  lazyBackfillWorkerZipSourceRevisionFromLegacy,
+  markWorkerZipSourceRevisionProcessing,
+  storeWorkerZipSourceRevision,
+  type WorkerZipSourceRevisionRecord,
+} from "@/lib/python-worker/worker-zip-source-revision-service";
 
 export {
   prepareWorkerOutputImport,

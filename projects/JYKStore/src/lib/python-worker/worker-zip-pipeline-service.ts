@@ -125,6 +125,7 @@ export type WorkerZipPipelineDeps = {
   ensureSourceDocuments: (input: {
     payload: WorkerOutputImportPayload;
     productVersion?: string | null;
+    sourceRevisionId?: string | null;
     prismaClient?: typeof prisma;
   }) => Promise<Record<string, string>>;
   /** Deferred generation creation hook; when absent, input.searchIndexGenerationId is required. */
@@ -157,6 +158,8 @@ export type WorkerZipPipelineInput = {
   maxTotalBytes?: number;
   /** Admin 사전정리 제외 경로 — forwarded to the Python Worker. */
   adminExcludePaths?: readonly string[];
+  /** P1: immutable source revision for SourceDocument scoping. */
+  sourceRevisionId?: string | null;
   /** Upload size guard for the source ZIP (default 200MB). */
   maxSourceZipUploadBytes?: number;
   /** Upload size guard per worker output file (default 100MB). */
@@ -554,6 +557,7 @@ function persistSourceDocuments(
   return ctx.deps.ensureSourceDocuments({
     payload,
     productVersion: ctx.input.productVersion,
+    sourceRevisionId: ctx.input.sourceRevisionId,
     prismaClient: ctx.input.prismaClient,
   });
 }

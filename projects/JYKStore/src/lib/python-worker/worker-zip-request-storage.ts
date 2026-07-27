@@ -67,6 +67,8 @@ export type WorkerZipRequestMetadata = {
   rejection?: WorkerZipRequestRejection;
   /** Admin 사전정리 제외 선택. Fresh Provider re-upload clears this with the sidecar. */
   adminPreflightExclusions?: WorkerZipAdminPreflightExclusions;
+  /** P1: immutable source revision that owns the request ZIP bytes. */
+  sourceRevisionId?: string;
 };
 
 export type WorkerZipRequestLocator = {

@@ -290,6 +290,7 @@ model KnowledgePack {
   knowledgePackFiles        KnowledgePackFile[]
   normalizedDocuments      NormalizedDocument[]
   searchIndexGenerations   SearchIndexGeneration[]
+  workerZipSourceRevisions WorkerZipSourceRevision[]
 
   @@index([status])
   @@index([categoryId])
@@ -326,6 +327,49 @@ enum PackLanguage {
   EN
 }
 
+enum WorkerZipSourceRevisionStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  REJECTED
+  SUPERSEDED
+}
+
+/// Immutable Provider ZIP submission for a pack version (correction-engine P1).
+model WorkerZipSourceRevision {
+  id                   String                        @id @default(cuid())
+  clientId             String?
+  packId               String
+  versionId            String
+  revisionNo           Int
+  storageKey           String                        @unique
+  checksumSha256       String
+  sizeBytes            Int
+  originalFileName     String?
+  submittedById        String?
+  reason               String?
+  status               WorkerZipSourceRevisionStatus @default(UPLOADED)
+  supersedesRevisionId String?
+  createdAt            DateTime                      @default(now())
+  readyAt              DateTime?
+  supersededAt         DateTime?
+
+  pack               KnowledgePack             @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version            KnowledgePackVersion      @relation("VersionWorkerZipSourceRevisions", fields: [versionId], references: [id], onDelete: Cascade)
+  supersedesRevision WorkerZipSourceRevision?  @relation("WorkerZipSourceRevisionSupersede", fields: [supersedesRevisionId], references: [id], onDelete: SetNull)
+  supersededBy       WorkerZipSourceRevision[] @relation("WorkerZipSourceRevisionSupersede")
+  currentForVersion  KnowledgePackVersion?     @relation("VersionCurrentSourceRevision")
+  sourceDocuments    SourceDocument[]
+
+  @@unique([versionId, revisionNo])
+  @@index([packId])
+  @@index([versionId])
+  @@index([clientId])
+  @@index([status])
+  @@index([checksumSha256])
+  @@index([supersedesRevisionId])
+}
+
 model KnowledgePackVersion {
   id                    String   @id @default(cuid())
   packId                String
@@ -339,10 +383,14 @@ model KnowledgePackVersion {
   versionSummary        String
   /// Provider-managed document language; required before review submit.
   language              PackLanguage?
+  /// Current immutable Worker ZIP source revision used for generation/quality.
+  currentSourceRevisionId String? @unique
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   pack            KnowledgePack    @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  currentSourceRevision WorkerZipSourceRevision? @relation("VersionCurrentSourceRevision", fields: [currentSourceRevisionId], references: [id], onDelete: SetNull)
+  workerZipSourceRevisions WorkerZipSourceRevision[] @relation("VersionWorkerZipSourceRevisions")
   sourceDocuments SourceDocument[]
   chunks          KnowledgeChunk[]
   embeddings      KnowledgeChunkEmbedding[]
@@ -875,6 +923,8 @@ model DoclingProcessingJob {
 model SourceDocument {
   id                   String                 @id @default(cuid())
   versionId            String
+  /// Worker ZIP source revision that produced this document (nullable for legacy rows).
+  sourceRevisionId     String?
   title                String
   sourceType           SourceType             @default(ETC)
   legacySourceType     String?
@@ -894,11 +944,13 @@ model SourceDocument {
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
-  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  chunks  KnowledgeChunk[]
+  version        KnowledgePackVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sourceRevision WorkerZipSourceRevision? @relation(fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  chunks         KnowledgeChunk[]
   validationReports SourceValidationReport[]
 
   @@index([versionId])
+  @@index([sourceRevisionId])
   @@index([sourceType])
   @@index([validationStatus])
 }

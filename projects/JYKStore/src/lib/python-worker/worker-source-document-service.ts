@@ -6,13 +6,14 @@
  * `versionId` + `title` (no DoclingImportBundle FK), so the ZIP path can create
  * them directly without touching the Docling bundle machinery.
  *
- * Idempotent: re-running for the same version reuses existing rows (matched by
- * checksum, else fileName) instead of creating duplicates. When reusing, empty
- * `content` is backfilled from the Worker normalized document so legacy quality
- * gates (source validation / structure coverage) can actually run.
+ * Idempotent: re-running for the same version+revision reuses existing rows
+ * (matched by checksum, else fileName) instead of creating duplicates. When
+ * reusing, empty `content` is backfilled from the Worker normalized document so
+ * legacy quality gates (source validation / structure coverage) can actually run.
  *
  * License / review-only documents are not persisted (not knowledge/quality targets).
- * Orphan WORKER_ZIP rows from prior imports (e.g. Admin 사전정리 exclusions) are removed.
+ * Orphan WORKER_ZIP rows are removed only within the same sourceRevisionId so other
+ * revisions are never deleted or overwritten.
  */
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -32,6 +33,8 @@ type PrismaClientLike = typeof prisma;
 export type EnsureWorkerSourceDocumentsInput = {
   payload: WorkerOutputImportPayload;
   productVersion?: string | null;
+  /** P1: scope create/reuse/orphan-delete to this immutable source revision. */
+  sourceRevisionId?: string | null;
   prismaClient?: PrismaClientLike;
 };
 
@@ -51,6 +54,7 @@ export async function ensureWorkerSourceDocuments(
   const client = input.prismaClient ?? prisma;
   const versionId = input.payload.packVersionId;
   const productVersion = input.productVersion?.trim() || null;
+  const sourceRevisionId = input.sourceRevisionId?.trim() || null;
 
   const checksumByPath = new Map<string, string>();
   for (const entry of input.payload.inventory) {
@@ -79,6 +83,9 @@ export async function ensureWorkerSourceDocuments(
       where: {
         versionId,
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+        ...(sourceRevisionId
+          ? { sourceRevisionId }
+          : { sourceRevisionId: null }),
         ...(checksum ? { checksum } : { fileName }),
       },
       select: { id: true, content: true },
@@ -95,8 +102,14 @@ export async function ensureWorkerSourceDocuments(
             sourceFormat,
             title,
             ...(productVersion ? { productVersion } : {}),
+            ...(sourceRevisionId ? { sourceRevisionId } : {}),
             validationStatus: "NOT_CHECKED",
           },
+        });
+      } else if (sourceRevisionId) {
+        await client.sourceDocument.update({
+          where: { id: existing.id },
+          data: { sourceRevisionId },
         });
       }
       mapping[sourcePath] = existing.id;
@@ -106,6 +119,7 @@ export async function ensureWorkerSourceDocuments(
     const created = await client.sourceDocument.create({
       data: {
         versionId,
+        sourceRevisionId,
         title,
         sourceType,
         legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
@@ -121,14 +135,18 @@ export async function ensureWorkerSourceDocuments(
     mapping[sourcePath] = created.id;
   }
 
-  const keptIds = Object.values(mapping);
-  await client.sourceDocument.deleteMany({
-    where: {
-      versionId,
-      legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
-      ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
-    },
-  });
+  // Never delete SourceDocuments belonging to other revisions.
+  if (sourceRevisionId) {
+    const keptIds = Object.values(mapping);
+    await client.sourceDocument.deleteMany({
+      where: {
+        versionId,
+        sourceRevisionId,
+        legacySourceType: WORKER_ZIP_SOURCE_LEGACY_TYPE,
+        ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
+      },
+    });
+  }
 
   return mapping;
 }

@@ -48,6 +48,10 @@ export type WorkerRequestObjectKeyContext = {
  * Unlike the per-run source key, this is NOT tied to a pipelineRunId: the Provider
  * stores (and may replace) one requested ZIP per version, and the Admin later runs
  * the Worker against it. Re-uploading overwrites the same object.
+ *
+ * P1 correction-engine: new submissions also write an immutable revision key via
+ * `buildWorkerSourceRevisionZipObjectKey`. The stable key remains a compatibility
+ * mirror for legacy readers and lazy backfill.
  */
 export function buildWorkerRequestSourceZipObjectKey(
   ctx: WorkerRequestObjectKeyContext,
@@ -56,6 +60,24 @@ export function buildWorkerRequestSourceZipObjectKey(
   assertSafeId("packVersionId", ctx.packVersionId);
   const prefix = sanitizePrefix(ctx.prefix || "payloads");
   return `${prefix}/packs/${ctx.packId}/versions/${ctx.packVersionId}/worker-request/source.zip`;
+}
+
+export type WorkerSourceRevisionObjectKeyContext = {
+  prefix: string;
+  packId: string;
+  packVersionId: string;
+  sourceRevisionId: string;
+};
+
+/** Immutable per-revision ZIP key: .../source-revisions/{revisionId}/source.zip */
+export function buildWorkerSourceRevisionZipObjectKey(
+  ctx: WorkerSourceRevisionObjectKeyContext,
+): string {
+  assertSafeId("packId", ctx.packId);
+  assertSafeId("packVersionId", ctx.packVersionId);
+  assertSafeId("sourceRevisionId", ctx.sourceRevisionId);
+  const prefix = sanitizePrefix(ctx.prefix || "payloads");
+  return `${prefix}/packs/${ctx.packId}/versions/${ctx.packVersionId}/source-revisions/${ctx.sourceRevisionId}/source.zip`;
 }
 
 /**
