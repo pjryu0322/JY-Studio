@@ -38,7 +38,9 @@ export function canEnterGeneration(input: {
   return (RECEIPT_DONE_ENOUGH_PHASES as readonly AdminWorkerZipPhase[]).includes(input.workerZipPhase);
 }
 
-/** Generation completed, and there is something to correct (blockers, failures, or an open supplement). */
+/** Generation completed with blockers/failures or open supplement — Correction is the work location.
+ * Warnings alone do NOT force Correction (P2 policy): they remain eligible for Service Validation.
+ */
 export function canEnterCorrection(input: {
   workerZipPhase: AdminWorkerZipPhase;
   quality: AdminQualityGateSnapshot;
@@ -48,7 +50,6 @@ export function canEnterCorrection(input: {
   return (
     input.quality.hasBlockers ||
     input.quality.failCount > 0 ||
-    input.quality.hasWarnings ||
     Boolean(input.openSupplement)
   );
 }

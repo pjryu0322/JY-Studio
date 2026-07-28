@@ -290,29 +290,38 @@ export function getAdminReviewRailState(input: {
 
   const stepStatus = (
     step: AdminWorkflowStep,
-    options?: { warning?: boolean; blocked?: boolean; blockedReason?: string },
+    options?: {
+      warning?: boolean;
+      blocked?: boolean;
+      blockedReason?: string;
+      badge?: string;
+    },
   ): Pick<RoleRailItem, "status" | "blockedReason" | "badge"> => {
     const idx = STEP_ORDER.indexOf(step);
     if (options?.blocked) {
       return {
         status: "blocked",
         blockedReason: options.blockedReason,
+        badge: options.badge,
       };
     }
     if (activeStep === step) {
       return {
         status: options?.warning ? "warning" : "current",
-        badge: options?.warning ? "WARNING" : undefined,
+        badge: options?.badge ?? (options?.warning ? "WARNING" : undefined),
       };
     }
     if (current === step) {
       return {
         status: options?.warning ? "warning" : "next",
-        badge: options?.warning ? "WARNING" : undefined,
+        badge: options?.badge ?? (options?.warning ? "WARNING" : undefined),
       };
     }
     if (idx < currentIdx) {
-      return { status: options?.warning ? "warning" : "completed" };
+      return {
+        status: options?.warning ? "warning" : "completed",
+        badge: options?.badge,
+      };
     }
     if (blockedNext && idx > currentIdx) {
       return {
@@ -429,20 +438,28 @@ export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = STEP_ORDER;
 /** Admin console / left-rail stage queue links (list pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {
   const items: Array<{ id: string; label: string; href: string }> = [
-    { id: "receipt", label: "자료 접수", href: adminQueuePath("receipt") },
+    { id: "receipt", label: ADMIN_WORKFLOW_STEP_LABELS.receipt, href: adminQueuePath("receipt") },
     {
       id: "knowledge-scope",
-      label: "지식화 대상 확인",
+      label: ADMIN_WORKFLOW_STEP_LABELS.knowledgeScope,
       href: adminQueuePath("knowledge-scope"),
     },
-    { id: "generation", label: "지식데이터 생성", href: adminQueuePath("generation") },
-    { id: "correction", label: "보정", href: adminQueuePath("correction") },
+    {
+      id: "generation",
+      label: ADMIN_WORKFLOW_STEP_LABELS.generation,
+      href: adminQueuePath("generation"),
+    },
+    {
+      id: "correction",
+      label: ADMIN_WORKFLOW_STEP_LABELS.correction,
+      href: adminQueuePath("correction"),
+    },
     {
       id: "service-validation",
-      label: "서비스 검증",
+      label: ADMIN_WORKFLOW_STEP_LABELS.serviceValidation,
       href: adminQueuePath("service-validation"),
     },
-    { id: "publish", label: "게시", href: adminQueuePath("publish") },
+    { id: "publish", label: ADMIN_WORKFLOW_STEP_LABELS.publish, href: adminQueuePath("publish") },
   ];
   return items.map((item) => ({
     ...item,

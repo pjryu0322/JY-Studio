@@ -15,6 +15,10 @@ import {
   buildAdminSupplementQueueDisplay,
   type ProviderSupplementAdminPhase,
 } from "@/lib/provider-supplement-request";
+import {
+  normalizeAdminWorkQueue,
+  type AdminWorkQueueKey,
+} from "@/lib/routes";
 
 export const ADMIN_WORK_INBOX_QUEUE_GROUPS = [
   "ACCEPT_REQUIRED",
@@ -470,31 +474,16 @@ export function filterAdminCorrectionQueue(
 
 export function filterAdminWorkQueue(
   items: readonly AdminWorkInboxItemViewModel[],
-  queue:
-    | "all"
-    | "receipt"
-    | "knowledge-scope"
-    | "generation"
-    | "correction"
-    | "service-validation"
-    | "publish"
-    /** @deprecated */
-    | "accept"
-    /** @deprecated */
-    | "quality"
-    /** @deprecated */
-    | "provider-review"
-    /** @deprecated */
-    | "approval-publish",
+  queue: AdminWorkQueueKey | "all",
 ): AdminWorkInboxItemViewModel[] {
-  switch (queue) {
+  const canonical =
+    queue === "all" || queue === "ops" ? queue : normalizeAdminWorkQueue(queue);
+  switch (canonical) {
     case "receipt":
-    case "accept":
       return items.filter((i) => i.adminQueueGroup === "ACCEPT_REQUIRED");
     case "knowledge-scope":
       return items.filter(isAdminKnowledgeScopeQueueItem);
     case "generation":
-    case "quality":
       return items.filter(
         (i) => isAdminGenerationQueueItem(i) || isAdminQualityQueueItem(i),
       );
@@ -508,8 +497,6 @@ export function filterAdminWorkQueue(
           i.serviceValidationPhase !== "PASSED",
       );
     case "publish":
-    case "provider-review":
-    case "approval-publish":
       return items.filter(
         (i) =>
           i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
@@ -517,8 +504,10 @@ export function filterAdminWorkQueue(
           (i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
             i.serviceValidationPhase === "PASSED"),
       );
+    case "ops":
+    case "all":
     default:
-      return items;
+      return [...items];
   }
 }
 

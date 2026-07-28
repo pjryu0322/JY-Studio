@@ -22,7 +22,7 @@ describe("admin work inbox UX (P2)", () => {
   it("deep-links detail steps to P2 workflow ids", () => {
     const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
     assert.ok(inbox.includes("step=receipt"));
-    assert.ok(inbox.includes("step=knowledgeScope") || inbox.includes("step=generation"));
+    assert.ok(inbox.includes("step=knowledgeScope"));
     assert.ok(inbox.includes("step=serviceValidation"));
     assert.ok(inbox.includes("step=publish"));
     assert.ok(!inbox.includes("step=providerConfirm"));
@@ -36,9 +36,9 @@ describe("admin work inbox UX (P2)", () => {
 
   it("puts 자료 접수 first in the admin console rail", () => {
     const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
-    assert.ok(rail.includes('label: "자료 접수"'));
-    assert.ok(rail.includes('label: "지식화 대상 확인"'));
-    assert.ok(rail.includes('label: "게시"'));
+    assert.ok(rail.includes("ADMIN_WORKFLOW_STEP_LABELS.receipt"));
+    assert.ok(rail.includes("ADMIN_WORKFLOW_STEP_LABELS.knowledgeScope"));
+    assert.ok(rail.includes("ADMIN_WORKFLOW_STEP_LABELS.publish"));
     assert.ok(!rail.includes('label: "점검"'));
     assert.ok(!rail.includes('label: "제공자 검토"'));
     const consoleRail = rail.slice(rail.indexOf("getAdminConsoleRailItems"));

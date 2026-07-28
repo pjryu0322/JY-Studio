@@ -113,10 +113,10 @@ export function AdminCorrectionQueuePanel({
           window.location.assign(adminQueuePath("generation"));
         }}
         onRerunQuality={() => {
-          window.location.assign(adminQueuePath("quality"));
+          window.location.assign(adminQueuePath("generation"));
         }}
         onGoProviderReview={() => {
-          window.location.assign(adminQueuePath("provider-review"));
+          window.location.assign(adminQueuePath("publish"));
         }}
         onGoSearchValidation={() => {
           window.location.assign(adminQueuePath("service-validation"));

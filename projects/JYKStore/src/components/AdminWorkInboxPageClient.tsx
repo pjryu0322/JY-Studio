@@ -60,7 +60,12 @@ import {
   ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE,
   ADMIN_WORK_SUMMARY_LABEL,
 } from "@/lib/role-based-ux-copy";
-import { adminReviewDetailPath, parseAdminWorkQueue, type AdminWorkQueueKey } from "@/lib/routes";
+import {
+  adminReviewDetailPath,
+  normalizeAdminWorkQueue,
+  parseAdminWorkQueue,
+  type AdminWorkQueueKey,
+} from "@/lib/routes";
 
 type WorkStatusFilter =
   | "all"
@@ -146,36 +151,25 @@ function DisplayStatusBadge({
 
 function adminWorkInboxDetailHref(
   item: AdminWorkInboxItemViewModel,
-  queueScope:
-    | "all"
-    | "receipt"
-    | "knowledge-scope"
-    | "generation"
-    | "correction"
-    | "service-validation"
-    | "publish"
-    | "accept"
-    | "quality"
-    | "provider-review"
-    | "approval-publish" = "all",
+  queueScope: AdminWorkQueueKey | "all" = "all",
 ): string {
   const base = adminReviewDetailPath(item.packId);
-  switch (queueScope) {
+  const scope =
+    queueScope === "all" || queueScope === "ops"
+      ? queueScope
+      : normalizeAdminWorkQueue(queueScope);
+  switch (scope) {
     case "receipt":
-    case "accept":
       return `${base}?step=receipt`;
     case "knowledge-scope":
       return `${base}?step=knowledgeScope`;
     case "generation":
-    case "quality":
       return `${base}?step=generation`;
     case "correction":
       return `${base}?step=correction`;
     case "service-validation":
       return `${base}?step=serviceValidation`;
     case "publish":
-    case "provider-review":
-    case "approval-publish":
       return `${base}?step=publish`;
     default:
       break;

@@ -16,8 +16,8 @@ describe("admin provider review workbench (publish gate)", () => {
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const panel = readSource("src/components/AdminProviderReviewPanel.tsx");
     assert.ok(detail.includes("AdminProviderReviewPanel"));
-    assert.ok(detail.includes('activeStep === "publish"') || detail.includes('showPublish'));
-    assert.ok(detail.includes("resolveAdminWorkflowStepQuery") || detail.includes("requestedStep"));
+    assert.ok(detail.includes("showPublish"));
+    assert.ok(detail.includes("resolveAdminWorkflowStepQuery"));
     assert.ok(!detail.includes("제공자 확인 요청</button>"));
     assert.ok(panel.includes("제공자 검토 요청 전 확인"));
     assert.ok(panel.includes("canRequestProviderReviewHandoff"));

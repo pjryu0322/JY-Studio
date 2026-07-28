@@ -97,7 +97,7 @@ describe("admin review rail UX (P2 6-step workflow)", () => {
       "publish",
     ]);
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(detail.includes('case "correction"') || detail.includes('activeStep === "correction"'));
+    assert.ok(detail.includes('activeStep === "correction"'));
   });
 
   it("defaults REQUESTED worker zip to receipt", () => {
@@ -113,7 +113,7 @@ describe("admin review rail UX (P2 6-step workflow)", () => {
     assert.equal(rail.currentStep, "receipt");
   });
 
-  it("exposes console rail with P2 queues; ops is outside via getAdminOpsNavItem", () => {
+  it("exposes console rail with P2 queues; never emits legacy queue keys", () => {
     const items = getAdminConsoleRailItems("generation");
     const labels = items.map((i) => i.label);
     assert.ok(labels.includes("자료 접수"));
@@ -126,17 +126,29 @@ describe("admin review rail UX (P2 6-step workflow)", () => {
     assert.ok(!labels.includes("제공자 검토"));
     assert.ok(!labels.includes("승인·게시"));
     assert.ok(!labels.includes("공개/운영"));
-    assert.ok(items.some((i) => i.href.includes("queue=receipt")));
-    assert.ok(items.some((i) => i.href.includes("queue=knowledge-scope")));
-    assert.ok(items.some((i) => i.href.includes("queue=generation")));
-    assert.ok(items.some((i) => i.href.includes("queue=correction")));
-    assert.ok(items.some((i) => i.href.includes("queue=service-validation")));
-    assert.ok(items.some((i) => i.href.includes("queue=publish")));
-    assert.ok(!items.some((i) => i.href.includes("queue=quality")));
-    assert.ok(!items.some((i) => i.href.includes("queue=accept")));
+    for (const item of items) {
+      assert.ok(item.href);
+      assert.ok(!item.href.includes("queue=accept"));
+      assert.ok(!item.href.includes("queue=quality"));
+      assert.ok(!item.href.includes("queue=provider-review"));
+      assert.ok(!item.href.includes("queue=approval-publish"));
+    }
+    assert.ok(items.some((i) => i.href!.includes("queue=receipt")));
+    assert.ok(items.some((i) => i.href!.includes("queue=knowledge-scope")));
+    assert.ok(items.some((i) => i.href!.includes("queue=generation")));
+    assert.ok(items.some((i) => i.href!.includes("queue=correction")));
+    assert.ok(items.some((i) => i.href!.includes("queue=service-validation")));
+    assert.ok(items.some((i) => i.href!.includes("queue=publish")));
     const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
     assert.ok(rail.includes("getAdminOpsNavItem"));
     assert.ok(rail.includes('label: "공개/운영"'));
+    const routes = readSource("src/lib/routes.ts");
+    assert.ok(routes.includes('adminQueuePath("receipt")'));
+    assert.ok(routes.includes('adminQueuePath("knowledge-scope")'));
+    assert.ok(routes.includes('adminQueuePath("publish")'));
+    assert.ok(!routes.includes('adminQueuePath("accept")'));
+    assert.ok(!routes.includes('adminQueuePath("quality")'));
+    assert.ok(!routes.includes('adminQueuePath("provider-review")'));
   });
 
   it("does not render the inline 현재/다음 단계 pill card on review detail", () => {

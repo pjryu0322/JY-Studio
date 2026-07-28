@@ -23,7 +23,7 @@ export type AdminApprovalChecklistItem = {
 };
 
 export type AdminApprovalRemediationAction = {
-  id: "generation" | "quality" | "correction" | "providerConfirm" | "serviceValidation";
+  id: "generation" | "correction" | "publish" | "serviceValidation";
   label: string;
 };
 
@@ -66,23 +66,19 @@ export function buildAdminApprovalPublishViewModel(input: {
   }
   if (!input.quality.completed) {
     blockedReasons.push("품질점검을 먼저 완료해야 합니다.");
-    if (!remediationActions.some((a) => a.id === "generation")) {
-      pushRemediation({ id: "quality", label: "점검으로 이동" });
-    }
+    pushRemediation({ id: "generation", label: "생성으로 이동" });
   }
   if (input.quality.hasBlockers || input.quality.failCount > 0) {
     blockedReasons.push("품질점검 차단 이슈(FAIL)가 있어 승인할 수 없습니다.");
-    if (!remediationActions.some((a) => a.id === "generation" || a.id === "quality")) {
-      pushRemediation({ id: "correction", label: "보정으로 이동" });
-    }
+    pushRemediation({ id: "correction", label: "보정으로 이동" });
   }
   if (!input.providerConfirmed) {
     blockedReasons.push("제공자 확인이 완료되지 않았습니다.");
-    pushRemediation({ id: "providerConfirm", label: "제공자 검토로 이동" });
+    pushRemediation({ id: "publish", label: "제공자 검토로 이동" });
   }
   if (input.openSupplement) {
     blockedReasons.push("열린 제공자 보완요청을 먼저 처리해야 합니다.");
-    pushRemediation({ id: "providerConfirm", label: "제공자 검토로 이동" });
+    pushRemediation({ id: "correction", label: "보정으로 이동" });
   }
   if (!input.serviceDone) {
     blockedReasons.push("서비스 검증이 완료되지 않았습니다.");

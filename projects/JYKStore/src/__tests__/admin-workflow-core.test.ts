@@ -2,15 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ADMIN_WORKFLOW_STEPS,
+  ADMIN_WORKFLOW_STEP_LABELS,
   resolveAdminWorkflowStepQuery,
-} from "../lib/workflow/admin-workflow-steps.ts";
-import type { AdminQualityGateSnapshot } from "../lib/workflow/admin-workflow-state.ts";
+} from "../lib/workflow/admin-workflow-steps";
+import type { AdminQualityGateSnapshot } from "../lib/workflow/admin-workflow-state";
 import {
   canEnterKnowledgeScope,
   canPublish,
   canRequestProviderReviewAfterServiceValidation,
-} from "../lib/workflow/admin-workflow-gates.ts";
-import { resolveAdminWorkflowCurrentStep } from "../lib/workflow/admin-workflow-transition.ts";
+} from "../lib/workflow/admin-workflow-gates";
+import { resolveAdminWorkflowCurrentStep } from "../lib/workflow/admin-workflow-transition";
 
 function quality(overrides?: Partial<AdminQualityGateSnapshot>): AdminQualityGateSnapshot {
   return {
@@ -46,6 +47,20 @@ describe("ADMIN_WORKFLOW_STEPS", () => {
       "serviceValidation",
       "publish",
     ]);
+  });
+
+  it("exposes fixed Korean labels from ADMIN_WORKFLOW_STEP_LABELS", () => {
+    assert.deepEqual(
+      ADMIN_WORKFLOW_STEPS.map((s) => ADMIN_WORKFLOW_STEP_LABELS[s]),
+      [
+        "자료 접수",
+        "지식화 대상 확인",
+        "지식데이터 생성",
+        "보정",
+        "서비스 검증",
+        "게시",
+      ],
+    );
   });
 });
 
@@ -272,13 +287,30 @@ describe("canPublish", () => {
     assert.equal(
       canPublish({
         serviceValidationPhase: "PASSED",
+        providerReviewPhase: "NONE",
+      }),
+      false,
+    );
+    assert.equal(
+      canPublish({
+        serviceValidationPhase: "PASSED",
         providerReviewPhase: "CONFIRMED",
       }),
       true,
     );
   });
 
-  it("blocks publish when an admin supplement is open", () => {
+  it("blocks publish when service validation has not passed even if provider confirmed", () => {
+    assert.equal(
+      canPublish({
+        serviceValidationPhase: "NONE",
+        providerReviewPhase: "CONFIRMED",
+      }),
+      false,
+    );
+  });
+
+  it("blocks publish when an admin supplement is open (revision/correction needed)", () => {
     assert.equal(
       canPublish({
         serviceValidationPhase: "PASSED",
@@ -287,15 +319,15 @@ describe("canPublish", () => {
       }),
       false,
     );
-  });
-
-  it("blocks publish when service validation has not passed", () => {
     assert.equal(
-      canPublish({
-        serviceValidationPhase: "NONE",
-        providerReviewPhase: "CONFIRMED",
+      resolveAdminWorkflowCurrentStep({
+        workerZipPhase: "COMPLETED",
+        quality: quality(),
+        providerReviewPhase: "WITHDRAWN",
+        serviceValidationPhase: "PASSED",
+        providerSupplementPhase: "PENDING",
       }),
-      false,
+      "correction",
     );
   });
 });

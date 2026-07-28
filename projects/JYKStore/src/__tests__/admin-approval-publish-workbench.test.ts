@@ -92,7 +92,7 @@ describe("admin approval publish hardening", () => {
       workerZipPhase: "COMPLETED",
     });
     assert.equal(open.canDecide, false);
-    assert.ok(open.remediationActions.some((a) => a.id === "providerConfirm"));
+    assert.ok(open.remediationActions.some((a) => a.id === "correction"));
 
     const zip = buildAdminApprovalPublishViewModel({
       detail: minimalDetail("REVIEWING"),

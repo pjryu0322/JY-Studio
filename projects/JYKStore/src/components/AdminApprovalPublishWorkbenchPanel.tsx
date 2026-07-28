@@ -58,9 +58,8 @@ export function AdminApprovalPublishWorkbenchPanel({
 
   const runRemediation = (id: string) => {
     if (id === "generation") onGoGeneration?.();
-    else if (id === "quality") (onGoQuality ?? onGoGeneration)?.();
     else if (id === "correction") (onGoCorrection ?? onGoQuality)?.();
-    else if (id === "providerConfirm") onGoProviderReview?.();
+    else if (id === "publish" || id === "providerConfirm") onGoProviderReview?.();
     else if (id === "serviceValidation" || id === "searchValidation") onGoServiceValidation?.();
   };
 

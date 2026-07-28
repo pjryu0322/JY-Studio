@@ -66,7 +66,8 @@ describe("admin first screen landing", () => {
 
   it("admin /admin redirects bare path to queue=receipt", () => {
     const page = readSource("src/app/(store)/admin/page.tsx");
-    assert.ok(page.includes('adminQueuePath("receipt")') || page.includes('adminQueuePath("accept")'));
+    assert.ok(page.includes('adminQueuePath("receipt")'));
+    assert.ok(!page.includes('adminQueuePath("accept")'));
     assert.ok(page.includes("redirect"));
   });
 

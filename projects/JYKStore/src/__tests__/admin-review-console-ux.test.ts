@@ -57,7 +57,8 @@ describe("admin account review console UX", () => {
     const menu = readSource("src/lib/account-menu.ts");
     assert.ok(header.includes("isAdminAccountRole") || header.includes("accountMenuLinksForRole"));
     assert.ok(menu.includes("검수 대기 목록"));
-    assert.ok(menu.includes("자료 접수") || menu.includes("지식데이터 접수"));
+    assert.ok(menu.includes("자료 접수"));
+    assert.ok(!menu.includes("지식데이터 접수"));
     assert.ok(header.includes("useStoreLogout"));
   });
 
