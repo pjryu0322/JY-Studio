@@ -15,7 +15,7 @@ import {
 } from "../lib/admin-work-inbox-view-model.ts";
 
 describe("admin work inbox view model", () => {
-  it("maps worker completed before provider review to 지식데이터 생성 waiting", () => {
+  it("maps worker completed before service validation to 서비스 검증 waiting", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pack-1",
       packName: "Sample Pack",
@@ -23,9 +23,9 @@ describe("admin work inbox view model", () => {
       workerZipPhase: "COMPLETED",
       providerReviewPhase: "NONE",
     });
-    assert.equal(view.displayStatus, "지식데이터 생성 대기");
-    assert.equal(view.ctaLabel, "지식데이터 생성");
-    assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
+    assert.equal(view.displayStatus, "서비스 검증 대기");
+    assert.equal(view.ctaLabel, "서비스 검증");
+    assert.equal(view.adminQueueGroup, "ADMIN_REVIEW_REQUIRED");
     assert.equal(view.isWaitingForAdmin, true);
     assert.notEqual(view.displayStatus, "생성 완료");
   });
@@ -139,7 +139,7 @@ describe("admin work inbox view model", () => {
     assert.equal(view.workflowStatus, "PROVIDER_WITHDRAWN");
   });
 
-  it("keeps pre-request COMPLETED packs in 지식데이터 생성 (not provider waiting)", () => {
+  it("keeps pre-provider COMPLETED packs in 서비스 검증 (not provider waiting)", () => {
     const view = buildAdminWorkInboxItemViewModel({
       packId: "pre-request",
       packName: "Pre",
@@ -148,8 +148,8 @@ describe("admin work inbox view model", () => {
       providerReviewPhase: "NONE",
       providerSupplementPhase: "NONE",
     });
-    assert.equal(view.adminQueueGroup, "GENERATE_REQUIRED");
-    assert.equal(view.displayStatus, "지식데이터 생성 대기");
+    assert.equal(view.adminQueueGroup, "ADMIN_REVIEW_REQUIRED");
+    assert.equal(view.displayStatus, "서비스 검증 대기");
     assert.notEqual(view.adminQueueGroup, "PROVIDER_REVIEW_IN_PROGRESS");
   });
 
@@ -293,8 +293,8 @@ describe("admin work inbox view model", () => {
       providerSupplementPhase: "PENDING",
     });
     assert.equal(isAdminGenerationQueueItem(accepted), true);
-    assert.equal(isAdminGenerationQueueItem(completed), true);
-    assert.equal(isAdminGenerationQueueItem(supplement), true);
+    assert.equal(isAdminGenerationQueueItem(completed), false);
+    assert.equal(isAdminGenerationQueueItem(supplement), false);
     assert.equal(isAdminQualityQueueItem(completed), true);
     assert.equal(isAdminQualityQueueItem(supplement), true);
     assert.equal(isAdminCorrectionQueueItem(supplement), true);
@@ -309,11 +309,17 @@ describe("admin work inbox view model", () => {
     );
     assert.deepEqual(
       filterAdminWorkQueue([accepted, completed, supplement], "quality").map((i) => i.packId),
-      ["c", "s"],
+      ["a", "c", "s"],
     );
     assert.deepEqual(
       filterAdminWorkQueue([accepted, completed, supplement], "correction").map((i) => i.packId),
       ["s"],
+    );
+    assert.deepEqual(
+      filterAdminWorkQueue([accepted, completed, supplement], "service-validation").map(
+        (i) => i.packId,
+      ),
+      ["c"],
     );
   });
 

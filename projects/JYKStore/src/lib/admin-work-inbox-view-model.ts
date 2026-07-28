@@ -260,6 +260,7 @@ function mapQueuePresentation(input: {
   }
 
   if (input.providerReviewPhase === "CONFIRMED") {
+    // Legacy / edge: provider confirmed before SV — still need SV first for publish.
     if (input.serviceValidationPhase !== "PASSED") {
       return {
         adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
@@ -276,11 +277,29 @@ function mapQueuePresentation(input: {
     };
   }
 
-  if (input.workerZipPhase === "COMPLETED" || input.workerZipPhase === "ACCEPTED") {
+  // P2 order: generation complete → service validation (before provider review).
+  if (input.workerZipPhase === "COMPLETED") {
+    if (input.serviceValidationPhase !== "PASSED") {
+      return {
+        adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
+        displayStatus: "서비스 검증 대기",
+        ctaLabel: "서비스 검증",
+        isWaitingForAdmin: true,
+      };
+    }
+    return {
+      adminQueueGroup: "ADMIN_REVIEW_REQUIRED",
+      displayStatus: "제공자 검토·게시 대기",
+      ctaLabel: "게시",
+      isWaitingForAdmin: true,
+    };
+  }
+
+  if (input.workerZipPhase === "ACCEPTED") {
     return {
       adminQueueGroup: "GENERATE_REQUIRED",
-      displayStatus: "지식데이터 생성 대기",
-      ctaLabel: "지식데이터 생성",
+      displayStatus: "지식화 대상·생성 대기",
+      ctaLabel: "지식화 대상 확인",
       isWaitingForAdmin: true,
     };
   }
@@ -385,29 +404,30 @@ export function filterAdminGenerationQualityQueue(
   return items.filter(isAdminGenerationQualityQueueItem);
 }
 
-/** 자료 접수 후 Worker 생성 필요/진행·완료(제공자 검토 전) 대상 */
+/** 자료 접수 후 지식화 대상 확인·생성 대기 (ACCEPTED). COMPLETED는 서비스 검증으로. */
 export function isAdminGenerationQueueItem(item: AdminWorkInboxItemViewModel): boolean {
   if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
   if (item.adminQueueGroup === "ACCEPT_REQUIRED") return false;
-  // Keep admin-accepted / generation-complete packs visible even when a
-  // provider supplement overlay is the higher-priority inbox group.
-  if (item.workerZipPhase === "ACCEPTED" || item.workerZipPhase === "COMPLETED") {
-    if (item.providerReviewPhase === "REQUESTED" || item.providerReviewPhase === "CONFIRMED") {
-      return false;
-    }
-    return true;
+  if (item.providerReviewPhase === "REQUESTED" || item.providerReviewPhase === "CONFIRMED") {
+    return false;
   }
-  return false;
+  // Keep ACCEPTED visible even when a provider-supplement overlay wins the inbox group.
+  return item.workerZipPhase === "ACCEPTED";
 }
 
-/** 생성 완료 후 품질점검 대상 (제공자 검토 진행 중·게시 완료 제외) */
+/** P2: knowledge-scope queue — accepted packs awaiting scope confirm / generation start. */
+export function isAdminKnowledgeScopeQueueItem(item: AdminWorkInboxItemViewModel): boolean {
+  return isAdminGenerationQueueItem(item);
+}
+
+/** @deprecated P2 — quality folded into generation; kept for session-ack correction routing. */
 export function isAdminQualityQueueItem(item: AdminWorkInboxItemViewModel): boolean {
   if (item.packStatus === "PUBLISHED" || item.packStatus === "VERIFIED") return false;
   if (item.providerReviewPhase === "REQUESTED" || item.providerReviewPhase === "CONFIRMED") {
     return false;
   }
-  // Keep visible even when a provider-supplement overlay wins the inbox group —
-  // admin can still run quality checks after Worker generation completes.
+  if (item.serviceValidationPhase === "PASSED") return false;
+  // Quality review of COMPLETED packs that have not entered SV yet.
   return item.workerZipPhase === "COMPLETED";
 }
 
@@ -452,39 +472,47 @@ export function filterAdminWorkQueue(
   items: readonly AdminWorkInboxItemViewModel[],
   queue:
     | "all"
-    | "accept"
+    | "receipt"
+    | "knowledge-scope"
     | "generation"
-    | "quality"
     | "correction"
-    | "provider-review"
     | "service-validation"
+    | "publish"
+    /** @deprecated */
+    | "accept"
+    /** @deprecated */
+    | "quality"
+    /** @deprecated */
+    | "provider-review"
+    /** @deprecated */
     | "approval-publish",
 ): AdminWorkInboxItemViewModel[] {
   switch (queue) {
+    case "receipt":
     case "accept":
       return items.filter((i) => i.adminQueueGroup === "ACCEPT_REQUIRED");
+    case "knowledge-scope":
+      return items.filter(isAdminKnowledgeScopeQueueItem);
     case "generation":
-      return items.filter(isAdminGenerationQueueItem);
     case "quality":
-      return items.filter(isAdminQualityQueueItem);
+      return items.filter(
+        (i) => isAdminGenerationQueueItem(i) || isAdminQualityQueueItem(i),
+      );
     case "correction":
       // Session quality-ack is applied in the inbox client via filterAdminCorrectionQueue.
       return items.filter(isAdminCorrectionSupplementItem);
-    case "provider-review":
-      return items.filter(
-        (i) =>
-          i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
-          i.adminQueueGroup === "PROVIDER_SUPPLEMENT_REQUIRED",
-      );
     case "service-validation":
       return items.filter(
         (i) =>
           i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
           i.serviceValidationPhase !== "PASSED",
       );
+    case "publish":
+    case "provider-review":
     case "approval-publish":
       return items.filter(
         (i) =>
+          i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
           i.adminQueueGroup === "ADMIN_REVIEW_IN_PROGRESS" ||
           (i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
             i.serviceValidationPhase === "PASSED"),

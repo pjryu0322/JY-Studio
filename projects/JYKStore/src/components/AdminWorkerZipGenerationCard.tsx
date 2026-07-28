@@ -599,7 +599,7 @@ export function AdminWorkerZipGenerationCard({
           <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800">
             이 요청은 반려되었습니다. 반려 취소·재접수는{" "}
             <a
-              href={`/admin/reviews/${encodeURIComponent(packId)}?step=queue`}
+              href={`/admin/reviews/${encodeURIComponent(packId)}?step=receipt`}
               className="font-semibold underline"
             >
               자료 접수
@@ -612,7 +612,7 @@ export function AdminWorkerZipGenerationCard({
           <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
             아직 자료 접수가 되지 않았습니다.{" "}
             <a
-              href={`/admin/reviews/${encodeURIComponent(packId)}?step=queue`}
+              href={`/admin/reviews/${encodeURIComponent(packId)}?step=receipt`}
               className="font-semibold underline"
             >
               자료 접수
@@ -1126,16 +1126,16 @@ function QualityCheckHistoryCard({
 
 /**
  * After the admin reviews quality results, route FAIL/WARNING to correction
- * and clean pass to provider review.
+ * and clean pass to service validation (provider review is a later publish gate).
  */
 function resolveQualityReviewCompleteDestination(
   qualityResult: AdminWorkerZipQualityRefreshResult,
   detail: AdminReviewDetailDto | null,
-): "correction" | "providerConfirm" {
+): "correction" | "serviceValidation" {
   if (detail) {
     const gate = buildAdminQualityGateSnapshot(detail);
     if (gate.hasBlockers || gate.failCount > 0 || gate.hasWarnings) return "correction";
-    return "providerConfirm";
+    return "serviceValidation";
   }
   const r = qualityResult.readiness;
   const fail =
@@ -1153,7 +1153,7 @@ function resolveQualityReviewCompleteDestination(
     r.retrievalEvaluationStatus === "WARNING" ||
     r.releaseGateStatus === "WARNING";
   if (fail || warning) return "correction";
-  return "providerConfirm";
+  return "serviceValidation";
 }
 
 /** Rebuild a quality-refresh result snapshot from persisted review readiness. */

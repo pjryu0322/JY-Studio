@@ -11,7 +11,8 @@ describe("resolveStorePageChrome", () => {
     assert.equal(resolveStorePageChrome(ROUTES.adminReviews).title.includes("관리자"), true);
     assert.equal(resolveStorePageChrome(`${ROUTES.adminReviews}/pack-1`).title, "지식데이터 생성 및 편집");
     assert.equal(resolveStorePageChrome(ROUTES.adminGeneration).title, "지식데이터 생성");
-    assert.equal(resolveStorePageChrome(ROUTES.admin, "queue=accept").title, "지식데이터 접수");
+    assert.equal(resolveStorePageChrome(ROUTES.admin, "queue=receipt").title, "자료 접수");
+    assert.equal(resolveStorePageChrome(ROUTES.admin, "queue=accept").title, "자료 접수");
     assert.equal(
       resolveStorePageChrome(ROUTES.admin, "queue=generation").title,
       "지식데이터 생성",

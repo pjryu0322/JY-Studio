@@ -57,24 +57,25 @@ describe("admin account review console UX", () => {
     const menu = readSource("src/lib/account-menu.ts");
     assert.ok(header.includes("isAdminAccountRole") || header.includes("accountMenuLinksForRole"));
     assert.ok(menu.includes("검수 대기 목록"));
-    assert.ok(menu.includes("지식데이터 접수"));
+    assert.ok(menu.includes("자료 접수") || menu.includes("지식데이터 접수"));
     assert.ok(header.includes("useStoreLogout"));
   });
 
   it("exposes getAdminConsoleRailItems stage queues", () => {
     const labels = getAdminConsoleRailItems("home").map((i) => i.label);
     for (const label of [
-      "지식데이터 접수",
+      "자료 접수",
+      "지식화 대상 확인",
       "지식데이터 생성",
-      "점검",
       "보정",
-      "제공자 검토",
       "서비스 검증",
-      "승인·게시",
-      "공개/운영",
+      "게시",
     ]) {
       assert.ok(labels.includes(label), label);
     }
-    assert.ok(!labels.includes("자료 접수"));
+    assert.ok(!labels.includes("점검"));
+    assert.ok(!labels.includes("제공자 검토"));
+    assert.ok(!labels.includes("승인·게시"));
+    assert.ok(!labels.includes("공개/운영"));
   });
 });

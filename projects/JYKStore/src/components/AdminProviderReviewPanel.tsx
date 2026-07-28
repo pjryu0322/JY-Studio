@@ -293,7 +293,7 @@ export function AdminProviderReviewPanel({
 
         {providerReviewPhase === "CONFIRMED" && !hasOpenSupplement ? (
           <a
-            href={`${adminReviewDetailPath(packId)}?step=searchValidation`}
+            href={`${adminReviewDetailPath(packId)}?step=serviceValidation`}
             className="inline-flex min-h-[40px] items-center rounded-xl bg-slate-900 px-3 text-xs font-bold text-white"
           >
             서비스 검증으로 이동

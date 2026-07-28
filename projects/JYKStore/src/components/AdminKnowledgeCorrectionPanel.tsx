@@ -357,7 +357,7 @@ export function AdminKnowledgeCorrectionPanel({
                 type="button"
                 onClick={() => {
                   if (onGoProviderReview) onGoProviderReview();
-                  else window.location.assign(`${adminReviewDetailPath(packId)}?step=providerConfirm`);
+                  else window.location.assign(`${adminReviewDetailPath(packId)}?step=publish`);
                 }}
                 className="flex w-full min-h-[40px] items-center justify-center rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
               >

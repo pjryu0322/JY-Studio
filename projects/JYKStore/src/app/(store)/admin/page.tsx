@@ -10,7 +10,7 @@ type PageProps = {
 export default async function AdminPage({ searchParams }: PageProps) {
   const { queue } = await searchParams;
   if (!queue?.trim()) {
-    redirect(adminQueuePath("accept"));
+    redirect(adminQueuePath("receipt"));
   }
 
   return (

@@ -173,7 +173,7 @@ function createGatesClient(input: {
 }
 
 describe("store workflow handoff gates", () => {
-  it("requires worker COMPLETED and quality pass for provider review request", () => {
+  it("requires service validation PASSED for provider review request", () => {
     const quality = {
       completed: true,
       failCount: 0,
@@ -184,8 +184,9 @@ describe("store workflow handoff gates", () => {
     };
     assert.equal(
       canRequestProviderReviewHandoff({
-        workerZipPhase: "ACCEPTED",
+        workerZipPhase: "COMPLETED",
         quality,
+        serviceValidationPhase: "NONE",
       }),
       false,
     );
@@ -193,6 +194,7 @@ describe("store workflow handoff gates", () => {
       canRequestProviderReviewHandoff({
         workerZipPhase: "COMPLETED",
         quality,
+        serviceValidationPhase: "PASSED",
       }),
       true,
     );
@@ -843,8 +845,10 @@ describe("store workflow handoff gates", () => {
   });
 
   it("admin UI shows latest-knowledge revalidation copy", () => {
-    const ui = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    const ui = readSource("src/lib/role-workspace/admin-service-validation-view-model.ts");
+    const panel = readSource("src/components/AdminServiceValidationWorkbenchPanel.tsx");
     assert.ok(ui.includes("bindingStatus"));
+    assert.ok(panel.includes("bindingStatus") || panel.includes("vm.bindingStatus"));
     assert.ok(ui.includes("최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다."));
   });
 

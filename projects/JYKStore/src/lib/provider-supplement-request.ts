@@ -505,8 +505,8 @@ export function buildAdminSupplementRequestViewModel(
     handlingHint: resolveSupplementHandlingHint(state.changeType),
     evidenceLinks: [
       { id: "generation", label: "생성·재처리", step: "generation" },
-      { id: "quality", label: "품질점검", step: "quality" },
-      { id: "providerConfirm", label: "제공자 검토 단계", step: "providerConfirm" },
+      { id: "correction", label: "보정", step: "correction" },
+      { id: "publish", label: "게시·제공자 검토", step: "publish" },
     ],
   };
 }

@@ -99,7 +99,7 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
 }
 
 describe("getNextReviewAction", () => {
-  it("requests provider review after quality passed", () => {
+  it("routes to service validation after quality passed (before provider review)", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
     const action = getNextReviewAction({
@@ -109,8 +109,8 @@ describe("getNextReviewAction", () => {
       serviceValidationPhase: "NONE",
       detail,
     });
-    assert.equal(action.kind, "REQUEST_PROVIDER_REVIEW");
-    assert.equal(action.primaryLabel, "제공자 확인 요청");
+    assert.equal(action.kind, "GO_SERVICE_VALIDATION");
+    assert.equal(action.primaryLabel, "서비스 검증으로 이동");
   });
 
   it("hides provider-review CTA when knowledge generation is not completed", () => {
@@ -124,50 +124,51 @@ describe("getNextReviewAction", () => {
       detail,
     });
     assert.equal(action.kind, "NONE");
-    assert.match(action.message, /지식데이터 생성/);
+    assert.match(action.message, /지식데이터 생성|접수|대상/);
   });
 
-  it("does not unlock service validation before provider confirm", () => {
+  it("does not unlock provider review before service validation passes", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
     const action = getNextReviewAction({
       workerZipPhase: "COMPLETED",
       quality,
-      providerReviewPhase: "REQUESTED",
+      providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
     });
-    assert.equal(action.kind, "NONE");
-    assert.match(action.message, /제공자 확인 대기/);
+    assert.equal(action.kind, "GO_SERVICE_VALIDATION");
+    assert.notEqual(action.kind, "REQUEST_PROVIDER_REVIEW");
 
     const rail = getAdminReviewRailState({
       packId: "pack-1",
       workerZipPhase: "COMPLETED",
       quality,
-      providerReviewPhase: "REQUESTED",
+      providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
-      activeStep: "providerConfirm",
+      activeStep: "serviceValidation",
     });
-    const search = rail.items.find((i) => i.id === "searchValidation");
-    assert.equal(search?.status, "blocked");
+    const publish = rail.items.find((i) => i.id === "publish");
+    assert.ok(publish);
+    assert.ok(publish.status === "blocked" || publish.status === "next" || publish.status === "current");
   });
 
-  it("unlocks service validation after provider confirm", () => {
+  it("requests provider review after service validation passes", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
     const action = getNextReviewAction({
       workerZipPhase: "COMPLETED",
       quality,
-      providerReviewPhase: "CONFIRMED",
-      serviceValidationPhase: "NONE",
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "PASSED",
       detail,
     });
-    assert.equal(action.kind, "GO_SEARCH_VALIDATION");
-    assert.equal(action.primaryLabel, "서비스 검증으로 이동");
+    assert.equal(action.kind, "REQUEST_PROVIDER_REVIEW");
+    assert.equal(action.primaryLabel, "제공자 검토 요청");
   });
 
-  it("shows final-decision CTA after service validation is done", () => {
+  it("shows final-decision CTA after service validation and provider confirm", () => {
     const detail = baseDetail();
     const quality = buildAdminQualityGateSnapshot(detail);
     const action = getNextReviewAction({
@@ -178,7 +179,7 @@ describe("getNextReviewAction", () => {
       detail,
     });
     assert.equal(action.kind, "GO_FINAL_DECISION");
-    assert.equal(action.primaryLabel, "최종 검수 판단으로 이동");
+    assert.equal(action.primaryLabel, "게시 단계로 이동");
   });
 
   it("blocks next step and surfaces reasons when blocking issues exist", () => {

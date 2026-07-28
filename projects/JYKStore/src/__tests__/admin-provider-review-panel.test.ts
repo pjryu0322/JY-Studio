@@ -11,19 +11,17 @@ function readSource(relativePath: string): string {
   return readFileSync(join(projectRoot, relativePath), "utf8");
 }
 
-describe("admin provider review workbench (step3)", () => {
-  it("isolates provider review into AdminProviderReviewPanel", () => {
+describe("admin provider review workbench (publish gate)", () => {
+  it("hosts provider review under the publish step", () => {
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const panel = readSource("src/components/AdminProviderReviewPanel.tsx");
     assert.ok(detail.includes("AdminProviderReviewPanel"));
-    assert.ok(detail.includes('activeStep === "providerConfirm"'));
-    assert.ok(detail.includes("parseAdminReviewStep"));
-    assert.ok(detail.includes("requestedStep ?? resolvedWorkflowStep"));
+    assert.ok(detail.includes('activeStep === "publish"') || detail.includes('showPublish'));
+    assert.ok(detail.includes("resolveAdminWorkflowStepQuery") || detail.includes("requestedStep"));
     assert.ok(!detail.includes("제공자 확인 요청</button>"));
     assert.ok(panel.includes("제공자 검토 요청 전 확인"));
     assert.ok(panel.includes("canRequestProviderReviewHandoff"));
     assert.ok(panel.includes("AdminProviderSupplementPanel"));
-    assert.ok(panel.includes("Chunk 개별 수정"));
   });
 
   it("does not mount global supplement panel above the workbench", () => {

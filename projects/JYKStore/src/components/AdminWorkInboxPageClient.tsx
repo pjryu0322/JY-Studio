@@ -148,54 +148,58 @@ function adminWorkInboxDetailHref(
   item: AdminWorkInboxItemViewModel,
   queueScope:
     | "all"
-    | "accept"
+    | "receipt"
+    | "knowledge-scope"
     | "generation"
-    | "quality"
     | "correction"
-    | "provider-review"
     | "service-validation"
+    | "publish"
+    | "accept"
+    | "quality"
+    | "provider-review"
     | "approval-publish" = "all",
 ): string {
   const base = adminReviewDetailPath(item.packId);
   switch (queueScope) {
+    case "receipt":
     case "accept":
-      return `${base}?step=queue`;
+      return `${base}?step=receipt`;
+    case "knowledge-scope":
+      return `${base}?step=knowledgeScope`;
     case "generation":
-      return item.workerZipPhase === "COMPLETED"
-        ? `${base}?step=quality`
-        : `${base}?step=generation`;
     case "quality":
-      return `${base}?step=quality`;
+      return `${base}?step=generation`;
     case "correction":
       return `${base}?step=correction`;
-    case "provider-review":
-      return `${base}?step=providerConfirm`;
     case "service-validation":
-      return `${base}?step=searchValidation`;
+      return `${base}?step=serviceValidation`;
+    case "publish":
+    case "provider-review":
     case "approval-publish":
-      return `${base}?step=decision`;
+      return `${base}?step=publish`;
     default:
       break;
   }
   switch (item.adminQueueGroup) {
     case "ACCEPT_REQUIRED":
-      return `${base}?step=queue`;
+      return `${base}?step=receipt`;
     case "GENERATE_REQUIRED":
-      return item.workerZipPhase === "COMPLETED"
-        ? `${base}?step=quality`
+      return item.workerZipPhase === "ACCEPTED"
+        ? `${base}?step=knowledgeScope`
         : `${base}?step=generation`;
     case "QUALITY_CHECK_REQUIRED":
-      return `${base}?step=quality`;
+      return `${base}?step=generation`;
     case "PROVIDER_REVIEW_IN_PROGRESS":
-    case "PROVIDER_SUPPLEMENT_REQUIRED":
     case "RETURNED_OR_REJECTED":
-      return item.adminQueueGroup === "PROVIDER_SUPPLEMENT_REQUIRED"
-        ? `${base}?step=correction`
-        : `${base}?step=providerConfirm`;
+      return `${base}?step=publish`;
+    case "PROVIDER_SUPPLEMENT_REQUIRED":
+      return `${base}?step=correction`;
     case "ADMIN_REVIEW_REQUIRED":
-      return `${base}?step=searchValidation`;
+      return item.serviceValidationPhase === "PASSED"
+        ? `${base}?step=publish`
+        : `${base}?step=serviceValidation`;
     case "ADMIN_REVIEW_IN_PROGRESS":
-      return `${base}?step=decision`;
+      return `${base}?step=publish`;
     default:
       return base;
   }
@@ -411,9 +415,10 @@ function WorkInboxTable({
   readonly onSelectPreflight?: (item: AdminWorkInboxItemViewModel) => void;
 }) {
   const [sort, setSort] = useState<WorkInboxSortState>({ key: "requestedAt", dir: "desc" });
-  const showPreflight = activeQueue === "generation";
+  const showPreflight = activeQueue === "generation" || activeQueue === "knowledge-scope";
   const inlineAction =
     (activeQueue === "generation" ||
+      activeQueue === "knowledge-scope" ||
       activeQueue === "quality" ||
       activeQueue === "correction") &&
     typeof onSelectPack === "function";
@@ -953,12 +958,12 @@ export function AdminWorkInboxPageClient({
 
   const acceptItems =
     stageFiltered
-      ? activeQueue === "accept"
+      ? activeQueue === "receipt" || activeQueue === "accept"
         ? filteredViewItems
         : []
       : filterAdminWorkInboxByQueueGroup(filteredViewItems, "ACCEPT_REQUIRED");
   const generateItems = stageFiltered
-    ? activeQueue === "accept"
+    ? activeQueue === "receipt" || activeQueue === "accept"
       ? []
       : filteredViewItems
     : [

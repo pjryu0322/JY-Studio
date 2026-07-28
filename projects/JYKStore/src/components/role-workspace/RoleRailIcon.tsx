@@ -109,11 +109,21 @@ export function RoleRailIcon({
         </svg>
       );
     case "queue":
+    case "receipt":
     case "reviews":
       return (
         <svg {...common}>
           <path d="M5 6h14M5 12h14M5 18h9" />
           <circle cx="18" cy="18" r="2.5" />
+        </svg>
+      );
+    case "knowledgeScope":
+    case "knowledge-scope":
+      return (
+        <svg {...common}>
+          <path d="M4 7h16v10H4z" />
+          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <path d="M8 12h8M8 15h5" />
         </svg>
       );
     case "ops":

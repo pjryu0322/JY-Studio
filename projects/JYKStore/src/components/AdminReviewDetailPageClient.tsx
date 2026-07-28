@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
 import { AdminMaterialAcceptancePanel } from "@/components/AdminMaterialAcceptancePanel";
+import { AdminKnowledgeScopePanel } from "@/components/AdminKnowledgeScopePanel";
 import { AdminKnowledgeCorrectionPanel } from "@/components/AdminKnowledgeCorrectionPanel";
 import { AdminKnowledgeGenerationPanel } from "@/components/AdminKnowledgeGenerationPanel";
 import { AdminQualityCheckPanel } from "@/components/AdminQualityCheckPanel";
@@ -28,33 +29,27 @@ import {
   buildAdminQualityGateSnapshot,
   getAdminReviewRailState,
   getNextReviewAction,
-  type AdminReviewWorkflowStep,
   type AdminWorkerZipPhase,
 } from "@/lib/role-workspace/admin-review-rail";
 import type { AdminServiceChannelGatesSnapshot } from "@/lib/role-workspace/admin-service-validation-view-model";
-/** null = no explicit ?step (resolve from workflow after load). */
-export function parseAdminReviewStep(raw: string | null): AdminReviewWorkflowStep | null {
-  switch (raw) {
-    case "queue":
-    case "generation":
-    case "quality":
-    case "correction":
-    case "providerConfirm":
-    case "searchValidation":
-    case "decision":
-    case "publish":
-    case "ops":
-      return raw;
-    default:
-      return null;
-  }
+import {
+  resolveAdminWorkflowStepQuery,
+  type AdminWorkflowStep,
+} from "@/lib/workflow";
+import { ROUTES as APP_ROUTES } from "@/lib/routes";
+
+/** null = no explicit ?step (resolve from workflow after load). ops → external. */
+export function parseAdminReviewStep(raw: string | null): AdminWorkflowStep | null {
+  if (raw === "ops") return null;
+  return resolveAdminWorkflowStepQuery(raw);
 }
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const requestedStep = parseAdminReviewStep(searchParams.get("step"));
+  const rawStep = searchParams.get("step");
+  const requestedStep = parseAdminReviewStep(rawStep);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +73,13 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const [channelGates, setChannelGates] = useState<AdminServiceChannelGatesSnapshot | null>(
     null,
   );
+  const [knowledgeScopeReady, setKnowledgeScopeReady] = useState(false);
+
+  useEffect(() => {
+    if (rawStep === "ops") {
+      router.replace(APP_ROUTES.adminOps);
+    }
+  }, [rawStep, router]);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -122,7 +124,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   }, [packId]);
 
   const goStep = useCallback(
-    (step: AdminReviewWorkflowStep) => {
+    (step: AdminWorkflowStep) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("step", step);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -139,13 +141,11 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         quality,
         providerReviewPhase: workflowMarkers.providerReviewPhase,
         serviceValidationPhase: workflowMarkers.serviceValidationPhase,
+        providerSupplementPhase: workflowMarkers.providerSupplementPhase,
         detail,
       }),
     [workerZipPhase, quality, workflowMarkers, detail],
   );
-
-  // bindingStatus:
-  // 최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다.
 
   const resolvedWorkflowStep = useMemo(() => {
     const probe = getAdminReviewRailState({
@@ -156,20 +156,37 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       serviceValidationPhase: workflowMarkers.serviceValidationPhase,
       providerSupplementPhase: workflowMarkers.providerSupplementPhase,
       detail,
-      activeStep: requestedStep ?? "queue",
+      activeStep: requestedStep ?? "receipt",
+      knowledgeScopeReady,
     });
     return probe.currentStep;
-  }, [packId, workerZipPhase, quality, workflowMarkers, detail, requestedStep]);
+  }, [
+    packId,
+    workerZipPhase,
+    quality,
+    workflowMarkers,
+    detail,
+    requestedStep,
+    knowledgeScopeReady,
+  ]);
 
   const activeStep = requestedStep ?? resolvedWorkflowStep;
 
   useEffect(() => {
-    if (loading || requestedStep != null) return;
+    if (loading || requestedStep != null || rawStep === "ops") return;
     const params = new URLSearchParams(searchParams.toString());
     if (params.get("step") === resolvedWorkflowStep) return;
     params.set("step", resolvedWorkflowStep);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [loading, requestedStep, resolvedWorkflowStep, pathname, router, searchParams]);
+  }, [
+    loading,
+    requestedStep,
+    resolvedWorkflowStep,
+    pathname,
+    router,
+    searchParams,
+    rawStep,
+  ]);
 
   if (loading) {
     return <p className="text-sm text-store-muted">불러오는 중…</p>;
@@ -179,13 +196,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     return <p className="text-sm text-red-700">{error ?? "지식팩을 찾을 수 없습니다."}</p>;
   }
 
-  const showAcceptance = activeStep === "queue";
+  const showReceipt = activeStep === "receipt";
+  const showScope = activeStep === "knowledgeScope";
   const showGeneration = activeStep === "generation";
-  const showQuality = activeStep === "quality";
   const showCorrection = activeStep === "correction";
-  const showProviderConfirm = activeStep === "providerConfirm";
-  const showSearch = activeStep === "searchValidation";
-  const showDecision = activeStep === "decision" || activeStep === "publish";
+  const showService = activeStep === "serviceValidation";
+  const showPublish = activeStep === "publish";
   const providerConfirmed = workflowMarkers.providerReviewPhase === "CONFIRMED";
   const serviceDone = workflowMarkers.serviceValidationPhase === "PASSED";
   const openSupplement = isOpenProviderSupplementPhase(
@@ -203,23 +219,26 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
 
       <AdminReviewPageHeader detail={detail} />
 
-      {activeStep !== "queue" && (nextAction.kind !== "NONE" || nextAction.message) ? (
+      {activeStep !== "receipt" && (nextAction.kind !== "NONE" || nextAction.message) ? (
         <NextActionPanel
           action={nextAction}
           onPrimary={() => {
-            // Provider review request requires step3 checkboxes — navigate only.
             if (nextAction.kind === "REQUEST_PROVIDER_REVIEW") {
-              goStep("providerConfirm");
+              goStep("publish");
               return;
             }
-            if (nextAction.kind === "GO_SEARCH_VALIDATION") goStep("searchValidation");
-            else if (nextAction.kind === "GO_FINAL_DECISION") goStep("decision");
+            if (nextAction.kind === "GO_SERVICE_VALIDATION") goStep("serviceValidation");
+            else if (nextAction.kind === "GO_FINAL_DECISION") goStep("publish");
             else if (nextAction.kind === "REGENERATE_KNOWLEDGE") goStep("generation");
             else if (nextAction.kind === "REQUEST_PROVIDER_FIX") goStep("correction");
+            else if (nextAction.kind === "RERUN_QUALITY") {
+              goStep("generation");
+              setQualityRefreshKey((k) => k + 1);
+            }
           }}
           onSecondary={() => {
             if (nextAction.secondaryKind === "RERUN_QUALITY") {
-              goStep("quality");
+              goStep("generation");
               setQualityRefreshKey((k) => k + 1);
             } else if (nextAction.secondaryKind === "REQUEST_PROVIDER_FIX") {
               goStep("correction");
@@ -228,12 +247,21 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         />
       ) : null}
 
-      {showAcceptance ? (
+      {showReceipt ? (
         <AdminMaterialAcceptancePanel
           packId={packId}
           detail={detail}
           onPhaseChange={setWorkerZipPhase}
           onChanged={refreshSilently}
+          onGoGeneration={() => goStep("knowledgeScope")}
+        />
+      ) : null}
+
+      {showScope ? (
+        <AdminKnowledgeScopePanel
+          packId={packId}
+          packName={detail.pack.name}
+          onConfirmScope={() => setKnowledgeScopeReady(true)}
           onGoGeneration={() => goStep("generation")}
         />
       ) : null}
@@ -245,36 +273,29 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             onReviewDetailRefresh={refreshSilently}
             onPhaseChange={setWorkerZipPhase}
             workbenchMode="generation"
-            onGoQuality={() => goStep("quality")}
-          />
-        </div>
-      ) : null}
-
-      {showQuality ? (
-        <div className="space-y-3">
-          <AdminKnowledgeGenerationPanel
-            packId={packId}
-            onReviewDetailRefresh={refreshSilently}
-            onPhaseChange={setWorkerZipPhase}
-            workbenchMode="quality"
             qualityRefreshRequestKey={qualityRefreshKey}
             qualityResultsRevealKey={qualityResultsRevealKey}
-            preferQualitySection
-            onGoCorrection={() => goStep("correction")}
-            onGoProviderReview={() => goStep("providerConfirm")}
-          />
-          <AdminQualityCheckPanel
-            quality={quality}
-            generationDone={generationDone}
-            onRerunQuality={() => {
-              setQualityRefreshKey((k) => k + 1);
-            }}
-            onScrollToQuality={() => {
+            preferQualitySection={generationDone}
+            onGoQuality={() => {
               setQualityResultsRevealKey((k) => k + 1);
             }}
             onGoCorrection={() => goStep("correction")}
-            onGoProviderReview={() => goStep("providerConfirm")}
+            onGoProviderReview={() => goStep("serviceValidation")}
           />
+          {generationDone ? (
+            <AdminQualityCheckPanel
+              quality={quality}
+              generationDone={generationDone}
+              onRerunQuality={() => {
+                setQualityRefreshKey((k) => k + 1);
+              }}
+              onScrollToQuality={() => {
+                setQualityResultsRevealKey((k) => k + 1);
+              }}
+              onGoCorrection={() => goStep("correction")}
+              onGoProviderReview={() => goStep("serviceValidation")}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -288,46 +309,30 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           providerReviewPhase={workflowMarkers.providerReviewPhase}
           onGoGeneration={() => goStep("generation")}
           onRerunQuality={() => {
-            goStep("quality");
+            goStep("generation");
             setQualityRefreshKey((k) => k + 1);
           }}
-          onGoProviderReview={() => goStep("providerConfirm")}
-          onGoSearchValidation={() => goStep("searchValidation")}
+          onGoProviderReview={() => goStep("serviceValidation")}
+          onGoSearchValidation={() => goStep("serviceValidation")}
         />
       ) : null}
 
-      {showProviderConfirm ? (
-        <AdminProviderReviewPanel
-          packId={packId}
-          detail={detail}
-          workerZipPhase={workerZipPhase}
-          quality={quality}
-          providerReviewPhase={workflowMarkers.providerReviewPhase}
-          providerReviewRequestedAt={workflowMarkers.providerReviewRequestedAt}
-          providerReviewConfirmedAt={workflowMarkers.providerReviewConfirmedAt}
-          supplementState={supplementState}
-          onChanged={refreshSilently}
-          onGoQuality={() => goStep("quality")}
-          onError={setError}
-        />
-      ) : null}
-
-      {showSearch ? (
+      {showService ? (
         <AdminServiceValidationWorkbenchPanel
           packId={packId}
-          providerConfirmed={providerConfirmed}
+          providerConfirmed={true}
           openSupplement={openSupplement}
           serviceDone={serviceDone}
           actionBusy={actionBusy}
           channelGates={channelGates}
           refreshBusy={channelRefreshBusy}
           onRefreshChannels={() => void refreshChannelGates()}
-          onGoDecision={() => goStep("decision")}
+          onGoDecision={() => goStep("publish")}
           onMarkPassed={() => {
             setActionBusy(true);
             void markAdminServiceValidationPassedApi(packId)
               .then(() => refreshSilently())
-              .then(() => goStep("decision"))
+              .then(() => goStep("publish"))
               .catch((err) =>
                 setError(err instanceof Error ? err.message : "서비스 검증 기록에 실패했습니다."),
               )
@@ -336,25 +341,43 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         />
       ) : null}
 
-      {showDecision ? (
-        <AdminApprovalPublishWorkbenchPanel
-          packId={packId}
-          detail={detail}
-          providerConfirmed={providerConfirmed}
-          serviceDone={serviceDone}
-          openSupplement={openSupplement}
-          quality={quality}
-          workerZipPhase={workerZipPhase}
-          channelGates={channelGates}
-          onUpdated={(next) => {
-            setDetail(next);
-          }}
-          onGoGeneration={() => goStep("generation")}
-          onGoQuality={() => goStep("quality")}
-          onGoCorrection={() => goStep("correction")}
-          onGoProviderReview={() => goStep("providerConfirm")}
-          onGoServiceValidation={() => goStep("searchValidation")}
-        />
+      {showPublish ? (
+        <div className="space-y-3">
+          {!providerConfirmed ? (
+            <AdminProviderReviewPanel
+              packId={packId}
+              detail={detail}
+              workerZipPhase={workerZipPhase}
+              quality={quality}
+              providerReviewPhase={workflowMarkers.providerReviewPhase}
+              providerReviewRequestedAt={workflowMarkers.providerReviewRequestedAt}
+              providerReviewConfirmedAt={workflowMarkers.providerReviewConfirmedAt}
+              supplementState={supplementState}
+              onChanged={refreshSilently}
+              onGoQuality={() => goStep("generation")}
+              onError={setError}
+            />
+          ) : null}
+          <AdminApprovalPublishWorkbenchPanel
+            packId={packId}
+            detail={detail}
+            providerConfirmed={providerConfirmed}
+            serviceDone={serviceDone}
+            openSupplement={openSupplement}
+            quality={quality}
+            workerZipPhase={workerZipPhase}
+            channelGates={channelGates}
+            onUpdated={(next) => {
+              setDetail(next);
+              void refreshSilently();
+            }}
+            onGoGeneration={() => goStep("generation")}
+            onGoQuality={() => goStep("generation")}
+            onGoCorrection={() => goStep("correction")}
+            onGoProviderReview={() => goStep("publish")}
+            onGoServiceValidation={() => goStep("serviceValidation")}
+          />
+        </div>
       ) : null}
     </div>
   );

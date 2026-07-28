@@ -1,6 +1,9 @@
 /**
- * Admin workbench step4 — service validation readiness ViewModel.
+ * Admin workbench — service validation readiness ViewModel.
  * Derives CTA / blocked reasons from workflow markers + channel gates (no DB enums).
+ *
+ * P2: provider confirmation is NOT a prerequisite for marking SV passed.
+ * Provider review is a publish gate that runs after SERVICE_VALIDATION.
  */
 
 export type AdminServiceChannelGateRow = {
@@ -55,18 +58,16 @@ function displayChannelLabel(channel: string, label: string): string {
 }
 
 export function buildAdminServiceValidationViewModel(input: {
-  providerConfirmed: boolean;
+  /** @deprecated P2 — ignored for gate decisions; kept for call-site compatibility. */
+  providerConfirmed?: boolean;
   openSupplement: boolean;
   serviceDone: boolean;
   channelGates: AdminServiceChannelGatesSnapshot | null;
 }): AdminServiceValidationViewModel {
   const blockedReasons: string[] = [];
-  if (!input.providerConfirmed) {
-    blockedReasons.push("제공자 확인이 완료되지 않아 서비스 검증 완료를 기록할 수 없습니다.");
-  }
   if (input.openSupplement) {
     blockedReasons.push(
-      "제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다. 제공자 검토 단계에서 보완요청을 처리하세요.",
+      "제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다. 보정 단계에서 보완요청을 처리하세요.",
     );
   }
 
@@ -81,7 +82,7 @@ export function buildAdminServiceValidationViewModel(input: {
   const allPassed = Boolean(gates?.allPassed);
   const bindingCurrent = bindingStatus === "CURRENT";
 
-  if (gates == null && input.providerConfirmed && !input.openSupplement) {
+  if (gates == null && !input.openSupplement) {
     blockedReasons.push("채널 검증 상태를 확인하는 중입니다.");
   }
   if (gates && bindingStatus && bindingStatus !== "CURRENT") {
@@ -98,12 +99,6 @@ export function buildAdminServiceValidationViewModel(input: {
   }
 
   const checklist: AdminServiceValidationChecklistItem[] = [
-    {
-      id: "provider",
-      label: "제공자 확인 완료",
-      done: input.providerConfirmed,
-      detail: input.providerConfirmed ? undefined : "제공자 검토 단계에서 확인을 완료하세요.",
-    },
     {
       id: "supplement",
       label: "열린 제공자 보완요청 없음",
@@ -150,16 +145,15 @@ export function buildAdminServiceValidationViewModel(input: {
       bindingReason,
       allPassed,
       canMarkPassed: false,
-      primaryLabel: "서비스 검증 완료됨 · 최종 검수 판단으로 이동",
+      primaryLabel: "서비스 검증 완료됨 · 게시 단계로 이동",
       summaryTone: "emerald",
-      summaryMessage: "서비스 검증이 완료되었습니다. 최종 검수 판단으로 이동하세요.",
+      summaryMessage: "서비스 검증이 완료되었습니다. 게시 단계에서 제공자 검토를 요청하세요.",
       checklist: checklist.map((c) => ({ ...c, done: true })),
       howToRunHint,
     };
   }
 
   const canMarkPassed =
-    input.providerConfirmed &&
     !input.openSupplement &&
     gates != null &&
     allPassed &&
@@ -175,7 +169,7 @@ export function buildAdminServiceValidationViewModel(input: {
       bindingReason,
       allPassed: true,
       canMarkPassed: true,
-      primaryLabel: "검증 확인 완료 · 최종 검수 판단으로 이동",
+      primaryLabel: "검증 확인 완료 · 게시 단계로 이동",
       summaryTone: "emerald",
       summaryMessage: "API·MCP·ZIP/RAG Export 검증이 모두 통과했습니다.",
       checklist,
@@ -183,15 +177,11 @@ export function buildAdminServiceValidationViewModel(input: {
     };
   }
 
-  const status: AdminServiceValidationStatus =
-    blockedReasons.some(
-      (r) =>
-        r.includes("제공자 확인") ||
-        r.includes("보완요청") ||
-        r.includes("확인하는 중"),
-    )
-      ? "BLOCKED"
-      : "NEEDS_CHANNELS";
+  const status: AdminServiceValidationStatus = blockedReasons.some(
+    (r) => r.includes("보완요청") || r.includes("확인하는 중"),
+  )
+    ? "BLOCKED"
+    : "NEEDS_CHANNELS";
 
   return {
     status,
@@ -202,7 +192,7 @@ export function buildAdminServiceValidationViewModel(input: {
     bindingReason,
     allPassed,
     canMarkPassed: false,
-    primaryLabel: "검증 확인 완료 · 최종 검수 판단으로 이동",
+    primaryLabel: "검증 확인 완료 · 게시 단계로 이동",
     summaryTone: "amber",
     summaryMessage: blockedReasons[0] ?? null,
     checklist,

@@ -26,7 +26,7 @@ export type RoleRailItem = {
 export type NextActionTone = "ready" | "warning" | "blocked";
 
 export type NextReviewActionKind =
-  | "GO_SEARCH_VALIDATION"
+  | "GO_SERVICE_VALIDATION"
   | "GO_FINAL_DECISION"
   | "RERUN_QUALITY"
   | "REGENERATE_KNOWLEDGE"

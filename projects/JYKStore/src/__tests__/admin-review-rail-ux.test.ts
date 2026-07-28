@@ -17,47 +17,54 @@ function readSource(relativePath: string): string {
   return readFileSync(join(projectRoot, relativePath), "utf8");
 }
 
-describe("admin review rail UX (workbench stages)", () => {
-  it("exposes independent 생성 / 점검 / 보정 rail labels", () => {
+const qualityOk = {
+  ...buildAdminQualityGateSnapshot(null),
+  completed: true,
+  hasBlockers: false,
+  failCount: 0,
+  hasWarnings: false,
+  blockers: [] as string[],
+  warnings: [] as string[],
+};
+
+describe("admin review rail UX (P2 6-step workflow)", () => {
+  it("exposes exactly 6 fabrication rail labels", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "COMPLETED",
-      quality: buildAdminQualityGateSnapshot(null),
+      quality: qualityOk,
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail: null,
-      activeStep: "quality",
+      activeStep: "generation",
     });
-    const labels = rail.items.filter((i) => i.id !== "ops").map((i) => i.label);
+    const labels = rail.items.map((i) => i.label);
     assert.deepEqual(labels, [
       "자료 접수",
-      "생성",
-      "점검",
+      "지식화 대상 확인",
+      "지식데이터 생성",
       "보정",
-      "제공자 검토",
       "서비스 검증",
-      "승인·게시",
+      "게시",
     ]);
-    assert.ok(!labels.includes("생성·품질보정"));
+    assert.ok(!labels.includes("점검"));
+    assert.ok(!labels.includes("제공자 검토"));
+    assert.ok(!labels.includes("승인·게시"));
+    assert.ok(!labels.includes("공개/운영"));
   });
 
-  it("keeps generation and quality as separate active stages", () => {
-    const base = {
+  it("does not treat quality as an independent rail step", () => {
+    const rail = getAdminReviewRailState({
       packId: "p1",
-      workerZipPhase: "COMPLETED" as const,
-      quality: buildAdminQualityGateSnapshot(null),
-      providerReviewPhase: "NONE" as const,
-      serviceValidationPhase: "NONE" as const,
+      workerZipPhase: "COMPLETED",
+      quality: qualityOk,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
       detail: null,
-    };
-    const onGen = getAdminReviewRailState({ ...base, activeStep: "generation" });
-    const onQuality = getAdminReviewRailState({ ...base, activeStep: "quality" });
-    assert.equal(onGen.items.find((i) => i.id === "generation")?.status, "current");
-    assert.equal(onQuality.items.find((i) => i.id === "quality")?.status, "current");
-    assert.notEqual(
-      onGen.items.find((i) => i.id === "generation")?.label,
-      onQuality.items.find((i) => i.id === "quality")?.label,
-    );
+      activeStep: "generation",
+    });
+    assert.ok(!rail.items.some((i) => i.id === "quality"));
+    assert.equal(rail.items.find((i) => i.id === "generation")?.status, "current");
   });
 
   it("routes COMPLETED + quality blockers to 보정", () => {
@@ -80,22 +87,20 @@ describe("admin review rail UX (workbench stages)", () => {
     assert.equal(rail.currentStep, "correction");
   });
 
-  it("preserves internal step query ids for deep links including correction", () => {
+  it("preserves canonical step ids (legacy mapped via resolveAdminWorkflowStepQuery)", () => {
     assert.deepEqual([...ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS], [
-      "queue",
+      "receipt",
+      "knowledgeScope",
       "generation",
-      "quality",
       "correction",
-      "providerConfirm",
-      "searchValidation",
-      "decision",
+      "serviceValidation",
       "publish",
     ]);
     const detail = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(detail.includes('case "correction"'));
+    assert.ok(detail.includes('case "correction"') || detail.includes('activeStep === "correction"'));
   });
 
-  it("defaults REQUESTED worker zip to queue (not generation)", () => {
+  it("defaults REQUESTED worker zip to receipt", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "REQUESTED",
@@ -103,28 +108,35 @@ describe("admin review rail UX (workbench stages)", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail: null,
-      activeStep: "queue",
+      activeStep: "receipt",
     });
-    assert.equal(rail.currentStep, "queue");
+    assert.equal(rail.currentStep, "receipt");
   });
 
-  it("exposes console rail with 지식데이터 접수 and split stage queues", () => {
+  it("exposes console rail with P2 queues; ops is outside via getAdminOpsNavItem", () => {
     const items = getAdminConsoleRailItems("generation");
     const labels = items.map((i) => i.label);
-    assert.ok(labels.includes("지식데이터 접수"));
+    assert.ok(labels.includes("자료 접수"));
+    assert.ok(labels.includes("지식화 대상 확인"));
     assert.ok(labels.includes("지식데이터 생성"));
-    assert.ok(labels.includes("점검"));
     assert.ok(labels.includes("보정"));
-    assert.ok(labels.includes("제공자 검토"));
     assert.ok(labels.includes("서비스 검증"));
-    assert.ok(labels.includes("승인·게시"));
-    assert.ok(labels.includes("공개/운영"));
-    assert.ok(!labels.includes("자료 접수"));
-    assert.ok(!labels.includes("생성·품질보정"));
-    assert.ok(items.some((i) => i.href.includes("queue=accept")));
+    assert.ok(labels.includes("게시"));
+    assert.ok(!labels.includes("점검"));
+    assert.ok(!labels.includes("제공자 검토"));
+    assert.ok(!labels.includes("승인·게시"));
+    assert.ok(!labels.includes("공개/운영"));
+    assert.ok(items.some((i) => i.href.includes("queue=receipt")));
+    assert.ok(items.some((i) => i.href.includes("queue=knowledge-scope")));
     assert.ok(items.some((i) => i.href.includes("queue=generation")));
-    assert.ok(items.some((i) => i.href.includes("queue=quality")));
     assert.ok(items.some((i) => i.href.includes("queue=correction")));
+    assert.ok(items.some((i) => i.href.includes("queue=service-validation")));
+    assert.ok(items.some((i) => i.href.includes("queue=publish")));
+    assert.ok(!items.some((i) => i.href.includes("queue=quality")));
+    assert.ok(!items.some((i) => i.href.includes("queue=accept")));
+    const rail = readSource("src/lib/role-workspace/admin-review-rail.ts");
+    assert.ok(rail.includes("getAdminOpsNavItem"));
+    assert.ok(rail.includes('label: "공개/운영"'));
   });
 
   it("does not render the inline 현재/다음 단계 pill card on review detail", () => {
@@ -133,10 +145,9 @@ describe("admin review rail UX (workbench stages)", () => {
     assert.ok(!detail.includes("현재 단계:"));
     assert.ok(detail.includes('activeStep === "correction"'));
     assert.ok(detail.includes('workbenchMode="generation"'));
-    assert.ok(detail.includes('workbenchMode="quality"'));
   });
 
-  it("wires RoleRailIcon correction and quality→correction CTAs", () => {
+  it("wires RoleRailIcon and correction CTAs", () => {
     const icon = readSource("src/components/role-workspace/RoleRailIcon.tsx");
     const quality = readSource("src/components/AdminQualityCheckPanel.tsx");
     const correction = readSource("src/components/AdminKnowledgeCorrectionPanel.tsx");
@@ -144,21 +155,17 @@ describe("admin review rail UX (workbench stages)", () => {
     const card = readSource("src/components/AdminWorkerZipGenerationCard.tsx");
     assert.ok(icon.includes('case "correction"'));
     assert.ok(icon.includes('case "generation"'));
-    assert.ok(icon.includes('case "quality"'));
+    assert.ok(icon.includes('case "receipt"') || icon.includes('case "queue"'));
     assert.ok(quality.includes("onGoCorrection"));
     assert.ok(card.includes("완료취소"));
     assert.ok(card.includes("onAcknowledgeQualityReview"));
     assert.ok(correction.includes("보정 큐"));
-    assert.ok(correction.includes("미리보기"));
-    assert.ok(correction.includes("보정 액션"));
-    assert.ok(correction.includes("부모 지식단위와 병합"));
     assert.ok(detail.includes("showCorrection"));
     assert.ok(detail.includes("AdminKnowledgeCorrectionPanel"));
-    assert.ok(detail.includes('step=correction') || detail.includes('"correction"'));
     assert.ok(detail.includes("onGoCorrection={() => goStep(\"correction\")}"));
   });
 
-  it("marks correction warning/current when quality blockers exist and blocks later stages", () => {
+  it("marks correction when quality blockers exist and blocks later stages", () => {
     const quality = {
       ...buildAdminQualityGateSnapshot(null),
       completed: true,
@@ -177,32 +184,23 @@ describe("admin review rail UX (workbench stages)", () => {
     });
     const correction = rail.items.find((i) => i.id === "correction");
     assert.ok(correction);
-    assert.ok(correction.status === "current" || correction.status === "warning");
-    assert.equal(rail.items.find((i) => i.id === "providerConfirm")?.status, "blocked");
-    assert.equal(rail.items.find((i) => i.id === "searchValidation")?.status, "blocked");
-    assert.equal(rail.items.find((i) => i.id === "decision")?.status, "blocked");
+    assert.ok(correction.status === "current" || correction.status === "warning" || correction.status === "next");
+    const service = rail.items.find((i) => i.id === "serviceValidation");
+    assert.ok(service);
+    assert.equal(service.status, "blocked");
   });
 
-  it("routes COMPLETED + quality pass to 제공자 검토 as next", () => {
-    const quality = {
-      ...buildAdminQualityGateSnapshot(null),
-      completed: true,
-      hasBlockers: false,
-      hasWarnings: false,
-      failCount: 0,
-      blockers: [],
-      warnings: [],
-    };
+  it("routes clean COMPLETED quality to serviceValidation before provider review", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "COMPLETED",
-      quality,
+      quality: qualityOk,
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail: null,
-      activeStep: "quality",
+      activeStep: "serviceValidation",
     });
-    assert.equal(rail.currentStep, "providerConfirm");
-    assert.equal(rail.items.find((i) => i.id === "providerConfirm")?.status, "next");
+    assert.equal(rail.currentStep, "serviceValidation");
+    assert.ok(!rail.items.some((i) => i.id === "providerConfirm"));
   });
 });

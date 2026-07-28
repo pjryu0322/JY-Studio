@@ -79,7 +79,7 @@ describe("admin approval publish hardening", () => {
     });
     assert.equal(vm.canDecide, false);
     assert.ok(vm.blockedReasons.some((r) => r.includes("서비스 검증")));
-    assert.ok(vm.remediationActions.some((a) => a.id === "searchValidation"));
+    assert.ok(vm.remediationActions.some((a) => a.id === "serviceValidation"));
   });
 
   it("blocks open supplement and incomplete worker zip", () => {

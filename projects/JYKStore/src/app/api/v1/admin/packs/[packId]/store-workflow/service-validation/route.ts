@@ -8,8 +8,8 @@ import { logSafeRouteError } from "@/lib/safe-logging";
 type RouteContext = { params: Promise<{ packId: string }> };
 
 /**
- * Admin: persist service-validation completion after provider confirm
- * and API/MCP/ZIP channel gates pass.
+ * Admin: persist service-validation completion once API/MCP/ZIP channel
+ * gates pass. Provider review is requested only after this (P2 order).
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);

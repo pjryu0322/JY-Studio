@@ -23,7 +23,7 @@ export type AdminApprovalChecklistItem = {
 };
 
 export type AdminApprovalRemediationAction = {
-  id: "generation" | "quality" | "correction" | "providerConfirm" | "searchValidation";
+  id: "generation" | "quality" | "correction" | "providerConfirm" | "serviceValidation";
   label: string;
 };
 
@@ -86,7 +86,7 @@ export function buildAdminApprovalPublishViewModel(input: {
   }
   if (!input.serviceDone) {
     blockedReasons.push("서비스 검증이 완료되지 않았습니다.");
-    pushRemediation({ id: "searchValidation", label: "서비스 검증으로 이동" });
+    pushRemediation({ id: "serviceValidation", label: "서비스 검증으로 이동" });
   }
 
   if (input.quality.hasWarnings) {

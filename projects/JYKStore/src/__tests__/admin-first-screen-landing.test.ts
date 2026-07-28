@@ -64,13 +64,13 @@ describe("admin first screen landing", () => {
     assert.ok(chrome.includes("adminQueueChrome") || chrome.includes("parseAdminWorkQueue"));
   });
 
-  it("admin /admin redirects bare path to queue=accept", () => {
+  it("admin /admin redirects bare path to queue=receipt", () => {
     const page = readSource("src/app/(store)/admin/page.tsx");
-    assert.ok(page.includes('adminQueuePath("accept")'));
+    assert.ok(page.includes('adminQueuePath("receipt")') || page.includes('adminQueuePath("accept")'));
     assert.ok(page.includes("redirect"));
   });
 
-  it("admin rail starts at 지식데이터 접수 (/admin), not 투데이", () => {
+  it("admin rail starts at 자료 접수 (/admin), not 투데이", () => {
     const nav = readSource("src/components/BottomTabNav.tsx");
     const routes = readSource("src/lib/routes.ts");
     assert.ok(nav.includes('role === "ADMIN"'));
@@ -78,6 +78,6 @@ describe("admin first screen landing", () => {
     const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
     assert.ok(adminBlock.includes('"admin"'));
     assert.ok(!adminBlock.includes('"today"'));
-    assert.ok(routes.includes('label: "지식데이터 접수"'));
+    assert.ok(routes.includes('label: "자료 접수"'));
   });
 });

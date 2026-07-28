@@ -275,7 +275,7 @@ export function AdminProviderSupplementPanel({
                       재처리 실행 (생성)
                     </Link>
                     <Link
-                      href={`${adminReviewDetailPath(packId)}?step=quality`}
+                      href={`${adminReviewDetailPath(packId)}?step=generation`}
                       className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-950"
                     >
                       품질점검 재진입

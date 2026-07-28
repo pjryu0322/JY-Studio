@@ -38,35 +38,65 @@ export const ROUTES = {
 
 export type AdminWorkQueueKey =
   | "all"
-  | "accept"
+  | "receipt"
+  | "knowledge-scope"
   | "generation"
-  | "quality"
   | "correction"
-  | "provider-review"
   | "service-validation"
-  | "approval-publish"
-  | "ops";
+  | "publish"
+  | "ops"
+  /** @deprecated P2: use receipt */
+  | "accept"
+  /** @deprecated P2: folded into generation */
+  | "quality"
+  /** @deprecated P2: folded into publish */
+  | "provider-review"
+  /** @deprecated P2: use publish */
+  | "approval-publish";
 
-export function adminQueuePath(queue: AdminWorkQueueKey = "accept"): string {
+export function adminQueuePath(queue: AdminWorkQueueKey = "receipt"): string {
   if (queue === "ops") return ROUTES.adminOps;
-  if (queue === "all") return `${ROUTES.admin}?queue=accept`;
-  return `${ROUTES.admin}?queue=${encodeURIComponent(queue)}`;
+  const canonical = normalizeAdminWorkQueue(queue);
+  if (canonical === "all") return `${ROUTES.admin}?queue=receipt`;
+  return `${ROUTES.admin}?queue=${encodeURIComponent(canonical)}`;
+}
+
+/** Map legacy queue keys to P2 canonical queues. */
+export function normalizeAdminWorkQueue(queue: AdminWorkQueueKey): AdminWorkQueueKey {
+  switch (queue) {
+    case "accept":
+    case "all":
+      return "receipt";
+    case "quality":
+      return "generation";
+    case "provider-review":
+    case "approval-publish":
+      return "publish";
+    default:
+      return queue;
+  }
 }
 
 export function parseAdminWorkQueue(raw: string | null | undefined): AdminWorkQueueKey {
   switch (raw) {
     case "all":
-    case "accept":
+    case "receipt":
+    case "knowledge-scope":
     case "generation":
-    case "quality":
     case "correction":
-    case "provider-review":
     case "service-validation":
-    case "approval-publish":
+    case "publish":
     case "ops":
       return raw;
+    case "accept":
+      return "receipt";
+    case "quality":
+      return "generation";
+    case "provider-review":
+    case "approval-publish":
+      return "publish";
     default:
-      return "accept";
+      return "receipt";
   }
 }
 
@@ -121,12 +151,12 @@ export type BottomTabKey =
   | "providerReview"
   | "admin"
   | "adminAccept"
+  | "adminReceipt"
+  | "adminKnowledgeScope"
   | "adminGeneration"
-  | "adminQuality"
   | "adminCorrection"
-  | "adminProviderReview"
   | "adminServiceValidation"
-  | "adminApproval"
+  | "adminPublish"
   | "account"
   | "opsUsage"
   | "opsAudit"
@@ -142,17 +172,17 @@ export const BOTTOM_TABS: readonly {
   { key: "search", href: ROUTES.search, label: "검색", icon: "⌕" },
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
-  { key: "admin", href: adminQueuePath("accept"), label: "지식데이터 접수", icon: "📥" },
-  { key: "adminAccept", href: adminQueuePath("accept"), label: "지식데이터 접수", icon: "📁" },
-  { key: "adminGeneration", href: adminQueuePath("generation"), label: "지식데이터 생성", icon: "▶" },
-  { key: "adminQuality", href: adminQueuePath("quality"), label: "점검", icon: "☑" },
-  { key: "adminCorrection", href: adminQueuePath("correction"), label: "보정", icon: "🔧" },
+  { key: "admin", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📥" },
+  { key: "adminAccept", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📁" },
+  { key: "adminReceipt", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📥" },
   {
-    key: "adminProviderReview",
-    href: adminQueuePath("provider-review"),
-    label: "제공자 검토",
-    icon: "👤",
+    key: "adminKnowledgeScope",
+    href: adminQueuePath("knowledge-scope"),
+    label: "지식화 대상 확인",
+    icon: "☰",
   },
+  { key: "adminGeneration", href: adminQueuePath("generation"), label: "지식데이터 생성", icon: "▶" },
+  { key: "adminCorrection", href: adminQueuePath("correction"), label: "보정", icon: "🔧" },
   {
     key: "adminServiceValidation",
     href: adminQueuePath("service-validation"),
@@ -160,9 +190,9 @@ export const BOTTOM_TABS: readonly {
     icon: "⌕",
   },
   {
-    key: "adminApproval",
-    href: adminQueuePath("approval-publish"),
-    label: "승인·게시",
+    key: "adminPublish",
+    href: adminQueuePath("publish"),
+    label: "게시",
     icon: "✓",
   },
   { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
@@ -205,23 +235,30 @@ export function bottomTabActive(
       );
     case "admin":
     case "adminAccept":
-      return pathname === ROUTES.admin && (queue === "accept" || queue == null);
+    case "adminReceipt":
+      return (
+        pathname === ROUTES.admin &&
+        (queue === "receipt" || queue === "accept" || queue == null)
+      );
+    case "adminKnowledgeScope":
+      return pathname === ROUTES.admin && queue === "knowledge-scope";
     case "adminGeneration":
       return (
-        (pathname === ROUTES.admin && queue === "generation") ||
+        (pathname === ROUTES.admin && (queue === "generation" || queue === "quality")) ||
         pathname === ROUTES.adminGeneration ||
         pathname.startsWith(`${ROUTES.adminGeneration}/`)
       );
-    case "adminQuality":
-      return pathname === ROUTES.admin && queue === "quality";
     case "adminCorrection":
       return pathname === ROUTES.admin && queue === "correction";
-    case "adminProviderReview":
-      return pathname === ROUTES.admin && queue === "provider-review";
     case "adminServiceValidation":
       return pathname === ROUTES.admin && queue === "service-validation";
-    case "adminApproval":
-      return pathname === ROUTES.admin && queue === "approval-publish";
+    case "adminPublish":
+      return (
+        pathname === ROUTES.admin &&
+        (queue === "publish" ||
+          queue === "provider-review" ||
+          queue === "approval-publish")
+      );
     case "account":
       return (
         pathname === ROUTES.account ||

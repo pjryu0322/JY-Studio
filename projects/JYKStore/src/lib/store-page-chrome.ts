@@ -3,7 +3,6 @@ import {
   ADMIN_CORRECTION_QUEUE_TITLE,
   ADMIN_GENERATION_QUEUE_DESCRIPTION,
   ADMIN_GENERATION_QUEUE_TITLE,
-  ADMIN_QUALITY_QUEUE_TITLE,
   ADMIN_REVIEWS_LIST_TITLE,
   ADMIN_WORK_INBOX_DESCRIPTION,
   ADMIN_WORK_INBOX_TITLE,
@@ -18,23 +17,28 @@ export type StorePageChrome = {
 
 function adminQueueChrome(queue: AdminWorkQueueKey): StorePageChrome {
   switch (queue) {
+    case "receipt":
     case "accept":
-      return { title: ADMIN_WORK_INBOX_TITLE, description: ADMIN_WORK_INBOX_DESCRIPTION };
+      return { title: "자료 접수", description: ADMIN_WORK_INBOX_DESCRIPTION };
+    case "knowledge-scope":
+      return {
+        title: "지식화 대상 확인",
+        description: "지식화에 포함할 자료를 확인하고 생성을 준비합니다.",
+      };
     case "generation":
+    case "quality":
       return {
         title: ADMIN_GENERATION_QUEUE_TITLE,
         description: ADMIN_GENERATION_QUEUE_DESCRIPTION,
       };
-    case "quality":
-      return { title: ADMIN_QUALITY_QUEUE_TITLE, description: "" };
     case "correction":
       return { title: ADMIN_CORRECTION_QUEUE_TITLE, description: "" };
-    case "provider-review":
-      return { title: "제공자 검토", description: "" };
     case "service-validation":
       return { title: "서비스 검증", description: "" };
+    case "publish":
+    case "provider-review":
     case "approval-publish":
-      return { title: "승인·게시", description: "" };
+      return { title: "게시", description: "" };
     case "ops":
       return { title: "공개/운영", description: "" };
     default:
@@ -191,7 +195,7 @@ export function resolveStorePageChrome(
     };
   }
   if (pathname === ROUTES.admin) {
-    return adminQueueChrome(parseAdminWorkQueue(queueRaw ?? "accept"));
+    return adminQueueChrome(parseAdminWorkQueue(queueRaw ?? "receipt"));
   }
   if (pathname === ROUTES.adminGeneration) {
     return {

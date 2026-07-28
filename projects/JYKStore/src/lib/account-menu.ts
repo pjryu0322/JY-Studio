@@ -36,7 +36,7 @@ export function accountMenuLinksForRole(role: AccountRole): AccountMenuLink[] {
     case "ADMIN":
       return [
         { href: ROUTES.accountProfile, label: "계정 정보" },
-        { href: adminQueuePath("accept"), label: "지식데이터 접수" },
+        { href: adminQueuePath("receipt"), label: "자료 접수" },
         { href: ROUTES.adminOpsUsage, label: "운영 사용량" },
         { href: ROUTES.adminOpsAudit, label: "AuditLog" },
         { href: ROUTES.adminOps, label: "Ops 대시보드" },

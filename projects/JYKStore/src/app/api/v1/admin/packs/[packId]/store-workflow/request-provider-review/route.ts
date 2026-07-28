@@ -72,8 +72,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
         quality,
         providerReviewPhase: markers.providerReviewPhase,
         providerSupplementPhase: markers.providerSupplementPhase,
+        serviceValidationPhase: markers.serviceValidationPhase,
       })
     ) {
+      if (markers.serviceValidationPhase !== "PASSED") {
+        return jsonWithClientIdCookie(
+          {
+            ok: false,
+            error: "SERVICE_VALIDATION_REQUIRED",
+            message:
+              "서비스 검증이 통과된 뒤에만 제공자 검토를 요청할 수 있습니다.",
+            serviceValidationPhase: markers.serviceValidationPhase,
+          },
+          clientId,
+          { status: 409 },
+        );
+      }
       if (workerZipPhase !== "COMPLETED") {
         return jsonWithClientIdCookie(
           {

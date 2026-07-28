@@ -225,5 +225,11 @@
   "src/__tests__/admin-review-issues-markdown.test.ts",
   "src/__tests__/worker-license-like.test.ts",
   "src/__tests__/store-workflow-status.test.ts",
-  "src/__tests__/store-workflow-handoff-gates.test.ts"
+  "src/__tests__/store-workflow-handoff-gates.test.ts",
+  "src/__tests__/admin-workflow-core.test.ts",
+  "src/__tests__/admin-review-rail-ux.test.ts",
+  "src/__tests__/admin-service-validation-workbench.test.ts",
+  "src/__tests__/admin-work-inbox-view-model.test.ts",
+  "src/__tests__/admin-work-inbox-ux.test.ts",
+  "src/__tests__/admin-approval-publish-workbench.test.ts"
 ]

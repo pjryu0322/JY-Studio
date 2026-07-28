@@ -43,6 +43,7 @@ describe("admin provider review P0 (open supplement)", () => {
         quality: qualityOk,
         providerReviewPhase: "WITHDRAWN",
         providerSupplementPhase: "PENDING",
+        serviceValidationPhase: "PASSED",
       }),
       false,
     );
@@ -50,6 +51,29 @@ describe("admin provider review P0 (open supplement)", () => {
     assert.equal(isOpenProviderSupplementPhase("RESOLVED"), true);
     assert.equal(isOpenProviderSupplementPhase("REJECTED"), false);
     assert.equal(isOpenProviderSupplementPhase("WITHDRAWN"), false);
+  });
+
+  it("requires service validation PASSED before provider review handoff", () => {
+    assert.equal(
+      canRequestProviderReviewHandoff({
+        workerZipPhase: "COMPLETED",
+        quality: qualityOk,
+        providerReviewPhase: "NONE",
+        providerSupplementPhase: "NONE",
+        serviceValidationPhase: "NONE",
+      }),
+      false,
+    );
+    assert.equal(
+      canRequestProviderReviewHandoff({
+        workerZipPhase: "COMPLETED",
+        quality: qualityOk,
+        providerReviewPhase: "NONE",
+        providerSupplementPhase: "NONE",
+        serviceValidationPhase: "PASSED",
+      }),
+      true,
+    );
   });
 
   it("request-provider-review route rejects open supplement with PROVIDER_SUPPLEMENT_OPEN", () => {
@@ -60,6 +84,7 @@ describe("admin provider review P0 (open supplement)", () => {
     assert.ok(route.includes("isOpenProviderSupplementPhase"));
     assert.ok(route.includes("resolveStoreWorkflowMarkers"));
     assert.ok(route.includes("providerSupplementPhase"));
+    assert.ok(route.includes("SERVICE_VALIDATION_REQUIRED"));
   });
 
   it("markAdminServiceValidationPassed rejects open supplement with PROVIDER_SUPPLEMENT_OPEN", () => {
@@ -69,8 +94,7 @@ describe("admin provider review P0 (open supplement)", () => {
     assert.ok(
       markers.includes("제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다."),
     );
-    // TODO(db-test): add markAdminServiceValidationPassed integration cases for
-    // PROVIDER_SUPPLEMENT_OPEN / PROVIDER_CONFIRM_REQUIRED / non-CURRENT binding.
+    assert.ok(!markers.includes("PROVIDER_CONFIRM_REQUIRED"));
     const route = readSource(
       "src/app/api/v1/admin/packs/[packId]/store-workflow/service-validation/route.ts",
     );
@@ -78,8 +102,8 @@ describe("admin provider review P0 (open supplement)", () => {
   });
 });
 
-describe("admin service validation view model (step4)", () => {
-  it("blocks when provider is not confirmed", () => {
+describe("admin service validation view model (P2)", () => {
+  it("does not block on missing provider confirmation", () => {
     const vm = buildAdminServiceValidationViewModel({
       providerConfirmed: false,
       openSupplement: false,
@@ -87,12 +111,13 @@ describe("admin service validation view model (step4)", () => {
       channelGates: null,
     });
     assert.equal(vm.canMarkPassed, false);
-    assert.ok(vm.blockedReasons.some((r) => r.includes("제공자 확인")));
+    assert.ok(!vm.blockedReasons.some((r) => r.includes("제공자 확인")));
+    assert.ok(vm.blockedReasons.some((r) => r.includes("확인하는 중")));
   });
 
   it("blocks when supplement is open", () => {
     const vm = buildAdminServiceValidationViewModel({
-      providerConfirmed: true,
+      providerConfirmed: false,
       openSupplement: true,
       serviceDone: false,
       channelGates: {
@@ -109,7 +134,6 @@ describe("admin service validation view model (step4)", () => {
 
   it("flags non-CURRENT binding", () => {
     const vm = buildAdminServiceValidationViewModel({
-      providerConfirmed: true,
       openSupplement: false,
       serviceDone: false,
       channelGates: {
@@ -128,7 +152,6 @@ describe("admin service validation view model (step4)", () => {
 
   it("lists missing channels when not allPassed", () => {
     const vm = buildAdminServiceValidationViewModel({
-      providerConfirmed: true,
       openSupplement: false,
       serviceDone: false,
       channelGates: {
@@ -147,9 +170,9 @@ describe("admin service validation view model (step4)", () => {
     assert.equal(vm.canMarkPassed, false);
   });
 
-  it("enables mark-passed when ready", () => {
+  it("enables mark-passed when channels ready without provider confirm", () => {
     const vm = buildAdminServiceValidationViewModel({
-      providerConfirmed: true,
+      providerConfirmed: false,
       openSupplement: false,
       serviceDone: false,
       channelGates: {
@@ -170,7 +193,6 @@ describe("admin service validation view model (step4)", () => {
 
   it("shows done state when serviceDone", () => {
     const vm = buildAdminServiceValidationViewModel({
-      providerConfirmed: true,
       openSupplement: false,
       serviceDone: true,
       channelGates: {
@@ -203,42 +225,42 @@ describe("admin service validation view model (step4)", () => {
   });
 });
 
-describe("admin review rail service validation (step4)", () => {
-  it("CONFIRMED + NONE service → searchValidation current/next", () => {
+describe("admin review rail service validation (P2 order)", () => {
+  it("COMPLETED + quality ok + NONE service → serviceValidation", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "COMPLETED",
       quality: qualityOk,
-      providerReviewPhase: "CONFIRMED",
+      providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       providerSupplementPhase: "NONE",
       detail: null,
-      activeStep: "searchValidation",
+      activeStep: "serviceValidation",
     });
-    assert.equal(rail.currentStep, "searchValidation");
-    const search = rail.items.find((i) => i.id === "searchValidation");
+    assert.equal(rail.currentStep, "serviceValidation");
+    const search = rail.items.find((i) => i.id === "serviceValidation");
     assert.equal(search?.status, "current");
   });
 
-  it("CONFIRMED + open supplement → searchValidation blocked", () => {
+  it("open supplement → serviceValidation blocked", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "COMPLETED",
       quality: qualityOk,
-      providerReviewPhase: "CONFIRMED",
+      providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       providerSupplementPhase: "PENDING",
       detail: null,
-      activeStep: "providerConfirm",
+      activeStep: "correction",
     });
-    assert.equal(rail.currentStep, "providerConfirm");
-    const search = rail.items.find((i) => i.id === "searchValidation");
+    assert.equal(rail.currentStep, "correction");
+    const search = rail.items.find((i) => i.id === "serviceValidation");
     assert.equal(search?.status, "blocked");
-    const decision = rail.items.find((i) => i.id === "decision");
-    assert.equal(decision?.status, "blocked");
+    const publish = rail.items.find((i) => i.id === "publish");
+    assert.equal(publish?.status, "blocked");
   });
 
-  it("CONFIRMED + PASSED → decision stage", () => {
+  it("PASSED service + CONFIRMED provider → publish stage", () => {
     const rail = getAdminReviewRailState({
       packId: "p1",
       workerZipPhase: "COMPLETED",
@@ -247,12 +269,13 @@ describe("admin review rail service validation (step4)", () => {
       serviceValidationPhase: "PASSED",
       providerSupplementPhase: "NONE",
       detail: null,
-      activeStep: "decision",
+      activeStep: "publish",
     });
-    assert.equal(rail.currentStep, "decision");
-    const decision = rail.items.find((i) => i.id === "decision");
-    assert.equal(decision?.label, "승인·게시");
-    assert.ok(!rail.items.some((i) => i.id === "publish"));
+    assert.equal(rail.currentStep, "publish");
+    const publish = rail.items.find((i) => i.id === "publish");
+    assert.equal(publish?.label, "게시");
+    assert.ok(!rail.items.some((i) => i.id === "decision"));
+    assert.ok(!rail.items.some((i) => i.id === "providerConfirm"));
   });
 
   it("RESOLVED supplement still blocks service validation", () => {
@@ -265,9 +288,9 @@ describe("admin review rail service validation (step4)", () => {
       serviceValidationPhase: "NONE",
       providerSupplementPhase: "RESOLVED",
       detail: null,
-      activeStep: "providerConfirm",
+      activeStep: "correction",
     });
-    const search = rail.items.find((i) => i.id === "searchValidation");
+    const search = rail.items.find((i) => i.id === "serviceValidation");
     assert.equal(search?.status, "blocked");
   });
 });

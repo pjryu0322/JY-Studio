@@ -237,10 +237,9 @@ export async function resolveStoreWorkflowMarkers(
   const effectiveProviderPhase =
     providerReviewPhase === "WITHDRAWN" ? "WITHDRAWN" : providerReviewPhase;
 
+  // P2: service validation is independent of provider review (SV runs first).
   const serviceValidationPhase: StoreServiceValidationPhase =
-    serviceMarker?.status === "PASS" && effectiveProviderPhase === "CONFIRMED"
-      ? "PASSED"
-      : "NONE";
+    serviceMarker?.status === "PASS" ? "PASSED" : "NONE";
 
   const providerReviewSummary = providerMarker?.summary?.trim() || null;
 
@@ -342,10 +341,9 @@ export async function batchResolveStoreWorkflowMarkers(
     const providerMarker = latestProvider.get(packId);
     const serviceMarker = latestService.get(packId);
     const providerReviewPhase = mapProviderReviewStatus(providerMarker?.status);
+    // P2: service validation is independent of provider review (SV runs first).
     const serviceValidationPhase: StoreServiceValidationPhase =
-      serviceMarker?.status === "PASS" && providerReviewPhase === "CONFIRMED"
-        ? "PASSED"
-        : "NONE";
+      serviceMarker?.status === "PASS" ? "PASSED" : "NONE";
     const providerReviewSummary = providerMarker?.summary?.trim() || null;
     const base: StoreWorkflowMarkerSnapshot = {
       providerReviewPhase,
@@ -1264,13 +1262,6 @@ export async function markAdminServiceValidationPassed(input: {
   const client = input.prismaClient ?? prisma;
   const packId = input.packId.trim();
   const markers = await resolveStoreWorkflowMarkers(packId, client);
-  if (markers.providerReviewPhase !== "CONFIRMED") {
-    return {
-      ok: false,
-      error: "PROVIDER_CONFIRM_REQUIRED",
-      message: "제공자 확인 완료 후에만 서비스 검증을 완료할 수 있습니다.",
-    };
-  }
   if (isOpenProviderSupplementPhase(markers.providerSupplementPhase)) {
     return {
       ok: false,

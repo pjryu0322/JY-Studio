@@ -61,7 +61,7 @@ export function AdminApprovalPublishWorkbenchPanel({
     else if (id === "quality") (onGoQuality ?? onGoGeneration)?.();
     else if (id === "correction") (onGoCorrection ?? onGoQuality)?.();
     else if (id === "providerConfirm") onGoProviderReview?.();
-    else if (id === "searchValidation") onGoServiceValidation?.();
+    else if (id === "serviceValidation" || id === "searchValidation") onGoServiceValidation?.();
   };
 
   return (

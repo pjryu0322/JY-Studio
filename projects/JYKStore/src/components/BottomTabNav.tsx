@@ -145,11 +145,19 @@ function AppNavIcon({ tabKey }: { readonly tabKey: BottomTabKey }) {
         </svg>
       );
     case "adminAccept":
+    case "adminReceipt":
       return (
         <svg {...common}>
           <path d="M4 20h16V8H4z" />
           <path d="M8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3" />
           <path d="M10 13h4" />
+        </svg>
+      );
+    case "adminKnowledgeScope":
+      return (
+        <svg {...common}>
+          <path d="M8 6h13M8 12h13M8 18h13" />
+          <path d="M3 6h.01M3 12h.01M3 18h.01" />
         </svg>
       );
     case "adminGeneration":
@@ -159,25 +167,10 @@ function AppNavIcon({ tabKey }: { readonly tabKey: BottomTabKey }) {
           <path d="M10 8.5v7l6-3.5-6-3.5z" />
         </svg>
       );
-    case "adminQuality":
-      return (
-        <svg {...common}>
-          <path d="M8 5h10a2 2 0 0 1 2 2v12H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-          <path d="m10 12 2 2 4-4" />
-        </svg>
-      );
     case "adminCorrection":
       return (
         <svg {...common}>
           <path d="M14.7 6.3a2.1 2.1 0 0 1 3 3L9 18l-4 1 1-4 8.7-8.7z" />
-        </svg>
-      );
-    case "adminProviderReview":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="8" r="3.5" />
-          <path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5" />
-          <path d="m15 13 2 2 3-3" />
         </svg>
       );
     case "adminServiceValidation":
@@ -188,11 +181,11 @@ function AppNavIcon({ tabKey }: { readonly tabKey: BottomTabKey }) {
           <path d="m8.5 10.5 1.2 1.2 2.3-2.4" />
         </svg>
       );
-    case "adminApproval":
+    case "adminPublish":
       return (
         <svg {...common}>
           <circle cx="12" cy="12" r="9" />
-          <path d="m8.5 12.5 2.2 2.2 4.8-5" />
+          <path d="m8 12 3 3 5-6" />
         </svg>
       );
     case "account":
@@ -236,12 +229,11 @@ export function appRailTabsForRole(role: AccountRole): typeof BOTTOM_TABS {
   if (role === "ADMIN") {
     const order: Array<(typeof BOTTOM_TABS)[number]["key"]> = [
       "admin",
+      "adminKnowledgeScope",
       "adminGeneration",
-      "adminQuality",
       "adminCorrection",
-      "adminProviderReview",
       "adminServiceValidation",
-      "adminApproval",
+      "adminPublish",
       "ops",
       "account",
       "opsUsage",

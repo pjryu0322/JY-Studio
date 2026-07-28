@@ -1,3 +1,7 @@
+/**
+ * Admin pack-detail rail — consumes P2 Workflow Core (single source of truth).
+ * Does not redefine step ids; delegates current-step + gates to `@/lib/workflow`.
+ */
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   canApproveAdminReview,
@@ -5,57 +9,37 @@ import {
   collectReviewWarnings,
 } from "@/lib/admin-review-decision";
 import { isReviewAccepted, isPendingAdminReview } from "@/lib/admin-review-tabs";
-import type {
-  NextReviewAction,
-  RoleRailItem,
-} from "@/lib/role-workspace/types";
+import type { NextReviewAction, RoleRailItem } from "@/lib/role-workspace/types";
 import { ROUTES, adminQueuePath, adminReviewDetailPath } from "@/lib/routes";
 import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import type {
   StoreProviderReviewPhase,
   StoreServiceValidationPhase,
 } from "@/lib/store-workflow-status";
+import {
+  ADMIN_WORKFLOW_STEP_LABELS,
+  ADMIN_WORKFLOW_STEP_ORDER,
+  canEnterServiceValidation,
+  canPublish,
+  canRequestProviderReviewAfterServiceValidation,
+  describeAdminPublishGatePhase,
+  resolveAdminPublishGatePhase,
+  resolveAdminWorkflowCurrentStep,
+  type AdminQualityGateSnapshot,
+  type AdminWorkerZipPhase,
+  type AdminWorkflowStep,
+} from "@/lib/workflow";
 
-export type AdminWorkerZipPhase =
-  | "NONE"
-  | "REQUESTED"
-  | "ACCEPTED"
-  | "REJECTED"
-  | "PROCESSING"
-  | "COMPLETED"
-  | "FAILED";
+export type { AdminWorkerZipPhase, AdminQualityGateSnapshot };
+/** @deprecated Prefer AdminWorkflowStep from `@/lib/workflow`. */
+export type AdminReviewWorkflowStep = AdminWorkflowStep;
 
-export type AdminReviewWorkflowStep =
-  | "queue"
-  | "generation"
-  | "quality"
-  | "correction"
-  | "providerConfirm"
-  | "searchValidation"
-  | "decision"
-  | "publish"
-  | "ops";
+export {
+  resolveAdminWorkflowStepQuery as parseAdminReviewStepQuery,
+  type AdminWorkflowStep,
+} from "@/lib/workflow";
 
-export type AdminQualityGateSnapshot = {
-  completed: boolean;
-  failCount: number;
-  hasBlockers: boolean;
-  hasWarnings: boolean;
-  blockers: string[];
-  warnings: string[];
-};
-
-const STEP_ORDER: AdminReviewWorkflowStep[] = [
-  "queue",
-  "generation",
-  "quality",
-  "correction",
-  "providerConfirm",
-  "searchValidation",
-  "decision",
-  "publish",
-  "ops",
-];
+const STEP_ORDER = ADMIN_WORKFLOW_STEP_ORDER;
 
 export function buildAdminQualityGateSnapshot(
   detail: AdminReviewDetailDto | null,
@@ -101,16 +85,15 @@ export function buildAdminQualityGateSnapshot(
 }
 
 /**
- * Next CTA after quality / provider confirm / service validation.
- * WARNING alone never blocks progression.
+ * Next CTA after generation / correction / service validation / publish gate.
+ * Provider review is requested only after service validation passes.
  */
 export function getNextReviewAction(input: {
   workerZipPhase: AdminWorkerZipPhase;
   quality: AdminQualityGateSnapshot;
   providerReviewPhase: StoreProviderReviewPhase;
   serviceValidationPhase: StoreServiceValidationPhase;
-  /** @deprecated prefer serviceValidationPhase === "PASSED" */
-  searchValidationDone?: boolean;
+  providerSupplementPhase?: string | null;
   detail: AdminReviewDetailDto | null;
 }): NextReviewAction {
   const {
@@ -120,14 +103,33 @@ export function getNextReviewAction(input: {
     serviceValidationPhase,
     detail,
   } = input;
-  const serviceDone =
-    serviceValidationPhase === "PASSED" || Boolean(input.searchValidationDone);
+  const openSupplement = isOpenProviderSupplementPhase(
+    input.providerSupplementPhase ?? "NONE",
+  );
+  const serviceDone = serviceValidationPhase === "PASSED";
 
   if (workerZipPhase === "PROCESSING") {
     return {
       kind: "NONE",
       primaryLabel: "",
       message: "지식데이터 생성이 진행 중입니다.",
+      tone: "ready",
+    };
+  }
+
+  if (
+    workerZipPhase === "NONE" ||
+    workerZipPhase === "REQUESTED" ||
+    workerZipPhase === "REJECTED" ||
+    workerZipPhase === "ACCEPTED"
+  ) {
+    return {
+      kind: "NONE",
+      primaryLabel: "",
+      message:
+        workerZipPhase === "ACCEPTED"
+          ? "지식화 대상 확인 후 지식데이터 생성을 진행하세요."
+          : "자료 접수를 먼저 완료하세요.",
       tone: "ready",
     };
   }
@@ -145,39 +147,48 @@ export function getNextReviewAction(input: {
     };
   }
 
+  if (workerZipPhase === "COMPLETED" && !quality.completed) {
+    return {
+      kind: "RERUN_QUALITY",
+      primaryLabel: "품질 결과 확인",
+      message: "지식데이터 생성이 완료되었습니다. 생성 결과·자동 품질을 확인하세요.",
+      tone: "ready",
+    };
+  }
+
   if (
-    quality.completed &&
-    !quality.hasBlockers &&
-    quality.failCount === 0 &&
-    providerReviewPhase === "NONE" &&
-    workerZipPhase === "COMPLETED"
+    canEnterServiceValidation({
+      workerZipPhase,
+      quality,
+      openSupplement,
+    }) &&
+    !serviceDone
   ) {
     return {
-      kind: "REQUEST_PROVIDER_REVIEW",
-      primaryLabel: "제공자 확인 요청",
-      secondaryKind: "RERUN_QUALITY",
-      secondaryLabel: "품질 점검 다시 실행",
+      kind: "GO_SERVICE_VALIDATION",
+      primaryLabel: "서비스 검증으로 이동",
+      secondaryKind: quality.hasWarnings ? "REQUEST_PROVIDER_FIX" : "RERUN_QUALITY",
+      secondaryLabel: quality.hasWarnings ? "보정으로 이동" : "품질 결과 다시 보기",
       message: quality.hasWarnings
-        ? "품질점검 통과: 제공자에게 생성 결과 검토를 요청하세요. WARNING은 승인 전 확인하세요."
-        : "품질점검 통과: 제공자에게 생성 결과 검토를 요청하세요.",
+        ? "생성·품질 확인이 끝났습니다. WARNING은 보정에서 검토할 수 있습니다. 서비스 검증을 진행하세요."
+        : "생성·품질 확인이 끝났습니다. API·MCP·Export 서비스 검증을 진행하세요.",
       tone: quality.hasWarnings ? "warning" : "ready",
     };
   }
 
   if (
-    quality.completed &&
-    !quality.hasBlockers &&
-    quality.failCount === 0 &&
-    providerReviewPhase === "NONE" &&
-    workerZipPhase !== "COMPLETED"
+    canRequestProviderReviewAfterServiceValidation({
+      serviceValidationPhase,
+      providerReviewPhase,
+      openSupplement,
+      workerZipPhase,
+      quality,
+    })
   ) {
     return {
-      kind: "NONE",
-      primaryLabel: "",
-      message:
-        workerZipPhase === "ACCEPTED"
-          ? "지식데이터 생성이 완료된 뒤에 제공자 확인을 요청할 수 있습니다."
-          : "지식데이터 생성이 완료되지 않아 제공자 확인을 요청할 수 없습니다.",
+      kind: "REQUEST_PROVIDER_REVIEW",
+      primaryLabel: "제공자 검토 요청",
+      message: "서비스 검증이 통과되었습니다. 제공자에게 서비스 결과 검토를 요청하세요.",
       tone: "ready",
     };
   }
@@ -186,44 +197,37 @@ export function getNextReviewAction(input: {
     return {
       kind: "NONE",
       primaryLabel: "",
-      message: "제공자 확인 대기 중입니다. 제공자가 확인 완료하면 서비스 검증을 진행하세요.",
+      message: "제공자 검토 대기 중입니다. 승인되면 게시할 수 있습니다.",
       tone: "ready",
     };
   }
 
-  if (providerReviewPhase === "CONFIRMED" && !serviceDone) {
-    return {
-      kind: "GO_SEARCH_VALIDATION",
-      primaryLabel: "서비스 검증으로 이동",
-      secondaryKind: "RERUN_QUALITY",
-      secondaryLabel: "품질 점검 다시 실행",
-      message: "제공자 확인이 완료되었습니다. API·MCP·Export 서비스 검증을 진행하세요.",
-      tone: "ready",
-    };
-  }
-
-  if (providerReviewPhase === "CONFIRMED" && serviceDone) {
+  if (
+    canPublish({
+      serviceValidationPhase,
+      providerReviewPhase,
+      openSupplement,
+    })
+  ) {
     const canDecide =
       detail != null &&
       (isReviewAccepted(detail) || isPendingAdminReview(detail) || canApproveAdminReview(detail));
     return {
       kind: "GO_FINAL_DECISION",
-      primaryLabel: "최종 검수 판단으로 이동",
-      secondaryKind: "RERUN_QUALITY",
-      secondaryLabel: "품질 점검 다시 실행",
+      primaryLabel: "게시 단계로 이동",
       message: canDecide
-        ? "서비스 검증을 확인했습니다. 최종 승인·반려를 진행하세요."
-        : "서비스 검증을 확인했습니다. 최종 검수 판단 단계로 이동하세요.",
+        ? "제공자 승인이 확인되었습니다. 게시(승인)를 진행하세요."
+        : "제공자 승인이 확인되었습니다. 게시 단계로 이동하세요.",
       tone: quality.hasWarnings ? "warning" : "ready",
     };
   }
 
-  if (workerZipPhase === "COMPLETED" && !quality.completed) {
+  if (openSupplement) {
     return {
-      kind: "NONE",
-      primaryLabel: "",
-      message: "지식데이터 생성이 완료되었습니다. 품질 점검을 실행하세요.",
-      tone: "ready",
+      kind: "REQUEST_PROVIDER_FIX",
+      primaryLabel: "보정으로 이동",
+      message: "열린 제공자 보완요청이 있습니다. 보정 단계에서 처리하세요.",
+      tone: "warning",
     };
   }
 
@@ -241,13 +245,11 @@ export function getAdminReviewRailState(input: {
   quality: AdminQualityGateSnapshot;
   providerReviewPhase: StoreProviderReviewPhase;
   serviceValidationPhase: StoreServiceValidationPhase;
-  /** Open provider supplement phases block service validation. */
   providerSupplementPhase?: string | null;
-  /** @deprecated prefer serviceValidationPhase */
-  searchValidationDone?: boolean;
   detail: AdminReviewDetailDto | null;
-  activeStep: AdminReviewWorkflowStep;
-}): { items: RoleRailItem[]; currentStep: AdminReviewWorkflowStep } {
+  activeStep: AdminWorkflowStep;
+  knowledgeScopeReady?: boolean;
+}): { items: RoleRailItem[]; currentStep: AdminWorkflowStep } {
   const {
     packId,
     workerZipPhase,
@@ -257,235 +259,203 @@ export function getAdminReviewRailState(input: {
     detail,
     activeStep,
   } = input;
-  const serviceDone =
-    serviceValidationPhase === "PASSED" || Boolean(input.searchValidationDone);
-  const detailPath = adminReviewDetailPath(packId);
   const openSupplement = isOpenProviderSupplementPhase(
     input.providerSupplementPhase ?? "NONE",
   );
+  const detailPath = adminReviewDetailPath(packId);
 
-  let completedThrough: AdminReviewWorkflowStep | null = null;
-  let current: AdminReviewWorkflowStep = "queue";
+  const current = resolveAdminWorkflowCurrentStep({
+    workerZipPhase,
+    quality,
+    providerReviewPhase,
+    serviceValidationPhase,
+    providerSupplementPhase: input.providerSupplementPhase,
+    packStatus: detail?.pack.status ?? null,
+    knowledgeScopeReady: input.knowledgeScopeReady,
+  });
 
-  if (workerZipPhase === "NONE" || workerZipPhase === "REQUESTED") {
-    current = "queue";
-  } else if (workerZipPhase === "ACCEPTED" || workerZipPhase === "PROCESSING") {
-    completedThrough = "queue";
-    current = "generation";
-  } else if (workerZipPhase === "FAILED") {
-    completedThrough = "queue";
-    current = "generation";
-  } else if (workerZipPhase === "COMPLETED" && !quality.completed) {
-    completedThrough = "generation";
-    current = "quality";
-  } else if (quality.completed && (quality.hasBlockers || quality.failCount > 0)) {
-    completedThrough = "quality";
-    current = "correction";
-  } else if (quality.completed && quality.hasWarnings && providerReviewPhase === "NONE") {
-    completedThrough = "quality";
-    current = "correction";
-  } else if (openSupplement) {
-    completedThrough = "correction";
-    current = "providerConfirm";
-  } else if (
-    quality.completed &&
-    workerZipPhase === "COMPLETED" &&
-    providerReviewPhase === "NONE"
-  ) {
-    completedThrough = "correction";
-    current = "providerConfirm";
-  } else if (quality.completed && providerReviewPhase === "NONE") {
-    completedThrough = "generation";
-    current = "quality";
-  } else if (providerReviewPhase === "REQUESTED" || providerReviewPhase === "WITHDRAWN") {
-    completedThrough = "correction";
-    current = "providerConfirm";
-  } else if (providerReviewPhase === "CONFIRMED" && !serviceDone) {
-    completedThrough = "providerConfirm";
-    current = "searchValidation";
-  } else if (providerReviewPhase === "CONFIRMED" && serviceDone) {
-    completedThrough = "searchValidation";
-    current = "decision";
-    if (detail?.pack.status === "PUBLISHED" || detail?.pack.status === "VERIFIED") {
-      completedThrough = "decision";
-      current = "publish";
-    }
-  }
+  const publishGate = resolveAdminPublishGatePhase({
+    serviceValidationPhase,
+    providerReviewPhase,
+    openSupplement,
+    workerZipPhase,
+    quality,
+    packStatus: detail?.pack.status ?? null,
+  });
 
-  const blockedNext = quality.hasBlockers || quality.failCount > 0 || workerZipPhase === "FAILED";
+  const blockedNext =
+    quality.hasBlockers || quality.failCount > 0 || workerZipPhase === "FAILED";
   const qualityWarning = quality.completed && quality.hasWarnings && !quality.hasBlockers;
-  const providerWaiting = providerReviewPhase === "REQUESTED";
-  const providerSupplementAttention = openSupplement;
+  const currentIdx = STEP_ORDER.indexOf(current);
 
-  const foldStageStatus = (
-    members: readonly AdminReviewWorkflowStep[],
-    warning = false,
-  ): RoleRailItem["status"] => {
-    // Only the stage matching activeStep is "current" — avoids dual current when
-    // the user deep-links to a different step than workflow progress.
-    if (members.includes(activeStep)) {
-      return warning ? "warning" : "current";
+  const stepStatus = (
+    step: AdminWorkflowStep,
+    options?: { warning?: boolean; blocked?: boolean; blockedReason?: string },
+  ): Pick<RoleRailItem, "status" | "blockedReason" | "badge"> => {
+    const idx = STEP_ORDER.indexOf(step);
+    if (options?.blocked) {
+      return {
+        status: "blocked",
+        blockedReason: options.blockedReason,
+      };
     }
-    if (members.includes(current)) {
-      return warning ? "warning" : "next";
+    if (activeStep === step) {
+      return {
+        status: options?.warning ? "warning" : "current",
+        badge: options?.warning ? "WARNING" : undefined,
+      };
     }
-    const memberMax = Math.max(...members.map((m) => STEP_ORDER.indexOf(m)));
-    const memberMin = Math.min(...members.map((m) => STEP_ORDER.indexOf(m)));
-    const doneIdx = completedThrough ? STEP_ORDER.indexOf(completedThrough) : -1;
-    if (doneIdx >= memberMax) return warning ? "warning" : "completed";
-    if (blockedNext && doneIdx >= 0 && memberMin > doneIdx) return "blocked";
-    return "idle";
+    if (current === step) {
+      return {
+        status: options?.warning ? "warning" : "next",
+        badge: options?.warning ? "WARNING" : undefined,
+      };
+    }
+    if (idx < currentIdx) {
+      return { status: options?.warning ? "warning" : "completed" };
+    }
+    if (blockedNext && idx > currentIdx) {
+      return {
+        status: "blocked",
+        blockedReason: options?.blockedReason ?? "이전 단계의 차단 이슈를 먼저 해소하세요.",
+      };
+    }
+    return { status: "idle" };
   };
 
-  const decisionPublishMembers = ["decision", "publish"] as const satisfies readonly AdminReviewWorkflowStep[];
+  const publishBadge =
+    publishGate === "PROVIDER_REVIEW_REQUESTED"
+      ? "제공자 검토 대기"
+      : publishGate === "READY_TO_PUBLISH" || publishGate === "PROVIDER_APPROVED"
+        ? "게시 가능"
+        : publishGate === "READY_FOR_PROVIDER_REVIEW"
+          ? "제공자 검토 요청"
+          : undefined;
 
-  /** Visible workbench rail — generation / quality / correction are independent stages. */
+  const publishBlocked =
+    !canPublish({
+      serviceValidationPhase,
+      providerReviewPhase,
+      openSupplement,
+    }) &&
+    activeStep !== "publish" &&
+    current !== "publish";
+
   const items: RoleRailItem[] = [
     {
-      id: "queue",
-      label: "자료 접수",
-      href: `${detailPath}?step=queue`,
-      status: foldStageStatus(["queue"]),
+      id: "receipt",
+      label: ADMIN_WORKFLOW_STEP_LABELS.receipt,
+      href: `${detailPath}?step=receipt`,
+      ...stepStatus("receipt"),
+    },
+    {
+      id: "knowledgeScope",
+      label: ADMIN_WORKFLOW_STEP_LABELS.knowledgeScope,
+      href: `${detailPath}?step=knowledgeScope`,
+      ...stepStatus("knowledgeScope", {
+        blocked: !["ACCEPTED", "PROCESSING", "COMPLETED", "FAILED"].includes(workerZipPhase),
+        blockedReason: "자료 접수를 먼저 완료하세요.",
+      }),
     },
     {
       id: "generation",
-      label: "생성",
+      label: ADMIN_WORKFLOW_STEP_LABELS.generation,
       href: `${detailPath}?step=generation`,
-      status: foldStageStatus(["generation"]),
-      blockedReason:
-        foldStageStatus(["generation"]) === "blocked"
-          ? "자료 접수를 먼저 완료하세요."
-          : undefined,
-    },
-    {
-      id: "quality",
-      label: "점검",
-      href: `${detailPath}?step=quality`,
-      status: foldStageStatus(["quality"], qualityWarning),
-      badge: qualityWarning ? "WARNING" : undefined,
-      blockedReason:
-        workerZipPhase !== "COMPLETED"
-          ? "지식데이터 생성을 먼저 완료하세요."
-          : undefined,
+      ...stepStatus("generation", {
+        warning: qualityWarning && current === "generation",
+        blocked: !["ACCEPTED", "PROCESSING", "COMPLETED", "FAILED"].includes(workerZipPhase),
+        blockedReason: "지식화 대상 확인·접수를 먼저 완료하세요.",
+      }),
     },
     {
       id: "correction",
-      label: "보정",
+      label: ADMIN_WORKFLOW_STEP_LABELS.correction,
       href: `${detailPath}?step=correction`,
-      status: foldStageStatus(["correction"], qualityWarning || blockedNext),
-      badge: blockedNext ? "차단" : qualityWarning ? "WARNING" : undefined,
-      blockedReason: undefined,
+      ...stepStatus("correction", {
+        warning: qualityWarning || openSupplement,
+        badge: blockedNext ? "차단" : openSupplement ? "보완요청" : qualityWarning ? "WARNING" : undefined,
+      }),
     },
     {
-      id: "providerConfirm",
-      label: providerSupplementAttention
-        ? "제공자 보완요청"
-        : providerWaiting
-          ? "제공자 검토 대기"
-          : "제공자 검토",
-      href: `${detailPath}?step=providerConfirm`,
-      status:
-        !quality.completed || blockedNext
-          ? "blocked"
-          : foldStageStatus(["providerConfirm"], providerSupplementAttention),
-      badge: providerSupplementAttention ? "보완요청" : undefined,
-      blockedReason:
-        !quality.completed || blockedNext
-          ? "품질 점검·보정을 먼저 통과하세요."
-          : undefined,
-    },
-    {
-      id: "searchValidation",
-      label: "서비스 검증",
-      href: `${detailPath}?step=searchValidation`,
-      status:
-        providerReviewPhase !== "CONFIRMED" || openSupplement
-          ? "blocked"
-          : foldStageStatus(["searchValidation"]),
-      blockedReason: openSupplement
-        ? "제공자 보완요청을 먼저 처리하세요."
-        : providerReviewPhase !== "CONFIRMED"
-          ? "제공자 확인 완료 후에만 서비스 검증을 진행할 수 있습니다."
+      id: "serviceValidation",
+      label: ADMIN_WORKFLOW_STEP_LABELS.serviceValidation,
+      href: `${detailPath}?step=serviceValidation`,
+      ...stepStatus("serviceValidation", {
+        blocked:
+          !canEnterServiceValidation({ workerZipPhase, quality, openSupplement }) &&
+          serviceValidationPhase !== "PASSED",
+        blockedReason: openSupplement
+          ? "제공자 보완요청을 먼저 처리하세요."
           : blockedNext
-            ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
-            : undefined,
+            ? "생성·보정 차단 이슈를 해소한 뒤 진행하세요."
+            : "지식데이터 생성을 먼저 완료하세요.",
+      }),
     },
     {
-      id: "decision",
-      label: "승인·게시",
-      href:
-        activeStep === "publish"
-          ? `${detailPath}?step=publish`
-          : `${detailPath}?step=decision`,
-      status:
-        providerReviewPhase !== "CONFIRMED" || !serviceDone || openSupplement
-          ? "blocked"
-          : foldStageStatus(decisionPublishMembers),
-      blockedReason: openSupplement
-        ? "제공자 보완요청을 먼저 처리하세요."
-        : blockedNext
-        ? "품질 점검 차단 이슈를 해소한 뒤 진행하세요."
-        : providerReviewPhase !== "CONFIRMED"
-          ? "제공자 검토를 먼저 완료하세요."
-          : !serviceDone
+      id: "publish",
+      label: ADMIN_WORKFLOW_STEP_LABELS.publish,
+      href: `${detailPath}?step=publish`,
+      ...stepStatus("publish", {
+        blocked: publishBlocked && serviceValidationPhase !== "PASSED",
+        blockedReason:
+          serviceValidationPhase !== "PASSED"
             ? "서비스 검증을 먼저 완료하세요."
-            : undefined,
-    },
-    {
-      id: "ops",
-      label: "공개/운영",
-      href: ROUTES.adminOps,
-      status: "idle",
+            : openSupplement
+              ? "제공자 보완요청을 먼저 처리하세요."
+              : providerReviewPhase !== "CONFIRMED"
+                ? "제공자 승인 후에만 게시할 수 있습니다."
+                : undefined,
+      }),
+      badge: publishBadge,
+      // Prefer publish gate description in blockedReason when on publish with waiting state
+      ...(activeStep === "publish" || current === "publish"
+        ? {
+            blockedReason:
+              publishGate === "PROVIDER_REVIEW_REQUESTED" ||
+              publishGate === "READY_FOR_PROVIDER_REVIEW"
+                ? describeAdminPublishGatePhase(publishGate)
+                : stepStatus("publish").blockedReason,
+          }
+        : {}),
     },
   ];
 
-  return {
-    items,
-    currentStep: current,
-  };
+  return { items, currentStep: current };
 }
 
-/**
- * Internal step ids still accepted via `?step=` (aliased into the display rail).
- * Kept for deep-link / test compatibility — do not remove without a migration.
- */
-export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = [
-  "queue",
-  "generation",
-  "quality",
-  "correction",
-  "providerConfirm",
-  "searchValidation",
-  "decision",
-  "publish",
-] as const;
+/** Canonical detail `?step=` ids (P2). Legacy aliases are resolved by resolveAdminWorkflowStepQuery. */
+export const ADMIN_REVIEW_COMPAT_STEP_QUERY_IDS = STEP_ORDER;
 
 /** Admin console / left-rail stage queue links (list pages). */
 export function getAdminConsoleRailItems(activeId: string): RoleRailItem[] {
   const items: Array<{ id: string; label: string; href: string }> = [
-    { id: "home", label: "지식데이터 접수", href: adminQueuePath("accept") },
-    { id: "generation", label: "지식데이터 생성", href: adminQueuePath("generation") },
-    { id: "quality", label: "점검", href: adminQueuePath("quality") },
-    { id: "correction", label: "보정", href: adminQueuePath("correction") },
+    { id: "receipt", label: "자료 접수", href: adminQueuePath("receipt") },
     {
-      id: "provider-review",
-      label: "제공자 검토",
-      href: adminQueuePath("provider-review"),
+      id: "knowledge-scope",
+      label: "지식화 대상 확인",
+      href: adminQueuePath("knowledge-scope"),
     },
+    { id: "generation", label: "지식데이터 생성", href: adminQueuePath("generation") },
+    { id: "correction", label: "보정", href: adminQueuePath("correction") },
     {
       id: "service-validation",
       label: "서비스 검증",
       href: adminQueuePath("service-validation"),
     },
-    {
-      id: "approval-publish",
-      label: "승인·게시",
-      href: adminQueuePath("approval-publish"),
-    },
-    { id: "ops", label: "공개/운영", href: ROUTES.adminOps },
+    { id: "publish", label: "게시", href: adminQueuePath("publish") },
   ];
   return items.map((item) => ({
     ...item,
     status: item.id === activeId ? "current" : "idle",
   }));
+}
+
+/** Ops stays outside the pack fabrication workflow. */
+export function getAdminOpsNavItem(): RoleRailItem {
+  return {
+    id: "ops",
+    label: "공개/운영",
+    href: ROUTES.adminOps,
+    status: "idle",
+  };
 }
