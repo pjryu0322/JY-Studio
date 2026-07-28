@@ -20,6 +20,7 @@ import {
   ADMIN_WORKFLOW_STEP_LABELS,
   ADMIN_WORKFLOW_STEP_ORDER,
   canEnterServiceValidation,
+  canEnterGenerationWithScope,
   canPublish,
   canRequestProviderReviewAfterServiceValidation,
   describeAdminPublishGatePhase,
@@ -372,7 +373,10 @@ export function getAdminReviewRailState(input: {
       href: `${detailPath}?step=generation`,
       ...stepStatus("generation", {
         warning: qualityWarning && current === "generation",
-        blocked: !["ACCEPTED", "PROCESSING", "COMPLETED", "FAILED"].includes(workerZipPhase),
+        blocked: !canEnterGenerationWithScope({
+          workerZipPhase,
+          knowledgeScopeReady: input.knowledgeScopeReady,
+        }),
         blockedReason: "지식화 대상 확인·접수를 먼저 완료하세요.",
       }),
     },

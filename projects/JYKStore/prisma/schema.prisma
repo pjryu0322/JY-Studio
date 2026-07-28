@@ -147,6 +147,9 @@ enum AuditAction {
   DOCLING_IMPORT_NORMALIZED
   DOCLING_IMPORT_DELETED
   DOCLING_IMPORT_RETRIED
+  ADMIN_INVENTORY_DECISION
+  PROVIDER_INVENTORY_DECISION
+  ADMIN_INVENTORY_SCOPE_FINALIZE
   DOCLING_REVIEW_INTEGRITY_VERIFIED
   DOCLING_REVIEW_INTEGRITY_FAILED
   SERVICE_VALIDATION_DOWNLOAD_TEST_SUCCEEDED
@@ -292,6 +295,7 @@ model KnowledgePack {
   searchIndexGenerations   SearchIndexGeneration[]
   workerZipSourceRevisions WorkerZipSourceRevision[]
   workerZipWorkingCopies   WorkerZipWorkingCopy[]
+  knowledgeScopeInventories KnowledgeScopeInventory[]
 
   @@index([status])
   @@index([categoryId])
@@ -416,12 +420,146 @@ model WorkerZipWorkingCopy {
   currentForVersion KnowledgePackVersion?  @relation("VersionCurrentWorkingCopy")
   sourceDocuments SourceDocument[]
   pipelineRuns    PipelineRun[]
+  knowledgeScopeInventories KnowledgeScopeInventory[]
 
   @@unique([versionId, idempotencyKey])
   @@index([sourceRevisionId, createdAt])
   @@index([versionId, status])
   @@index([clientId, packId, versionId])
   @@index([packId])
+}
+
+/// P3: knowledge-scope inventory — SoT for which Working Copy files enter Worker input.
+enum KnowledgeScopeInventoryStatus {
+  DRAFT
+  FINALIZED
+  SUPERSEDED
+}
+
+enum KnowledgeScopeItemDecision {
+  PENDING
+  INCLUDED
+  EXCLUDED
+  REVIEW_REQUIRED
+}
+
+enum KnowledgeScopeDecisionSource {
+  SYSTEM
+  ADMIN
+  PROVIDER
+}
+
+enum KnowledgeScopeProviderDecision {
+  NONE
+  REQUESTED
+  INCLUDED
+  EXCLUDED
+}
+
+enum KnowledgeScopeExclusionReason {
+  ZERO_BYTE
+  EXECUTABLE
+  EXECUTABLE_LIBRARY
+  BUILD_ARTIFACT
+  CACHE
+  FONT
+  LICENSE_OR_KEY
+  UNSUPPORTED
+  NON_KNOWLEDGE_FILE
+  ADMIN_DECISION
+  PROVIDER_DECISION
+  EXCLUDED_DIRECTORY
+  EXCLUDED_FILE_NAME
+  EXCLUDED_EXTENSION
+  FILE_SIZE_EXCEEDED
+  OTHER
+}
+
+model KnowledgeScopeInventory {
+  id                     String                        @id @default(cuid())
+  packId                 String
+  versionId              String
+  sourceRevisionId       String
+  workingCopyId          String?
+  status                 KnowledgeScopeInventoryStatus @default(DRAFT)
+  itemCount              Int                           @default(0)
+  includedCount          Int                           @default(0)
+  excludedCount          Int                           @default(0)
+  pendingCount           Int                           @default(0)
+  reviewRequiredCount    Int                           @default(0)
+  providerRequestedCount Int                           @default(0)
+  finalizedAt            DateTime?
+  finalizedByUserId      String?
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+
+  pack           KnowledgePack                 @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version        KnowledgePackVersion          @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  workingCopy    WorkerZipWorkingCopy?         @relation(fields: [workingCopyId], references: [id], onDelete: SetNull)
+  items          KnowledgeScopeInventoryItem[]
+  decisionEvents KnowledgeScopeDecisionEvent[]
+
+  @@unique([versionId, sourceRevisionId])
+  @@index([packId, status])
+  @@index([workingCopyId])
+  @@index([sourceRevisionId])
+}
+
+model KnowledgeScopeInventoryItem {
+  id                     String                         @id @default(cuid())
+  inventoryId            String
+  relativePath           String
+  fileName               String
+  extension              String                         @default("")
+  sizeBytes              Int                            @default(0)
+  mimeType               String?
+  contentHash            String?
+  fileCategory           String?
+  decision               KnowledgeScopeItemDecision     @default(PENDING)
+  decisionSource         KnowledgeScopeDecisionSource   @default(SYSTEM)
+  exclusionReasonCode    KnowledgeScopeExclusionReason?
+  exclusionReasonText    String?
+  providerDecisionStatus KnowledgeScopeProviderDecision @default(NONE)
+  providerRequestNote    String?
+  previewKind            String?
+  decidedAt              DateTime?
+  decidedByUserId        String?
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+
+  inventory KnowledgeScopeInventory       @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  events    KnowledgeScopeDecisionEvent[]
+
+  @@unique([inventoryId, relativePath])
+  @@index([inventoryId, decision])
+  @@index([inventoryId, providerDecisionStatus])
+  @@index([inventoryId, exclusionReasonCode])
+  @@index([inventoryId, extension])
+  @@index([inventoryId, fileName])
+}
+
+model KnowledgeScopeDecisionEvent {
+  id                String                          @id @default(cuid())
+  inventoryId       String
+  itemId            String?
+  actorUserId       String?
+  actorRole         String
+  fromDecision      KnowledgeScopeItemDecision?
+  toDecision        KnowledgeScopeItemDecision?
+  fromSource        KnowledgeScopeDecisionSource?
+  toSource          KnowledgeScopeDecisionSource?
+  fromProviderStatus KnowledgeScopeProviderDecision?
+  toProviderStatus  KnowledgeScopeProviderDecision?
+  reasonCode        KnowledgeScopeExclusionReason?
+  reasonText        String?
+  note              String?
+  createdAt         DateTime                        @default(now())
+
+  inventory KnowledgeScopeInventory      @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  item      KnowledgeScopeInventoryItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([inventoryId, createdAt])
+  @@index([itemId, createdAt])
 }
 
 model KnowledgePackVersion {
@@ -469,6 +607,7 @@ model KnowledgePackVersion {
   normalizedDocuments        NormalizedDocument[]
   searchIndexGenerations     SearchIndexGeneration[]
   pipelineRuns               PipelineRun[]
+  knowledgeScopeInventories   KnowledgeScopeInventory[]
 
   @@unique([packId, version])
   @@index([packId])

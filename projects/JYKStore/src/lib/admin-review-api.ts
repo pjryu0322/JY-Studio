@@ -12,8 +12,13 @@ export type AdminReviewDetailResponse = {
 
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { error?: string; message?: string };
-    return data.message ?? data.error ?? `요청에 실패했습니다. (${response.status})`;
+    const data = (await response.json()) as {
+      error?: string | { code?: string; message?: string };
+      message?: string;
+    };
+    if (typeof data.error === "object" && data.error?.message) return data.error.message;
+    if (typeof data.error === "string") return data.error;
+    return data.message ?? `요청에 실패했습니다. (${response.status})`;
   } catch {
     return `요청에 실패했습니다. (${response.status})`;
   }
@@ -771,4 +776,216 @@ export async function fetchAdminServiceChannelGates(
     };
   }
   throw new Error(data?.message ?? data?.error ?? `요청에 실패했습니다. (${response.status})`);
+}
+
+/* ── P3 Knowledge Scope Inventory ─────────────────────────────────────── */
+
+export type AdminKnowledgeScopeSummary = {
+  id: string;
+  packId: string;
+  versionId: string;
+  sourceRevisionId: string;
+  workingCopyId: string | null;
+  status: "DRAFT" | "FINALIZED" | "SUPERSEDED";
+  counts: {
+    total: number;
+    included: number;
+    excluded: number;
+    excludedBySystem: number;
+    excludedByAdmin: number;
+    excludedByProvider: number;
+    pending: number;
+    reviewRequired: number;
+    providerRequested: number;
+  };
+  finalizedAt: string | null;
+  finalizedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminKnowledgeScopeItem = {
+  id: string;
+  inventoryId: string;
+  relativePath: string;
+  fileName: string;
+  extension: string;
+  sizeBytes: number;
+  mimeType: string | null;
+  decision: "PENDING" | "INCLUDED" | "EXCLUDED" | "REVIEW_REQUIRED";
+  decisionSource: "SYSTEM" | "ADMIN" | "PROVIDER";
+  exclusionReasonCode: string | null;
+  exclusionReasonText: string | null;
+  providerDecisionStatus: "NONE" | "REQUESTED" | "INCLUDED" | "EXCLUDED";
+  providerRequestNote: string | null;
+  previewKind: string | null;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminKnowledgeScopeListResult = {
+  items: AdminKnowledgeScopeItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  inventoryId: string;
+};
+
+export async function fetchAdminKnowledgeScope(
+  packId: string,
+): Promise<{
+  inventory: AdminKnowledgeScopeSummary | null;
+  canFinalize: boolean;
+  readyForGeneration: boolean;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  const data = (await response.json()) as {
+    inventory: AdminKnowledgeScopeSummary | null;
+    canFinalize?: boolean;
+    readyForGeneration?: boolean;
+  };
+  return {
+    inventory: data.inventory,
+    canFinalize: Boolean(data.canFinalize),
+    readyForGeneration: Boolean(data.readyForGeneration),
+  };
+}
+
+export async function ensureAdminKnowledgeScope(
+  packId: string,
+): Promise<{
+  inventory: AdminKnowledgeScopeSummary | null;
+  canFinalize: boolean;
+  readyForGeneration: boolean;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  const data = (await response.json()) as {
+    inventory: AdminKnowledgeScopeSummary | null;
+    canFinalize?: boolean;
+    readyForGeneration?: boolean;
+  };
+  return {
+    inventory: data.inventory,
+    canFinalize: Boolean(data.canFinalize),
+    readyForGeneration: Boolean(data.readyForGeneration),
+  };
+}
+
+export async function fetchAdminKnowledgeScopeItems(
+  packId: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    decision?: string;
+    extension?: string;
+    exclusionReasonCode?: string;
+    decisionSource?: string;
+    providerDecisionStatus?: string;
+    pathPrefix?: string;
+  } = {},
+): Promise<AdminKnowledgeScopeListResult> {
+  const sp = new URLSearchParams();
+  if (params.page) sp.set("page", String(params.page));
+  if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+  if (params.q) sp.set("q", params.q);
+  if (params.decision) sp.set("decision", params.decision);
+  if (params.extension) sp.set("extension", params.extension);
+  if (params.exclusionReasonCode) sp.set("exclusionReasonCode", params.exclusionReasonCode);
+  if (params.decisionSource) sp.set("decisionSource", params.decisionSource);
+  if (params.providerDecisionStatus) {
+    sp.set("providerDecisionStatus", params.providerDecisionStatus);
+  }
+  if (params.pathPrefix) sp.set("pathPrefix", params.pathPrefix);
+  const qs = sp.toString();
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/items${qs ? `?${qs}` : ""}`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as AdminKnowledgeScopeListResult;
+}
+
+export async function patchAdminKnowledgeScopeItem(
+  packId: string,
+  itemId: string,
+  body: {
+    action: "INCLUDE" | "EXCLUDE" | "REQUEST_PROVIDER" | "CLEAR_TO_REVIEW";
+    exclusionReasonCode?: string;
+    exclusionReasonText?: string;
+    providerRequestNote?: string;
+  },
+): Promise<AdminKnowledgeScopeItem> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/items/${encodeURIComponent(itemId)}`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  const data = (await response.json()) as { item: AdminKnowledgeScopeItem };
+  return data.item;
+}
+
+export async function bulkAdminKnowledgeScopeItems(
+  packId: string,
+  body: {
+    itemIds: string[];
+    action: "INCLUDE" | "EXCLUDE" | "REQUEST_PROVIDER" | "CLEAR_TO_REVIEW";
+    exclusionReasonCode?: string;
+    exclusionReasonText?: string;
+    providerRequestNote?: string;
+  },
+): Promise<AdminKnowledgeScopeItem[]> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/bulk`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  const data = (await response.json()) as { items: AdminKnowledgeScopeItem[] };
+  return data.items;
+}
+
+export async function finalizeAdminKnowledgeScope(
+  packId: string,
+): Promise<{
+  inventory: AdminKnowledgeScopeSummary;
+  readyForGeneration: boolean;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/finalize`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  const data = (await response.json()) as {
+    inventory: AdminKnowledgeScopeSummary;
+    readyForGeneration?: boolean;
+  };
+  return {
+    inventory: data.inventory,
+    readyForGeneration: Boolean(data.readyForGeneration),
+  };
+}
+
+export function adminKnowledgeScopePreviewUrl(packId: string, itemId: string): string {
+  return `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/items/${encodeURIComponent(itemId)}/preview`;
 }

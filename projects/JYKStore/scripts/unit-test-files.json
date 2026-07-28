@@ -227,6 +227,7 @@
   "src/__tests__/store-workflow-status.test.ts",
   "src/__tests__/store-workflow-handoff-gates.test.ts",
   "src/__tests__/admin-workflow-core.test.ts",
+  "src/__tests__/knowledge-scope-inventory.test.ts",
   "src/__tests__/admin-review-rail-ux.test.ts",
   "src/__tests__/admin-service-validation-workbench.test.ts",
   "src/__tests__/admin-work-inbox-view-model.test.ts",

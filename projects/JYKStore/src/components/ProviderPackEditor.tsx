@@ -13,6 +13,7 @@ import { ProviderKnowledgeGenerationTab } from "@/components/provider-distributi
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderGenerationReviewPanel } from "@/components/ProviderGenerationReviewPanel";
+import { ProviderKnowledgeScopePanel } from "@/components/ProviderKnowledgeScopePanel";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
@@ -600,6 +601,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           </div>
           <ProviderPackStatusBadge status={pack.status} />
         </div>
+
+        <ProviderKnowledgeScopePanel packId={packId} />
 
         {awaitingRejectionAck ? (
           <div className="space-y-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">

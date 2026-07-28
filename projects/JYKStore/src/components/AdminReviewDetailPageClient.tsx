@@ -14,6 +14,7 @@ import { AdminApprovalPublishWorkbenchPanel } from "@/components/AdminApprovalPu
 import { NextActionPanel } from "@/components/role-workspace/NextActionPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
+  fetchAdminKnowledgeScope,
   fetchAdminReviewDetail,
   fetchAdminServiceChannelGates,
   fetchAdminStoreWorkflowMarkers,
@@ -85,19 +86,21 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const [data, zip, markers, gates] = await Promise.all([
+      const [detailData, zip, markers, gates, scope] = await Promise.all([
         fetchAdminReviewDetail(packId),
         fetchAdminWorkerZipRequestState(packId).catch(() => null),
         fetchAdminStoreWorkflowMarkers(packId).catch(() => null),
         fetchAdminServiceChannelGates(packId).catch(() => null),
+        fetchAdminKnowledgeScope(packId).catch(() => null),
       ]);
-      setDetail(data.detail);
+      setDetail(detailData.detail);
       if (zip?.requestStatus) setWorkerZipPhase(zip.requestStatus as AdminWorkerZipPhase);
       if (markers) {
         setWorkflowMarkers(markers);
         setSupplementState(markers.providerSupplement ?? null);
       }
       if (gates) setChannelGates(gates);
+      if (scope) setKnowledgeScopeReady(scope.readyForGeneration);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
     } finally {
@@ -261,7 +264,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         <AdminKnowledgeScopePanel
           packId={packId}
           packName={detail.pack.name}
-          onConfirmScope={() => setKnowledgeScopeReady(true)}
+          onScopeReadyChange={setKnowledgeScopeReady}
           onGoGeneration={() => goStep("generation")}
         />
       ) : null}

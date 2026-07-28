@@ -1132,10 +1132,39 @@ export async function runAdminWorkerZipGeneration(
       packVersionId: version.id,
       env: input.env,
     });
-    const adminExcludePaths =
+    let adminExcludePaths =
       input.testOverrides.adminExcludePaths ??
       requestMeta?.adminPreflightExclusions?.paths ??
       [];
+
+    const {
+      getKnowledgeScopeInventoryBySourceRevision,
+      listInventoryItemsForWorkerManifest,
+    } = await import("@/lib/knowledge-scope/inventory-query-service");
+    const { isKnowledgeScopeReadyForGeneration } = await import("@/lib/knowledge-scope/inventory-gate");
+    const {
+      buildWorkerInputManifestFromItems,
+      mergeAdminExcludePaths,
+    } = await import("@/lib/knowledge-scope/inventory-worker-manifest");
+
+    const scopeSummary = await getKnowledgeScopeInventoryBySourceRevision({
+      versionId: version.id,
+      sourceRevisionId: revision.id,
+      prismaClient: client,
+    });
+    if (!isKnowledgeScopeReadyForGeneration(scopeSummary)) {
+      throw new WorkerZipImportServiceError(
+        "KNOWLEDGE_SCOPE_NOT_READY",
+        "지식화 대상 범위가 확정되지 않았습니다. 지식 범위 인벤토리를 완료한 뒤 생성하세요.",
+        409,
+      );
+    }
+    if (scopeSummary) {
+      const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
+      const { excludePaths } = buildWorkerInputManifestFromItems(manifestItems);
+      adminExcludePaths = mergeAdminExcludePaths(adminExcludePaths, excludePaths);
+    }
+
     const workingCopyId = `swc_test_${revision.id}`;
     const result = await withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
       runImport({
@@ -1280,8 +1309,36 @@ export async function runAdminWorkerZipGeneration(
     packVersionId: version.id,
     env: input.env,
   });
-  const liveExcludePaths = requestMeta?.adminPreflightExclusions?.paths ?? [];
+  let liveExcludePaths = requestMeta?.adminPreflightExclusions?.paths ?? [];
   const liveReasons = requestMeta?.adminPreflightExclusions?.reasons ?? {};
+
+  const {
+    getKnowledgeScopeInventoryBySourceRevision,
+    listInventoryItemsForWorkerManifest,
+  } = await import("@/lib/knowledge-scope/inventory-query-service");
+  const { isKnowledgeScopeReadyForGeneration } = await import("@/lib/knowledge-scope/inventory-gate");
+  const {
+    buildWorkerInputManifestFromItems,
+    mergeAdminExcludePaths,
+  } = await import("@/lib/knowledge-scope/inventory-worker-manifest");
+
+  const scopeSummary = await getKnowledgeScopeInventoryBySourceRevision({
+    versionId: version.id,
+    sourceRevisionId: revision.id,
+    prismaClient: client,
+  });
+  if (!isKnowledgeScopeReadyForGeneration(scopeSummary)) {
+    throw new WorkerZipImportServiceError(
+      "KNOWLEDGE_SCOPE_NOT_READY",
+      "지식화 대상 범위가 확정되지 않았습니다. 지식 범위 인벤토리를 완료한 뒤 생성하세요.",
+      409,
+    );
+  }
+  if (scopeSummary) {
+    const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
+    const { excludePaths } = buildWorkerInputManifestFromItems(manifestItems);
+    liveExcludePaths = mergeAdminExcludePaths(liveExcludePaths, excludePaths);
+  }
 
   // Executing implies acceptance: lock the request (접수완료) before running so the
   // Provider can no longer withdraw it mid-generation.
@@ -1339,6 +1396,13 @@ export async function runAdminWorkerZipGeneration(
       throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
     }
     throw error;
+  }
+
+  if (scopeSummary && scopeSummary.workingCopyId !== workingCopy.id) {
+    await client.knowledgeScopeInventory.update({
+      where: { id: scopeSummary.id },
+      data: { workingCopyId: workingCopy.id },
+    });
   }
 
   await markWorkerZipWorkingCopyProcessing({
@@ -1520,6 +1584,20 @@ export async function acceptAdminWorkerZipRequest(
         },
       });
     }
+  }
+
+  try {
+    const { ensureInventoryAfterAccept } = await import("@/lib/knowledge-scope/inventory-create-service");
+    await ensureInventoryAfterAccept({
+      packId: pack.packId,
+      versionId: version.id,
+      clientId: input.clientId,
+      adminUserId: input.adminUserId,
+      env: input.env,
+      prismaClient: client,
+    });
+  } catch {
+    // Accept must succeed even when inventory bootstrap is best-effort.
   }
 
   return { ok: true, packId: pack.packId, versionId: version.id, requestStatus: "ACCEPTED" };

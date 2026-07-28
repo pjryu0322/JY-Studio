@@ -27,15 +27,26 @@ export function canEnterKnowledgeScope(input: { workerZipPhase: AdminWorkerZipPh
   return (RECEIPT_DONE_ENOUGH_PHASES as readonly AdminWorkerZipPhase[]).includes(input.workerZipPhase);
 }
 
-/**
- * P2 skeleton: knowledge scope confirmation is not yet a hard gate — once the
- * worker zip is accepted (or later), generation may be entered.
- */
 export function canEnterGeneration(input: {
   workerZipPhase: AdminWorkerZipPhase;
+  /** @deprecated Use knowledgeScopeReady with canEnterGenerationWithScope. */
   knowledgeScopeConfirmed?: boolean;
 }): boolean {
   return (RECEIPT_DONE_ENOUGH_PHASES as readonly AdminWorkerZipPhase[]).includes(input.workerZipPhase);
+}
+
+/** Generation step gate when knowledge-scope inventory readiness is known. */
+export function canEnterGenerationWithScope(input: {
+  workerZipPhase: AdminWorkerZipPhase;
+  knowledgeScopeReady?: boolean;
+}): boolean {
+  if (!(RECEIPT_DONE_ENOUGH_PHASES as readonly AdminWorkerZipPhase[]).includes(input.workerZipPhase)) {
+    return false;
+  }
+  if (input.knowledgeScopeReady === undefined) {
+    return true;
+  }
+  return input.knowledgeScopeReady === true;
 }
 
 /** Generation completed with blockers/failures or open supplement — Correction is the work location.
