@@ -1125,8 +1125,8 @@ function QualityCheckHistoryCard({
 }
 
 /**
- * After the admin reviews quality results, route FAIL/WARNING to correction
- * and clean pass to service validation (provider review is a later publish gate).
+ * After the admin reviews quality results, route BLOCKER/FAIL to correction.
+ * WARNING-only may proceed to service validation (P2.1 / P4 policy).
  */
 function resolveQualityReviewCompleteDestination(
   qualityResult: AdminWorkerZipQualityRefreshResult,
@@ -1134,7 +1134,7 @@ function resolveQualityReviewCompleteDestination(
 ): "correction" | "serviceValidation" {
   if (detail) {
     const gate = buildAdminQualityGateSnapshot(detail);
-    if (gate.hasBlockers || gate.failCount > 0 || gate.hasWarnings) return "correction";
+    if (gate.hasBlockers || gate.failCount > 0) return "correction";
     return "serviceValidation";
   }
   const r = qualityResult.readiness;
@@ -1145,14 +1145,7 @@ function resolveQualityReviewCompleteDestination(
     r.chunkQualityStatus === "FAIL" ||
     r.retrievalEvaluationStatus === "FAIL" ||
     r.releaseGateStatus === "FAIL";
-  const warning =
-    r.sourceValidation.warningCount > 0 ||
-    r.structureCoverageStatus === "WARNING" ||
-    r.knowledgeQualityStatus === "WARNING" ||
-    r.chunkQualityStatus === "WARNING" ||
-    r.retrievalEvaluationStatus === "WARNING" ||
-    r.releaseGateStatus === "WARNING";
-  if (fail || warning) return "correction";
+  if (fail) return "correction";
   return "serviceValidation";
 }
 

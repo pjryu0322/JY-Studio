@@ -7,3 +7,5 @@ export * from "./inventory-query-service";
 export * from "./inventory-decision-service";
 export * from "./inventory-provider-decision-service";
 export * from "./inventory-preview-service";
+export * from "./inventory-source-fingerprint";
+export * from "./inventory-consistency";

@@ -12,6 +12,7 @@ export type KnowledgeScopeInventorySummaryDto = {
   versionId: string;
   sourceRevisionId: string;
   workingCopyId: string | null;
+  inventorySourceFingerprint: string | null;
   status: KnowledgeScopeInventoryStatus;
   counts: KnowledgeScopeInventoryCountsDto;
   finalizedAt: string | null;

@@ -8,6 +8,8 @@ export type KnowledgeScopeGateSummary = {
   reviewRequiredCount: number;
   providerRequestedCount: number;
   includedCount: number;
+  workingCopyId?: string | null;
+  inventorySourceFingerprint?: string | null;
 };
 
 export function toKnowledgeScopeGateSummary(
@@ -25,9 +27,15 @@ export function toKnowledgeScopeGateSummary(
       reviewRequiredCount: summary.counts.reviewRequired,
       providerRequestedCount: summary.counts.providerRequested,
       includedCount: summary.counts.included,
+      workingCopyId: summary.workingCopyId,
+      inventorySourceFingerprint: summary.inventorySourceFingerprint,
     };
   }
   return summary;
+}
+
+function hasWorkingCopyBinding(gate: KnowledgeScopeGateSummary): boolean {
+  return Boolean(gate.workingCopyId?.trim()) && Boolean(gate.inventorySourceFingerprint?.trim());
 }
 
 export function canFinalizeKnowledgeScope(
@@ -40,6 +48,7 @@ export function canFinalizeKnowledgeScope(
   const gate = toKnowledgeScopeGateSummary(summary);
   if (!gate) return false;
   if (gate.status !== "DRAFT") return false;
+  if (!hasWorkingCopyBinding(gate)) return false;
   return (
     gate.pendingCount === 0 &&
     gate.reviewRequiredCount === 0 &&
@@ -57,6 +66,7 @@ export function isKnowledgeScopeReadyForGeneration(
 ): boolean {
   const gate = toKnowledgeScopeGateSummary(summary);
   if (!gate) return false;
+  if (!hasWorkingCopyBinding(gate)) return false;
   if (
     gate.pendingCount > 0 ||
     gate.reviewRequiredCount > 0 ||

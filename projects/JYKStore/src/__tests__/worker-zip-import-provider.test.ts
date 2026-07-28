@@ -1293,7 +1293,7 @@ describe("P7.3 request/execute split (Provider requests, Admin executes)", () =>
     assert.equal(importInput!.userId, "admin-1");
     assert.equal(importInput!.sourceRevisionId, "srev_a");
     assert.equal(importInput!.workingCopyId, "swc_test_srev_a");
-    assert.deepEqual(importInput!.adminExcludePaths, ["Samples", "bin/setup.exe"]);
+    assert.deepEqual(importInput!.adminExcludePaths, ["bin/setup.exe", "Samples"]);
     // Admin execution must resolve the pack via the admin resolver, not by profile.
     assert.equal(typeof importInput!.resolvePack, "function");
   });

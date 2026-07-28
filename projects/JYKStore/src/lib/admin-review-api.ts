@@ -786,6 +786,7 @@ export type AdminKnowledgeScopeSummary = {
   versionId: string;
   sourceRevisionId: string;
   workingCopyId: string | null;
+  inventorySourceFingerprint: string | null;
   status: "DRAFT" | "FINALIZED" | "SUPERSEDED";
   counts: {
     total: number;

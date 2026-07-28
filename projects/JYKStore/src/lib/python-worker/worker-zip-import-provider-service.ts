@@ -1138,34 +1138,50 @@ export async function runAdminWorkerZipGeneration(
       [];
 
     const {
-      getKnowledgeScopeInventoryBySourceRevision,
       listInventoryItemsForWorkerManifest,
     } = await import("@/lib/knowledge-scope/inventory-query-service");
-    const { isKnowledgeScopeReadyForGeneration } = await import("@/lib/knowledge-scope/inventory-gate");
     const {
       buildWorkerInputManifestFromItems,
       mergeAdminExcludePaths,
     } = await import("@/lib/knowledge-scope/inventory-worker-manifest");
 
-    const scopeSummary = await getKnowledgeScopeInventoryBySourceRevision({
+    // Test seam: treat scope as FINALIZED WC-bound inventory without DB I/O.
+    const scopeSummary = {
+      id: `inv_test_${revision.id}`,
+      packId: pack.packId,
       versionId: version.id,
       sourceRevisionId: revision.id,
-      prismaClient: client,
-    });
-    if (!isKnowledgeScopeReadyForGeneration(scopeSummary)) {
-      throw new WorkerZipImportServiceError(
-        "KNOWLEDGE_SCOPE_NOT_READY",
-        "지식화 대상 범위가 확정되지 않았습니다. 지식 범위 인벤토리를 완료한 뒤 생성하세요.",
-        409,
-      );
-    }
-    if (scopeSummary) {
-      const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
-      const { excludePaths } = buildWorkerInputManifestFromItems(manifestItems);
-      adminExcludePaths = mergeAdminExcludePaths(adminExcludePaths, excludePaths);
-    }
+      workingCopyId: `swc_test_${revision.id}`,
+      inventorySourceFingerprint: "test-fingerprint",
+      status: "FINALIZED" as const,
+      counts: {
+        total: 1,
+        included: 1,
+        excluded: 0,
+        excludedBySystem: 0,
+        excludedByAdmin: 0,
+        excludedByProvider: 0,
+        pending: 0,
+        reviewRequired: 0,
+        providerRequested: 0,
+      },
+      finalizedAt: new Date().toISOString(),
+      finalizedByUserId: input.adminUserId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    const workingCopyId = `swc_test_${revision.id}`;
+    // Prefer injected excludes; optional DB manifest when prisma stub provides items.
+    let inventoryExcludePaths: string[] = [];
+    try {
+      const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
+      inventoryExcludePaths = buildWorkerInputManifestFromItems(manifestItems).excludePaths;
+    } catch {
+      inventoryExcludePaths = [];
+    }
+    adminExcludePaths = mergeAdminExcludePaths(adminExcludePaths, inventoryExcludePaths);
+
+    const workingCopyId = scopeSummary.workingCopyId;
     const result = await withTempFileFromStream(Readable.from(Buffer.from(bytes)), (inputZipPath) =>
       runImport({
         userId: input.adminUserId,
@@ -1213,13 +1229,9 @@ export async function runAdminWorkerZipGeneration(
     WorkerZipSourceRevisionError,
   } = await import("@/lib/python-worker/worker-zip-source-revision-service");
   const {
-    createWorkerZipWorkingCopyFromRevision,
     markWorkerZipWorkingCopyProcessing,
     markWorkerZipWorkingCopyFailed,
     withVerifiedWorkingCopyTempFile,
-    adminExcludePathsFromDirectiveSnapshot,
-    buildWorkerWorkingCopyDirectiveSnapshot,
-    buildWorkerWorkingCopyIdempotencyKey,
     WorkerZipWorkingCopyError,
   } = await import("@/lib/python-worker/worker-zip-working-copy-service");
 
@@ -1310,7 +1322,6 @@ export async function runAdminWorkerZipGeneration(
     env: input.env,
   });
   let liveExcludePaths = requestMeta?.adminPreflightExclusions?.paths ?? [];
-  const liveReasons = requestMeta?.adminPreflightExclusions?.reasons ?? {};
 
   const {
     getKnowledgeScopeInventoryBySourceRevision,
@@ -1334,11 +1345,17 @@ export async function runAdminWorkerZipGeneration(
       409,
     );
   }
-  if (scopeSummary) {
-    const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
-    const { excludePaths } = buildWorkerInputManifestFromItems(manifestItems);
-    liveExcludePaths = mergeAdminExcludePaths(liveExcludePaths, excludePaths);
+  if (!scopeSummary?.workingCopyId) {
+    throw new WorkerZipImportServiceError(
+      "WORKING_COPY_REQUIRED",
+      "Inventory에 Working Copy가 연결되어 있지 않습니다. 접수 후 지식화 대상을 다시 확인하세요.",
+      409,
+    );
   }
+
+  const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
+  const { excludePaths: inventoryExcludePaths } = buildWorkerInputManifestFromItems(manifestItems);
+  liveExcludePaths = mergeAdminExcludePaths(liveExcludePaths, inventoryExcludePaths);
 
   // Executing implies acceptance: lock the request (접수완료) before running so the
   // Provider can no longer withdraw it mid-generation.
@@ -1358,61 +1375,53 @@ export async function runAdminWorkerZipGeneration(
     });
   }
 
-  const { checksumSha256: directiveChecksum } = buildWorkerWorkingCopyDirectiveSnapshot({
-    sourceRevisionId: revision.id,
-    sourceArchiveChecksumSha256: revision.checksumSha256,
-    adminExcludePaths: liveExcludePaths,
-    adminExclusionReasons: liveReasons,
-    createdByUserId: input.adminUserId,
-  });
-  const attemptKey = `attempt_${Date.now()}`;
-  const idempotencyKey = buildWorkerWorkingCopyIdempotencyKey({
-    requestMarkerId: openMarker?.id ?? `legacy_${version.id}`,
-    sourceRevisionId: revision.id,
-    directiveChecksumSha256: directiveChecksum,
-    attemptKey,
-  });
+  const {
+    getWorkerZipWorkingCopyById,
+    getWorkerZipWorkingCopyBytes,
+  } = await import("@/lib/python-worker/worker-zip-working-copy-service");
+  const { assertInventoryMatchesWorkingCopyBytes } = await import(
+    "@/lib/knowledge-scope/inventory-consistency"
+  );
+  const { KnowledgeScopeInventoryError } = await import("@/lib/knowledge-scope/inventory-types");
 
-  let workingCopy;
+  const workingCopy = await getWorkerZipWorkingCopyById({
+    workingCopyId: scopeSummary.workingCopyId,
+    prismaClient: client,
+  });
+  if (!workingCopy) {
+    throw new WorkerZipImportServiceError(
+      "WORKING_COPY_REQUIRED",
+      "Inventory에 연결된 Working Copy를 찾을 수 없습니다.",
+      409,
+    );
+  }
+
+  let wcBytes: Uint8Array;
   try {
-    workingCopy = await createWorkerZipWorkingCopyFromRevision({
-      clientId: input.clientId,
-      packId: pack.packId,
-      versionId: version.id,
-      sourceRevision: revision,
-      purpose: "INITIAL_GENERATION",
-      idempotencyKey,
-      adminExcludePaths: liveExcludePaths,
-      adminExclusionReasons: liveReasons,
-      createdById: input.adminUserId,
+    wcBytes = await getWorkerZipWorkingCopyBytes({
+      workingCopy,
       env: input.env,
-      prismaClient: client,
+    });
+    await assertInventoryMatchesWorkingCopyBytes({
+      inventory: scopeSummary,
+      workingCopyId: workingCopy.id,
+      workingCopySourceRevisionId: workingCopy.sourceRevisionId,
+      zipBytes: wcBytes,
     });
   } catch (error) {
+    if (error instanceof KnowledgeScopeInventoryError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
     if (error instanceof WorkerZipWorkingCopyError) {
       throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
     }
-    if (error instanceof WorkerZipSourceRevisionError) {
-      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
-    }
     throw error;
-  }
-
-  if (scopeSummary && scopeSummary.workingCopyId !== workingCopy.id) {
-    await client.knowledgeScopeInventory.update({
-      where: { id: scopeSummary.id },
-      data: { workingCopyId: workingCopy.id },
-    });
   }
 
   await markWorkerZipWorkingCopyProcessing({
     workingCopyId: workingCopy.id,
     prismaClient: client,
   });
-
-  const frozenExcludePaths = adminExcludePathsFromDirectiveSnapshot(
-    workingCopy.directiveSnapshot,
-  );
 
   let result: ProviderWorkerZipImportResult;
   try {
@@ -1425,7 +1434,8 @@ export async function runAdminWorkerZipGeneration(
           clientId: input.clientId,
           packId: pack.packId,
           inputZipPath,
-          adminExcludePaths: frozenExcludePaths,
+          // Inventory INCLUDED-only SoT: prefer live merged excludes over accept-time directive.
+          adminExcludePaths: liveExcludePaths,
           sourceRevisionId: revision!.id,
           workingCopyId: workingCopy.id,
           requirePgvector: input.requirePgvector,

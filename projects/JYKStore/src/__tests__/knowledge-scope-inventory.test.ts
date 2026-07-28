@@ -11,10 +11,24 @@ import {
   toKnowledgeScopeGateSummary,
 } from "@/lib/knowledge-scope/inventory-gate";
 import {
+  buildInventorySourceFingerprint,
+  fingerprintsMatch,
+} from "@/lib/knowledge-scope/inventory-source-fingerprint";
+import {
   buildWorkerInputManifestFromItems,
   listIncludedRelativePaths,
   mergeAdminExcludePaths,
 } from "@/lib/knowledge-scope/inventory-worker-manifest";
+import {
+  generationOutcomeAllowsServiceValidation,
+  generationOutcomeRequiresCorrection,
+  resolveGenerationOutcome,
+} from "@/lib/workflow/generation-outcome";
+
+const bound = {
+  workingCopyId: "swc_1",
+  inventorySourceFingerprint: "fp_abc",
+};
 
 describe("inventory auto-exclude", () => {
   it("excludes zero-byte files as ZERO_BYTE", () => {
@@ -63,10 +77,34 @@ describe("inventory auto-exclude", () => {
   });
 });
 
-describe("knowledge scope gates", () => {
+describe("P3.1 knowledge scope WC binding gates", () => {
+  it("blocks finalize/generation without Working Copy binding", () => {
+    assert.equal(
+      canFinalizeKnowledgeScope({
+        status: "DRAFT",
+        pendingCount: 0,
+        reviewRequiredCount: 0,
+        providerRequestedCount: 0,
+        includedCount: 2,
+      }),
+      false,
+    );
+    assert.equal(
+      isKnowledgeScopeReadyForGeneration({
+        status: "FINALIZED",
+        pendingCount: 0,
+        reviewRequiredCount: 0,
+        providerRequestedCount: 0,
+        includedCount: 2,
+      }),
+      false,
+    );
+  });
+
   it("blocks finalize when pending/review/provider/empty included", () => {
     assert.equal(
       canFinalizeKnowledgeScope({
+        ...bound,
         status: "DRAFT",
         pendingCount: 1,
         reviewRequiredCount: 0,
@@ -77,6 +115,7 @@ describe("knowledge scope gates", () => {
     );
     assert.equal(
       canFinalizeKnowledgeScope({
+        ...bound,
         status: "DRAFT",
         pendingCount: 0,
         reviewRequiredCount: 1,
@@ -87,6 +126,7 @@ describe("knowledge scope gates", () => {
     );
     assert.equal(
       canFinalizeKnowledgeScope({
+        ...bound,
         status: "DRAFT",
         pendingCount: 0,
         reviewRequiredCount: 0,
@@ -97,6 +137,7 @@ describe("knowledge scope gates", () => {
     );
     assert.equal(
       canFinalizeKnowledgeScope({
+        ...bound,
         status: "DRAFT",
         pendingCount: 0,
         reviewRequiredCount: 0,
@@ -107,9 +148,10 @@ describe("knowledge scope gates", () => {
     );
   });
 
-  it("allows finalize when draft is fully decided with includes", () => {
+  it("allows finalize when draft is WC-bound and fully decided", () => {
     assert.equal(
       canFinalizeKnowledgeScope({
+        ...bound,
         status: "DRAFT",
         pendingCount: 0,
         reviewRequiredCount: 0,
@@ -120,9 +162,10 @@ describe("knowledge scope gates", () => {
     );
   });
 
-  it("requires FINALIZED status for generation readiness", () => {
+  it("requires FINALIZED + WC binding for generation readiness", () => {
     assert.equal(
       isKnowledgeScopeReadyForGeneration({
+        ...bound,
         status: "DRAFT",
         pendingCount: 0,
         reviewRequiredCount: 0,
@@ -133,6 +176,7 @@ describe("knowledge scope gates", () => {
     );
     assert.equal(
       isKnowledgeScopeReadyForGeneration({
+        ...bound,
         status: "FINALIZED",
         pendingCount: 0,
         reviewRequiredCount: 0,
@@ -143,13 +187,14 @@ describe("knowledge scope gates", () => {
     );
   });
 
-  it("accepts nested DTO counts via adapter", () => {
-    const gate = toKnowledgeScopeGateSummary({
+  it("accepts nested DTO counts via adapter and requires fingerprint", () => {
+    const unbound = toKnowledgeScopeGateSummary({
       id: "inv1",
       packId: "p",
       versionId: "v",
       sourceRevisionId: "r",
       workingCopyId: null,
+      inventorySourceFingerprint: null,
       status: "FINALIZED",
       counts: {
         total: 3,
@@ -167,8 +212,55 @@ describe("knowledge scope gates", () => {
       createdAt: "",
       updatedAt: "",
     });
-    assert.ok(gate);
-    assert.equal(isKnowledgeScopeReadyForGeneration(gate), true);
+    assert.ok(unbound);
+    assert.equal(isKnowledgeScopeReadyForGeneration(unbound), false);
+
+    const boundDto = toKnowledgeScopeGateSummary({
+      id: "inv1",
+      packId: "p",
+      versionId: "v",
+      sourceRevisionId: "r",
+      workingCopyId: "swc_1",
+      inventorySourceFingerprint: "fp",
+      status: "FINALIZED",
+      counts: {
+        total: 3,
+        included: 2,
+        excluded: 1,
+        excludedBySystem: 1,
+        excludedByAdmin: 0,
+        excludedByProvider: 0,
+        pending: 0,
+        reviewRequired: 0,
+        providerRequested: 0,
+      },
+      finalizedAt: null,
+      finalizedByUserId: null,
+      createdAt: "",
+      updatedAt: "",
+    });
+    assert.equal(isKnowledgeScopeReadyForGeneration(boundDto), true);
+  });
+});
+
+describe("P3.1 inventory source fingerprint", () => {
+  it("is stable for same path/size set regardless of input order", () => {
+    const a = buildInventorySourceFingerprint([
+      { relativePath: "b/x.md", sizeBytes: 10 },
+      { relativePath: "a/y.md", sizeBytes: 20 },
+    ]);
+    const b = buildInventorySourceFingerprint([
+      { relativePath: "a/y.md", sizeBytes: 20 },
+      { relativePath: "b/x.md", sizeBytes: 10 },
+    ]);
+    assert.equal(a, b);
+    assert.equal(fingerprintsMatch(a, b), true);
+  });
+
+  it("changes when file set changes", () => {
+    const a = buildInventorySourceFingerprint([{ relativePath: "a.md", sizeBytes: 1 }]);
+    const b = buildInventorySourceFingerprint([{ relativePath: "a.md", sizeBytes: 2 }]);
+    assert.equal(fingerprintsMatch(a, b), false);
   });
 });
 
@@ -192,5 +284,62 @@ describe("worker input manifest", () => {
       "b/y",
       "c/z",
     ]);
+  });
+});
+
+describe("P4 generation outcome", () => {
+  it("maps blocker to CORRECTION_REQUIRED and warning-only to SUCCEEDED_WITH_WARNINGS", () => {
+    assert.equal(
+      resolveGenerationOutcome({
+        workerZipPhase: "COMPLETED",
+        qualityCompleted: true,
+        hasBlockers: true,
+        failCount: 0,
+        hasWarnings: true,
+      }),
+      "CORRECTION_REQUIRED",
+    );
+    assert.equal(
+      resolveGenerationOutcome({
+        workerZipPhase: "COMPLETED",
+        qualityCompleted: true,
+        hasBlockers: false,
+        failCount: 0,
+        hasWarnings: true,
+      }),
+      "SUCCEEDED_WITH_WARNINGS",
+    );
+    assert.equal(
+      generationOutcomeRequiresCorrection("CORRECTION_REQUIRED"),
+      true,
+    );
+    assert.equal(
+      generationOutcomeAllowsServiceValidation("SUCCEEDED_WITH_WARNINGS"),
+      true,
+    );
+    assert.equal(generationOutcomeAllowsServiceValidation("CORRECTION_REQUIRED"), false);
+  });
+
+  it("maps worker failure and clean success", () => {
+    assert.equal(
+      resolveGenerationOutcome({
+        workerZipPhase: "FAILED",
+        qualityCompleted: false,
+        hasBlockers: false,
+        failCount: 0,
+        hasWarnings: false,
+      }),
+      "FAILED",
+    );
+    assert.equal(
+      resolveGenerationOutcome({
+        workerZipPhase: "COMPLETED",
+        qualityCompleted: true,
+        hasBlockers: false,
+        failCount: 0,
+        hasWarnings: false,
+      }),
+      "SUCCEEDED",
+    );
   });
 });

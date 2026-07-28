@@ -463,3 +463,56 @@ export function adminExcludePathsFromDirectiveSnapshot(
   if (!snapshot?.adminPreflightExclusions?.length) return [];
   return snapshot.adminPreflightExclusions.map((row) => row.path);
 }
+
+/**
+ * Load Working Copy ZIP bytes for Inventory scan / fingerprint.
+ * Prefer streaming paths for Worker execution; this is for metadata scans only.
+ */
+export async function getWorkerZipWorkingCopyBytes(input: {
+  workingCopy: Pick<
+    WorkerZipWorkingCopyRecord,
+    "storageKey" | "checksumSha256" | "sizeBytes" | "id"
+  >;
+  env?: NodeJS.ProcessEnv;
+  storage?: ObjectStorageBackend;
+}): Promise<Uint8Array> {
+  const storage = resolveStorage(input);
+  try {
+    const res = await storage.getObject({ objectKey: input.workingCopy.storageKey });
+    const checksum = createHash("sha256").update(res.bytes).digest("hex");
+    if (checksum !== input.workingCopy.checksumSha256) {
+      throw new WorkerZipWorkingCopyError(
+        "WORKING_COPY_INTEGRITY_MISMATCH",
+        "Working Copy checksum이 기록과 다릅니다.",
+        409,
+      );
+    }
+    if (res.bytes.byteLength !== input.workingCopy.sizeBytes) {
+      throw new WorkerZipWorkingCopyError(
+        "WORKING_COPY_INTEGRITY_MISMATCH",
+        "Working Copy 크기가 기록과 다릅니다.",
+        409,
+      );
+    }
+    return res.bytes;
+  } catch (error) {
+    if (error instanceof WorkerZipWorkingCopyError) throw error;
+    throw new WorkerZipWorkingCopyError(
+      "WORKING_COPY_OBJECT_MISSING",
+      "Working Copy object를 읽을 수 없습니다.",
+      404,
+    );
+  }
+}
+
+export async function getWorkerZipWorkingCopyById(input: {
+  workingCopyId: string;
+  prismaClient?: PrismaClientLike;
+}): Promise<WorkerZipWorkingCopyRecord | null> {
+  const client = input.prismaClient ?? prisma;
+  const row = await client.workerZipWorkingCopy.findUnique({
+    where: { id: input.workingCopyId },
+  });
+  if (!row) return null;
+  return mapWorkingCopy(row, false);
+}

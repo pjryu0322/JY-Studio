@@ -238,6 +238,13 @@ export async function finalizeKnowledgeScopeInventory(input: {
       409,
     );
   }
+  if (!inventory.workingCopyId?.trim() || !inventory.inventorySourceFingerprint?.trim()) {
+    throw new KnowledgeScopeInventoryError(
+      "WORKING_COPY_REQUIRED",
+      "Working Copy 기준으로 생성된 인벤토리만 확정할 수 있습니다.",
+      409,
+    );
+  }
 
   const counts = await persistInventoryCounts(inventory.id, client);
   if (

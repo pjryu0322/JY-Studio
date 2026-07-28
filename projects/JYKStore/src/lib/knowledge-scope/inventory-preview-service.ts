@@ -63,24 +63,27 @@ function mimeForPreviewKind(kind: string, extension: string): string {
 async function loadZipBytesForInventory(input: {
   packId: string;
   versionId: string;
+  workingCopyId?: string | null;
   env?: NodeJS.ProcessEnv;
 }): Promise<Uint8Array> {
-  const { getWorkerZipRequestBytes } = await import(
-    "@/lib/python-worker/worker-zip-request-storage"
-  );
-  const bytes = await getWorkerZipRequestBytes({
-    packId: input.packId,
-    packVersionId: input.versionId,
-    env: input.env,
-  });
-  if (!bytes || bytes.byteLength === 0) {
-    throw new KnowledgeScopeInventoryError(
-      "REQUEST_ZIP_NOT_FOUND",
-      "원본 ZIP 자료를 찾을 수 없습니다.",
-      404,
-    );
+  if (input.workingCopyId) {
+    const {
+      getWorkerZipWorkingCopyById,
+      getWorkerZipWorkingCopyBytes,
+    } = await import("@/lib/python-worker/worker-zip-working-copy-service");
+    const workingCopy = await getWorkerZipWorkingCopyById({
+      workingCopyId: input.workingCopyId,
+    });
+    if (workingCopy) {
+      return getWorkerZipWorkingCopyBytes({ workingCopy, env: input.env });
+    }
   }
-  return bytes;
+
+  throw new KnowledgeScopeInventoryError(
+    "WORKING_COPY_REQUIRED",
+    "Working Copy를 찾을 수 없어 미리보기할 수 없습니다.",
+    404,
+  );
 }
 
 export async function getInventoryItemPreview(input: {
@@ -94,7 +97,7 @@ export async function getInventoryItemPreview(input: {
     where: { id: input.itemId },
     include: {
       inventory: {
-        select: { id: true, packId: true, versionId: true },
+        select: { id: true, packId: true, versionId: true, workingCopyId: true },
       },
     },
   });
@@ -130,6 +133,7 @@ export async function getInventoryItemPreview(input: {
   const zipBytes = await loadZipBytesForInventory({
     packId: item.inventory.packId,
     versionId: item.inventory.versionId,
+    workingCopyId: item.inventory.workingCopyId,
     env: input.env,
   });
 

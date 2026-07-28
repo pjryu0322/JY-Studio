@@ -27,6 +27,7 @@ export function toInventorySummaryDto(
     versionId: row.versionId,
     sourceRevisionId: row.sourceRevisionId,
     workingCopyId: row.workingCopyId,
+    inventorySourceFingerprint: row.inventorySourceFingerprint ?? null,
     status: row.status,
     counts,
     finalizedAt: row.finalizedAt?.toISOString() ?? null,

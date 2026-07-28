@@ -476,22 +476,23 @@ enum KnowledgeScopeExclusionReason {
 }
 
 model KnowledgeScopeInventory {
-  id                     String                        @id @default(cuid())
-  packId                 String
-  versionId              String
-  sourceRevisionId       String
-  workingCopyId          String?
-  status                 KnowledgeScopeInventoryStatus @default(DRAFT)
-  itemCount              Int                           @default(0)
-  includedCount          Int                           @default(0)
-  excludedCount          Int                           @default(0)
-  pendingCount           Int                           @default(0)
-  reviewRequiredCount    Int                           @default(0)
-  providerRequestedCount Int                           @default(0)
-  finalizedAt            DateTime?
-  finalizedByUserId      String?
-  createdAt              DateTime                      @default(now())
-  updatedAt              DateTime                      @updatedAt
+  id                         String                        @id @default(cuid())
+  packId                     String
+  versionId                  String
+  sourceRevisionId           String
+  workingCopyId              String?
+  inventorySourceFingerprint String?
+  status                     KnowledgeScopeInventoryStatus @default(DRAFT)
+  itemCount                  Int                           @default(0)
+  includedCount              Int                           @default(0)
+  excludedCount              Int                           @default(0)
+  pendingCount               Int                           @default(0)
+  reviewRequiredCount        Int                           @default(0)
+  providerRequestedCount     Int                           @default(0)
+  finalizedAt                DateTime?
+  finalizedByUserId          String?
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
 
   pack           KnowledgePack                 @relation(fields: [packId], references: [packId], onDelete: Cascade)
   version        KnowledgePackVersion          @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -503,6 +504,7 @@ model KnowledgeScopeInventory {
   @@index([packId, status])
   @@index([workingCopyId])
   @@index([sourceRevisionId])
+  @@index([inventorySourceFingerprint])
 }
 
 model KnowledgeScopeInventoryItem {

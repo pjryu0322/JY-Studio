@@ -31,17 +31,18 @@ export function AdminQualityCheckPanel({
     statusLabel = "보정 필요 (차단)";
     tone = "border-red-200 bg-red-50 text-red-900";
   } else if (quality.hasWarnings) {
-    statusLabel = "관리자 확인 필요 (WARNING)";
+    statusLabel = "경고 있음 — 서비스 검증 가능";
     tone = "border-amber-200 bg-amber-50 text-amber-950";
   } else {
-    statusLabel = "제공자 검토요청 가능";
+    statusLabel = "서비스 검증으로 진행 가능";
     tone = "border-emerald-200 bg-emerald-50 text-emerald-900";
   }
 
   const canNavigate =
     generationDone && quality.completed;
   const needsCorrection =
-    canNavigate && (quality.hasBlockers || quality.failCount > 0 || quality.hasWarnings);
+    canNavigate && (quality.hasBlockers || quality.failCount > 0);
+  const canGoServiceValidation = canNavigate && !needsCorrection;
 
   return (
     <section className={`space-y-2 rounded-2xl border px-4 py-3 ${tone}`}>
@@ -85,13 +86,22 @@ export function AdminQualityCheckPanel({
             보정으로 이동
           </button>
         ) : null}
-        {canNavigate && !needsCorrection ? (
+        {canGoServiceValidation ? (
           <button
             type="button"
             onClick={() => onGoProviderReview?.()}
             className="min-h-[36px] rounded-xl border border-current/20 bg-white px-3 text-xs font-bold"
           >
-            제공자 검토로 이동
+            서비스 검증으로 이동
+          </button>
+        ) : null}
+        {canNavigate && quality.hasWarnings && !needsCorrection ? (
+          <button
+            type="button"
+            onClick={() => onGoCorrection?.()}
+            className="min-h-[36px] rounded-xl border border-current/20 bg-white/70 px-3 text-xs font-semibold"
+          >
+            경고 상세(보정)
           </button>
         ) : null}
       </div>
