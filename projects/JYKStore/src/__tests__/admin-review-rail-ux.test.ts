@@ -171,7 +171,8 @@ describe("admin review rail UX (P2 6-step workflow)", () => {
     assert.ok(quality.includes("onGoCorrection"));
     assert.ok(card.includes("완료취소"));
     assert.ok(card.includes("onAcknowledgeQualityReview"));
-    assert.ok(correction.includes("예외 보정") || correction.includes("보정 큐"));
+    assert.ok(correction.includes("Correction") || correction.includes("보정 큐") || correction.includes("예외 보정"));
+    assert.ok(correction.includes("title=") && correction.includes("ⓘ"));
     assert.ok(detail.includes("showCorrection"));
     assert.ok(detail.includes("AdminKnowledgeCorrectionPanel"));
     assert.ok(detail.includes("onGoCorrection={() => goStep(\"correction\")}"));

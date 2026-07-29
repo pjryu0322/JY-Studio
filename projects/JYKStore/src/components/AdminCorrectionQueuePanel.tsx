@@ -69,8 +69,8 @@ export function AdminCorrectionQueuePanel({
 
   if (loading) {
     return (
-      <p className="rounded-2xl border border-store-border bg-white px-4 py-3 text-sm text-store-muted">
-        보정 작업 카드를 불러오는 중…
+      <p className="border border-store-border bg-white px-2.5 py-2 text-xs text-store-muted">
+        불러오는 중…
       </p>
     );
   }
