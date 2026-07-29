@@ -39,6 +39,9 @@ next-env.d.ts
 # Local MinIO binary/data (dev)
 .local/
 
+# P4.3 real-ZIP validation scratch (large worker outputs)
+/tmp-p4-3-validation/
+
 # Do not commit local embedding model trees if ever copied into the repo
 /models/
 **/multilingual-e5-small-ko-v2/
