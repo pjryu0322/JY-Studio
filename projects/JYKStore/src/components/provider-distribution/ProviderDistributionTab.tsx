@@ -161,7 +161,7 @@ export function ProviderDistributionTab({
         </p>
         {artifactOptions.externalImportReady ? (
           <p className="mt-1 text-xs text-store-muted">
-            공개 RAG Export는 Chunk·Metadata ZIP을 제공합니다. 원본문서는 기본 포함되지 않습니다.
+            공개 내보내기는 검색용 패키지(ZIP)를 제공합니다. 원본문서는 기본 포함되지 않습니다.
           </p>
         ) : null}
       </div>
@@ -283,7 +283,7 @@ export function ProviderDistributionTab({
               disabled={!editable}
             />
             <span>
-              <span className="font-semibold">Retrieval API 제공</span>
+              <span className="font-semibold">검색 API 제공</span>
               <span className="mt-0.5 block text-xs text-store-muted">
                 외부 시스템이 질문을 보내 관련 지식과 출처를 조회합니다.
               </span>
@@ -315,7 +315,7 @@ export function ProviderDistributionTab({
             <span>
               <span className="font-semibold">RAG Export 제공</span>
               <span className="mt-0.5 block text-xs text-store-muted">
-                외부 RAG 환경에서 사용할 수 있는 Chunk·Metadata 패키지 다운로드를 허용합니다.
+                외부 환경에서 사용할 수 있는 검색 패키지 다운로드를 허용합니다.
                 원본문서 파일은 기본 포함되지 않습니다.
               </span>
             </span>

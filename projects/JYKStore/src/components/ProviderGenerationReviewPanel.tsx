@@ -1056,8 +1056,8 @@ export function ProviderGenerationReviewPanel({
   };
 
   const areaLabel = (area: ProviderReviewIssueEvidence["area"]) => {
-    if (area === "structure") return "구조화";
-    if (area === "chunk") return "청킹";
+    if (area === "structure") return "문서 구성";
+    if (area === "chunk") return "문서 구간";
     return "검색 평가";
   };
 
@@ -1155,11 +1155,11 @@ export function ProviderGenerationReviewPanel({
               <td className="px-3 py-2 font-semibold">{quality.overall}</td>
             </tr>
             <tr className="border-b border-slate-100">
-              <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">구조화</th>
+              <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">문서 구성</th>
               <td className="px-3 py-2 font-semibold">
                 {formatProviderReviewQualityLabel(quality.structure)}
               </td>
-              <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">청킹</th>
+              <th className="bg-slate-50 px-3 py-2 font-semibold text-store-muted">문서 구간</th>
               <td className="px-3 py-2 font-semibold">
                 {formatProviderReviewQualityLabel(quality.chunk)}
               </td>
@@ -2079,7 +2079,7 @@ export function ProviderGenerationReviewPanel({
                       고급 정보
                     </th>
                     <td className="space-y-0.5 px-3 py-2 font-mono text-[10px] text-store-muted">
-                      <div>지식 단위 ID: {chunkDetailItem.chunkId}</div>
+                      <div className="text-store-muted">상세 식별자는 관리자만 확인합니다.</div>
                       <div>
                         원본 문서 ID:{" "}
                         {chunkDetail?.sourceDocumentId ||
@@ -2196,7 +2196,7 @@ export function ProviderGenerationReviewPanel({
                 setTargetKind("OTHER");
                 setTargetLabel("관리자 재처리 요청");
                 setDetails(
-                  "품질 실패 항목이 있어 관리자 재처리(재구조화/재청킹/검색 평가 재실행)를 요청합니다.\n실패 영역과 확인한 이슈를 검토해 주세요.",
+                  "품질 실패 항목이 있어 관리자 재처리(다시 생성/검색 확인 재실행)를 요청합니다.\n실패 영역과 확인한 이슈를 검토해 주세요.",
                 );
                 setFormOpen(true);
                 setError(null);
@@ -2245,18 +2245,37 @@ export function ProviderGenerationReviewPanel({
             <input
               value={targetLabel}
               onChange={(e) => setTargetLabel(e.target.value)}
-              placeholder="파일명, 섹션, Chunk ID, 검색 질문 등"
+              placeholder="파일명, 섹션, 검색 질문 등"
               className="mt-1 min-h-[36px] w-full rounded-lg border border-store-border px-3 text-sm"
             />
           </label>
           <label className="block text-xs font-semibold text-slate-700">
             상세 요청 내용
+            <div className="mt-1 flex flex-wrap gap-1">
+              {[
+                "문서가 누락되었습니다.",
+                "검색 결과가 부정확합니다.",
+                "최신 버전이 아닙니다.",
+                "제외하지 말아야 합니다.",
+              ].map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() =>
+                    setDetails((prev) => (prev.trim() ? `${prev.trim()}\n${reason}` : reason))
+                  }
+                  className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
             <textarea
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               rows={4}
               required
-              placeholder="예: rMate Grid 사용 설명서의 셀 병합 섹션이 여러 개의 짧은 chunk로 분리되어 검색 근거가 약합니다. 해당 섹션을 하나의 의미 단위로 재청킹해 주세요."
+              placeholder="업무 관점으로 필요한 보완 내용을 적어 주세요."
               className="mt-1 w-full rounded-lg border border-store-border px-3 py-2 text-sm"
             />
           </label>

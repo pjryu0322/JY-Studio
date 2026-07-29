@@ -23,7 +23,7 @@ describe("provider knowledge generation flow", () => {
       "serviceValidation",
       "distributionReview",
     ]);
-    assert.equal(PROVIDER_PACK_TAB_KNOWLEDGE, "데이터 구조화");
+    assert.equal(PROVIDER_PACK_TAB_KNOWLEDGE, "보완 요청");
   });
 
   it("defaults to knowledge after provider confirm before pipeline pass", () => {
@@ -51,8 +51,8 @@ describe("provider knowledge generation flow", () => {
     assert.equal(locked.knowledge.locked, false);
     assert.equal(locked.serviceValidation.locked, true);
     assert.ok(
-      locked.serviceValidation.reason?.includes("Retrieval Chunk") ||
-        locked.serviceValidation.reason?.includes("데이터 구조화"),
+      locked.serviceValidation.reason?.includes("보완 요청") ||
+        locked.serviceValidation.reason?.includes("미리보기"),
     );
     assert.equal(locked.distributionReview.locked, true);
 
@@ -103,7 +103,7 @@ describe("provider knowledge generation flow", () => {
       join(root, "src/components/provider-distribution/ProviderDoclingImportTab.tsx"),
       "utf8",
     );
-    assert.ok(tab.includes("확인 완료하고 데이터 구조화"));
+    assert.ok(tab.includes("확인 완료하고 데이터 구조화") || tab.includes("확인 완료하고 보완"));
     assert.ok(!tab.includes("확인 완료하고 유통정보 입력"));
     assert.ok(!tab.includes("확인 완료하고 지식 데이터 생성"));
     assert.ok(tab.includes("startProviderKnowledgePipelineApi"));

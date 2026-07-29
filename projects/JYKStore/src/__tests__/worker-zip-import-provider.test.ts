@@ -647,7 +647,7 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
     assert.match(src, /requestProviderWorkerZipGenerationApi/);
     assert.match(src, /지식데이터 생성 요청/);
     assert.match(src, /자료 교체 업로드/);
-    assert.match(src, /데이터 구조화 결과 확인/);
+    assert.match(src, /서비스 내용 확인/);
     // No execution affordance / legacy execute API on the Provider card.
     assert.ok(!/데이터 구조화 시작/.test(src));
     assert.ok(!/startProviderWorkerZipImportApi/.test(src));

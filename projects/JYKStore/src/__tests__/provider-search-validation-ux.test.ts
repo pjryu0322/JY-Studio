@@ -35,7 +35,7 @@ describe("provider search validation UX", () => {
   });
 
   it("separates auto-eval from provider confirmation badges", () => {
-    assert.match(tab, /검색데이터 준비 완료/);
+    assert.match(tab, /검색 준비 완료/);
     assert.match(tab, /자동 검색 평가/);
     assert.match(tab, /자동 평가 통과/);
     assert.match(tab, /자동 평가 다시 필요/);

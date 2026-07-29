@@ -53,7 +53,7 @@ export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "지식팩 등록";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_BODY =
   "외부 생성 도구의 결과물과 원본문서를 등록해 지식팩을 제출할 수 있습니다.";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_HINT =
-  "기본정보 → 자료 등록 → 유통정보 → 검수요청 순서로 진행하세요.";
+  "기본정보 → 자료 → 서비스 미리보기 → 게시 현황 순서로 진행하세요.";
 
 export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "지식팩 등록";
 export const PROVIDER_PACK_NEW_BLOCKED_BODY =
@@ -72,7 +72,7 @@ export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
 export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
 export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
 export const PROVIDER_PACK_CREATED_NEXT_TASK =
-  "다음 할 일: 기본정보를 확인한 뒤 자료를 등록하고 데이터 구조화·검색 검증을 진행하세요.";
+  "다음 할 일: 기본정보를 확인한 뒤 자료를 등록하고 서비스 미리보기·게시 현황을 진행하세요.";
 export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
@@ -83,19 +83,19 @@ export const PROVIDER_PACK_WIZARD_SOURCE_STEP = PROVIDER_PACK_WIZARD_MATERIALS_S
 export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "기존 자료";
 /** @deprecated Builder freeze */
 export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "검수 요청";
-export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "유통정보·검수요청";
+export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "게시 현황";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "승인·공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
 export const PROVIDER_PACK_TAB_BASIC_SHORT = "기본";
-export const PROVIDER_PACK_TAB_PAYLOAD = "자료 등록";
+export const PROVIDER_PACK_TAB_PAYLOAD = "자료";
 export const PROVIDER_PACK_TAB_PAYLOAD_SHORT = "자료";
-export const PROVIDER_PACK_TAB_KNOWLEDGE = "데이터 구조화";
-export const PROVIDER_PACK_TAB_KNOWLEDGE_SHORT = "구조화";
-export const PROVIDER_PACK_TAB_SERVICE_VALIDATION = "검색데이터 생성·검증";
-export const PROVIDER_PACK_TAB_SERVICE_VALIDATION_SHORT = "검색검증";
-export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW = "유통정보·검수요청";
-export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW_SHORT = "유통·검수";
+export const PROVIDER_PACK_TAB_KNOWLEDGE = "보완 요청";
+export const PROVIDER_PACK_TAB_KNOWLEDGE_SHORT = "보완";
+export const PROVIDER_PACK_TAB_SERVICE_VALIDATION = "서비스 미리보기";
+export const PROVIDER_PACK_TAB_SERVICE_VALIDATION_SHORT = "미리보기";
+export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW = "게시 현황";
+export const PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW_SHORT = "게시";
 /** @deprecated Prefer PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW */
 export const PROVIDER_PACK_TAB_DISTRIBUTION = PROVIDER_PACK_TAB_DISTRIBUTION_REVIEW;
 export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
@@ -110,12 +110,12 @@ export const PROVIDER_PACK_MATERIALS_NO_VERSION = "등록된 버전이 없습니
 export const PROVIDER_PACK_MATERIALS_EMPTY =
   "현재 버전에 등록된 자료가 없습니다. 자료를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
 
-export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "자료 등록으로 이동";
-export const PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB = "데이터 구조화로 이동";
-export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보·검수요청으로 이동";
-export const PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB = "검색데이터 생성·검증으로 이동";
+export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "자료로 이동";
+export const PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB = "보완 요청으로 이동";
+export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "게시 현황으로 이동";
+export const PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB = "서비스 미리보기로 이동";
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
-export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "유통정보·검수요청으로 이동";
+export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "게시 현황으로 이동";
 /** @deprecated Builder freeze — prefer PROVIDER_PACK_GO_TO_MATERIALS_TAB */
 export const PROVIDER_PACK_GO_TO_SOURCE_TAB = PROVIDER_PACK_GO_TO_MATERIALS_TAB;
 /** @deprecated Builder freeze */
@@ -135,7 +135,7 @@ export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
 
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "기본정보·자료 등록·데이터 구조화·검색데이터 생성·검증·유통정보가 모두 완료되면 검수요청을 제출할 수 있습니다.";
+  "기본정보·자료·보완 요청·서비스 미리보기·게시 현황이 모두 완료되면 검수요청을 제출할 수 있습니다.";
 
 export const PROVIDER_SUBMIT_CTA = "검수 요청 제출";
 export const PROVIDER_SUBMIT_CONFIRM =
@@ -345,8 +345,8 @@ export const ADMIN_REVIEW_STATE_CHANGED_BODY =
   "제출 당시 검수 패키지와 현재 데이터가 다릅니다. 관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.";
 
 export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 재점검";
-export const ADMIN_REVIEW_CTA_APPROVE = "승인 및 공개";
-export const ADMIN_REVIEW_CTA_REJECT = "반려";
+export const ADMIN_REVIEW_CTA_APPROVE = "게시";
+export const ADMIN_REVIEW_CTA_REJECT = "게시 취소";
 export const ADMIN_REVIEW_CTA_REFRESH_ALL = "현재 데이터 기준 전체 재점검";
 export const ADMIN_REVIEW_CTA_RETRIEVAL_REEVAL = "검색 품질 재평가";
 export const ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE = "고급 작업";
@@ -378,11 +378,11 @@ export const PROVIDER_PACK_DESCRIPTION_HINT =
   "이 지식팩이 어떤 사용자를 위해 어떤 정보를 제공하는지 작성해 주세요.";
 export const PROVIDER_PACK_VERSION_CHANGELOG_LABEL_PREFIX = "버전 변경사항";
 export const PROVIDER_PACK_SAVE_DRAFT = "임시 저장";
-export const PROVIDER_PACK_SAVE_AND_GO_PAYLOAD = "저장 후 자료 등록";
+export const PROVIDER_PACK_SAVE_AND_GO_PAYLOAD = "저장 후 자료";
 export const PROVIDER_PACK_SAVE_DRAFT_SUCCESS = "기본정보를 저장했습니다.";
 
 export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
-  "등록된 원천 자료가 없습니다. 자료 등록 탭에서 외부 생성 도구 결과물을 등록하세요.";
+  "등록된 원천 자료가 없습니다. 자료 탭에서 외부 생성 도구 결과물을 등록하세요.";
 export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
 
 export const PROVIDER_PACK_SOURCE_STEP_TITLE = "등록된 자료를 확인하세요.";

@@ -71,21 +71,21 @@ describe("search-data async enqueue + failure UX", () => {
   });
 
   it("CREATE_FAILED shows one card message and hides API·MCP lock on failure", () => {
-    assert.match(tab, /검색데이터 생성 실패/);
+    assert.match(tab, /검색 준비 실패/);
     assert.match(
       tab,
       /sd\?\.state === "CREATED"[\s\S]*VALIDATING[\s\S]*VALIDATION_FAILED/,
     );
     assert.match(tab, /관리자에게 문의가 필요합니다/);
     // Global alert must not repeat card CREATE_FAILED copy path for successful status.
-    assert.match(tab, /검색데이터 요청에 실패했습니다/);
+    assert.match(tab, /미리보기 준비 요청에 실패했습니다/);
   });
 
   it("VALIDATION_FAILED uses quality copy not create-failure", () => {
     assert.match(tab, /검색 품질 보완 필요/);
     assert.doesNotMatch(
       tab,
-      /VALIDATION_FAILED[\s\S]{0,200}검색데이터 생성 실패/,
+      /VALIDATION_FAILED[\s\S]{0,200}검색 준비 실패/,
     );
   });
 

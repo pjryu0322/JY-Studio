@@ -113,7 +113,7 @@ export function ProviderKnowledgeScopePanel({ packId }: { readonly packId: strin
       <header>
         <h3 className="text-sm font-semibold text-store-ink">지식화 대상 확인 요청</h3>
         <p className="text-xs text-store-muted">
-          관리자가 포함 여부를 물어본 파일입니다. Chunk/Embedding 정보는 표시하지 않습니다.
+          관리자가 포함 여부를 물어본 파일입니다. 기술 상세는 표시하지 않습니다.
         </p>
       </header>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

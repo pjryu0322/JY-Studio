@@ -98,6 +98,9 @@ export function buildAdminServiceValidationViewModel(input: {
     );
   }
 
+  const howToRunHint =
+    "상세에서 채널 검증을 실행·확인한 뒤 상태를 새로고침하세요.";
+
   const checklist: AdminServiceValidationChecklistItem[] = [
     {
       id: "supplement",
@@ -107,33 +110,30 @@ export function buildAdminServiceValidationViewModel(input: {
     },
     {
       id: "binding",
-      label: "최신 Worker 산출물 바인딩",
+      label: "최신 산출물 연결",
       done: bindingCurrent,
       detail: bindingCurrent
         ? undefined
-        : bindingReason ?? "바인딩이 CURRENT가 아닙니다. 채널 검증을 다시 실행하세요.",
+        : bindingReason ?? "최신 산출물 기준으로 다시 검증하세요.",
     },
     {
       id: "api",
-      label: "API 채널 검증 통과",
+      label: "검색 API 검증 통과",
       done: channels.find((c) => c.channel === "API")?.passed === true,
     },
     {
       id: "mcp",
-      label: "MCP 채널 검증 통과",
+      label: "연결 채널 검증 통과",
       done: channels.find((c) => c.channel === "MCP")?.passed === true,
     },
     {
       id: "rag",
-      label: "ZIP/RAG Export 채널 검증 통과",
+      label: "내보내기 검증 통과",
       done:
         channels.find((c) => c.channel === "DOWNLOAD")?.passed === true ||
         channels.find((c) => c.label.includes("RAG"))?.passed === true,
     },
   ];
-
-  const howToRunHint =
-    "채널 검증은 아래 운영 로그·검증 도구에서 실행·확인합니다. 상태를 반영하려면 ‘채널 상태 새로고침’을 누르세요.";
 
   if (input.serviceDone) {
     return {
@@ -145,9 +145,9 @@ export function buildAdminServiceValidationViewModel(input: {
       bindingReason,
       allPassed,
       canMarkPassed: false,
-      primaryLabel: "서비스 검증 완료됨 · 게시 단계로 이동",
+      primaryLabel: "게시 단계로 이동",
       summaryTone: "emerald",
-      summaryMessage: "서비스 검증이 완료되었습니다. 게시 단계에서 제공자 검토를 요청하세요.",
+      summaryMessage: "서비스 검증이 완료되었습니다.",
       checklist: checklist.map((c) => ({ ...c, done: true })),
       howToRunHint,
     };
@@ -169,9 +169,9 @@ export function buildAdminServiceValidationViewModel(input: {
       bindingReason,
       allPassed: true,
       canMarkPassed: true,
-      primaryLabel: "검증 확인 완료 · 게시 단계로 이동",
+      primaryLabel: "검증 확인 완료",
       summaryTone: "emerald",
-      summaryMessage: "API·MCP·ZIP/RAG Export 검증이 모두 통과했습니다.",
+      summaryMessage: "서비스 채널 검증이 모두 통과했습니다.",
       checklist,
       howToRunHint,
     };
@@ -192,10 +192,22 @@ export function buildAdminServiceValidationViewModel(input: {
     bindingReason,
     allPassed,
     canMarkPassed: false,
-    primaryLabel: "검증 확인 완료 · 게시 단계로 이동",
+    primaryLabel: "검증 확인 완료",
     summaryTone: "amber",
     summaryMessage: blockedReasons[0] ?? null,
     checklist,
     howToRunHint,
   };
+}
+
+/** P6: three operational statuses only. */
+export type AdminServiceValidationUxStatus = "서비스 가능" | "주의" | "게시 불가";
+
+export function resolveAdminServiceValidationUxStatus(
+  vm: Pick<AdminServiceValidationViewModel, "status" | "blockedReasons" | "allPassed">,
+): AdminServiceValidationUxStatus {
+  if (vm.status === "DONE" || vm.status === "READY") return "서비스 가능";
+  if (vm.status === "BLOCKED") return "게시 불가";
+  if (vm.blockedReasons.length > 0 && !vm.allPassed) return "게시 불가";
+  return "주의";
 }

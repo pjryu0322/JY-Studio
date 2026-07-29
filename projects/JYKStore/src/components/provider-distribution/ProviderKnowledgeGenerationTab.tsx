@@ -111,10 +111,10 @@ function friendlyDetails(stageId: string, details: Record<string, unknown> | nul
       }
     }
   } else if (stageId === "RETRIEVAL_CHUNK") {
-    push("검색 단위", details.chunkCount ?? details.retrievalChunkCount);
-    push("최대 토큰", details.maxTokenCount);
-    push("목표 토큰", (details.tokenGate as { targetPassageTokens?: number } | undefined)?.targetPassageTokens);
-    push("한도 토큰", (details.tokenGate as { maxSequenceTokens?: number } | undefined)?.maxSequenceTokens ?? 512);
+    push("문서 구간", details.chunkCount ?? details.retrievalChunkCount);
+    push("최대 길이", details.maxTokenCount);
+    push("목표 길이", (details.tokenGate as { targetPassageTokens?: number } | undefined)?.targetPassageTokens);
+    push("한도 길이", (details.tokenGate as { maxSequenceTokens?: number } | undefined)?.maxSequenceTokens ?? 512);
     push("초과 단위", details.hardLimitExceededCount ?? (details.tokenGate as { hardLimitExceededCount?: number } | undefined)?.hardLimitExceededCount);
     push("목표 초과", details.targetExceededCount ?? (details.tokenGate as { targetExceededCount?: number } | undefined)?.targetExceededCount);
     const profile = details.embeddingProfile as { model?: string; revision?: string } | undefined;
@@ -122,12 +122,12 @@ function friendlyDetails(stageId: string, details: Record<string, unknown> | nul
     push("평균 길이", details.averageLength);
     push("최소 길이", details.minLength);
     push("최대 길이", details.maxLength);
-    push("짧은 Chunk", details.shortCount);
-    push("긴 Chunk", details.longCount);
+    push("짧은 구간", details.shortCount);
+    push("긴 구간", details.longCount);
   } else if (stageId === "SEARCH_INDEX") {
     push("Index Generation", details.indexGenerationId);
     push("Draft 상태", details.indexScope ?? details.draft);
-    push("처리 Chunk", details.processedCount);
+    push("처리 구간", details.processedCount);
     push("성공 생성", details.createdCount);
     push("실패/스킵", details.skippedCount);
   } else if (stageId === "RETRIEVAL_EVALUATION") {
@@ -209,7 +209,7 @@ export function ProviderKnowledgeGenerationTab({
   async function handleStart(forceRestart = false) {
     if (forceRestart || structureComplete) {
       const confirmed = window.confirm(
-        "데이터 구조화를 다시 실행하면 현재 검색데이터 생성 준비 상태와\n기존 검색검증 결과가 무효화됩니다.\n\n계속하시겠습니까?",
+        "다시 실행하면 검색 준비 상태와\n기존 확인 결과가 무효화됩니다.\n\n계속하시겠습니까?",
       );
       if (!confirmed) return;
     }
@@ -221,7 +221,7 @@ export function ProviderKnowledgeGenerationTab({
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "데이터 구조화를 시작하지 못했습니다.");
+      setError(err instanceof Error ? err.message : "미리보기 준비를 시작하지 못했습니다.");
     } finally {
       setStarting(false);
     }
@@ -240,19 +240,19 @@ export function ProviderKnowledgeGenerationTab({
   }
 
   if (loading) {
-    return <p className="text-sm text-store-muted">데이터 구조화 상태를 불러오는 중…</p>;
+    return <p className="text-sm text-store-muted">상태를 불러오는 중…</p>;
   }
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
-        <h2 className="text-base font-bold text-slate-900">데이터 구조화</h2>
+        <h2 className="text-base font-bold text-slate-900">보완 요청</h2>
         <p className="mt-1 text-sm text-store-muted">
-          등록한 문서를 NormalizedDocument·Knowledge Unit·Retrieval Chunk로 구조화합니다. 원문·페이지·출처
+          등록한 문서의 서비스 반영 상태를 확인합니다. 원문·페이지·출처
           연결을 확인한 뒤 다음 단계에서 검색 경로를 검증합니다.
         </p>
         <p className="mt-2 text-xs text-store-muted">
-          검색데이터는 다음 단계(검색검증)에서 생성하며, 상태는 그 단계에서 확인할 수 있습니다.
+          검색 준비와 질문 미리보기는 다음 단계(서비스 미리보기)에서 진행합니다.
         </p>
       </div>
 
@@ -271,7 +271,7 @@ export function ProviderKnowledgeGenerationTab({
 
       {running ? (
         <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          데이터 구조화가 진행 중입니다. 단계별 상태를 확인해 주세요.
+          처리가 진행 중입니다. 단계별 상태를 확인해 주세요.
         </p>
       ) : null}
 
@@ -367,7 +367,7 @@ export function ProviderKnowledgeGenerationTab({
             onClick={() => void handleStart(false)}
             className="rounded-xl bg-store-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
           >
-            {starting ? "시작 중…" : "데이터 구조화 시작"}
+            {starting ? "시작 중…" : "확인 준비 시작"}
           </button>
         ) : null}
         {editable &&
@@ -392,7 +392,7 @@ export function ProviderKnowledgeGenerationTab({
             onClick={() => goToSearchValidation?.()}
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
-            검색데이터 생성·검증으로 이동
+            서비스 미리보기로 이동
           </button>
         ) : null}
         {editable && structureComplete && !running ? (
@@ -402,14 +402,14 @@ export function ProviderKnowledgeGenerationTab({
             onClick={() => void handleStart(true)}
             className="rounded-xl border border-store-border bg-white px-4 py-2 text-sm font-bold text-slate-800 disabled:opacity-60"
           >
-            {starting ? "재시작 중…" : "데이터 구조화 다시 실행"}
+            {starting ? "재시작 중…" : "다시 실행"}
           </button>
         ) : null}
       </div>
 
       {structureComplete ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          데이터 구조화가 완료되었습니다. 다음 단계에서 검색데이터를 생성하고 검색 품질을
+          확인이 완료되었습니다. 다음 단계에서 서비스 미리보기로 검색 품질을
           검증하세요.
         </p>
       ) : null}

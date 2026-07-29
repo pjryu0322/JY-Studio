@@ -12,14 +12,16 @@ describe("ProviderServiceValidationTab search-data UX", () => {
   );
 
   it("uses simplified header copy without local-hash/pgvector jargon", () => {
-    assert.match(source, /구조화된 데이터를 검색 가능한 형태로 생성하고 검색 품질을 확인합니다/);
+    assert.match(source, /서비스 미리보기/);
+    assert.match(source, /질문으로 서비스 품질을 확인합니다/);
     assert.doesNotMatch(source, /Embedding provider: local-hash/);
     assert.doesNotMatch(source, /운영용 Embedding·pgvector는 미적용/);
     assert.doesNotMatch(source, /개발·검증용 Draft 검색 인덱스\(local-hash\)/);
+    assert.doesNotMatch(source, /\bChunk\b/);
   });
 
   it("provides search data generate / validate CTAs and tech details toggle", () => {
-    assert.match(source, /검색데이터 생성/);
+    assert.match(source, /검색 준비/);
     assert.match(source, /검색 품질 검증/);
     assert.match(source, /기술정보 보기/);
     assert.match(source, /generateProviderSearchDataApi/);
@@ -35,8 +37,8 @@ describe("ProviderServiceValidationTab search-data UX", () => {
   });
 
   it("keeps CREATE_FAILED message in the card only (no duplicate global alert path)", () => {
-    assert.match(source, /검색데이터 생성 실패/);
-    assert.match(source, /검색데이터 요청에 실패했습니다/);
+    assert.match(source, /검색 준비 실패/);
+    assert.match(source, /미리보기 준비 요청에 실패했습니다/);
     assert.doesNotMatch(source, /setError\([^)]*검색데이터 생성에 실패했습니다/);
   });
 

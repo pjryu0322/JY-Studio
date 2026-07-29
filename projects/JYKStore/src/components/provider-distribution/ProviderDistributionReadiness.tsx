@@ -74,17 +74,17 @@ export function computeDistributionReadiness(input: {
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
   if (!input.hasLanguage) missing.push({ label: "문서 언어를 선택해 주세요.", tab: "basic" });
   if (!hasPayload) missing.push({ label: "등록 자료", tab: "payload" });
-  else if (!doclingReady) missing.push({ label: "Docling REVIEW_READY", tab: "payload" });
-  else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·JSON checksum)", tab: "payload" });
+  else if (!doclingReady) missing.push({ label: "자료 확인 완료", tab: "payload" });
+  else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·산출물)", tab: "payload" });
   else if (!hasNormalizedDocument) missing.push({ label: "문서 정규화", tab: "payload" });
   if (!hasKnowledgePipeline) {
-    missing.push({ label: "데이터 구조화", tab: "knowledge" });
+    missing.push({ label: "보완 요청", tab: "knowledge" });
   }
   if (!hasServiceValidation) {
-    missing.push({ label: "검색데이터 생성·검증", tab: "serviceValidation" });
+    missing.push({ label: "서비스 미리보기", tab: "serviceValidation" });
   }
   if (!distributionComplete) {
-    missing.push({ label: "유통정보(제공 방식·유통 권한)", tab: "distribution" });
+    missing.push({ label: "게시 현황(제공 방식·권한)", tab: "distribution" });
   }
 
   return {
@@ -129,10 +129,10 @@ export function ProviderDistributionReadiness({
         <li>문서 언어: {readiness.hasLanguage ? "완료" : "미선택"}</li>
         <li>등록 자료: {readiness.hasPayload ? "등록됨" : "없음"}</li>
         <li>파일 무결성: {readiness.hasChecksum ? "있음" : "없음"}</li>
-        <li>검증: {readiness.payloadValid ? "REVIEW_READY" : "미충족"}</li>
+        <li>자료 확인: {readiness.payloadValid ? "완료" : "미충족"}</li>
         <li>문서 정규화: {readiness.hasNormalizedDocument ? "있음" : "없음"}</li>
-        <li>데이터 구조화: {readiness.hasKnowledgePipeline ? "통과" : "미통과"}</li>
-        <li>검색데이터 생성·검증: {readiness.hasServiceValidation ? "통과" : "미통과"}</li>
+        <li>보완 요청: {readiness.hasKnowledgePipeline ? "통과" : "미통과"}</li>
+        <li>서비스 미리보기: {readiness.hasServiceValidation ? "통과" : "미통과"}</li>
         <li>출처: {readiness.hasSource ? "있음" : "없음"}</li>
         <li>라이선스: {readiness.hasLicense ? "있음" : "없음"}</li>
       </ul>

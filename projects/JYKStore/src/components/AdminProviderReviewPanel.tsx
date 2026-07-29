@@ -174,7 +174,7 @@ export function AdminProviderReviewPanel({
             <dd className="mt-0.5 font-semibold text-slate-900">{detail.pack.providerName}</dd>
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-            <dt className="text-store-muted">Worker 생성</dt>
+            <dt className="text-store-muted">지식데이터 생성</dt>
             <dd className="mt-0.5 font-semibold text-slate-900">{workerZipPhase}</dd>
           </div>
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
@@ -256,8 +256,8 @@ export function AdminProviderReviewPanel({
                 onChange={(e) => setCheckedCorrectionScope(e.target.checked)}
               />
               <span>
-                보정 가능 범위를 확인했습니다. Chunk 개별 수정/부분 재생성은 현재 비활성이며, 필요 시
-                Worker 전체 재생성으로 처리합니다.
+                보정 가능 범위를 확인했습니다. 개별 항목 수정은 제한되며, 필요 시
+                전체 재생성으로 처리합니다.
               </span>
             </label>
 

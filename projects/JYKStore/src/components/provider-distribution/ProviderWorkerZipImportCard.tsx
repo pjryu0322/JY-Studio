@@ -134,7 +134,7 @@ export function ProviderWorkerZipImportCard({
           <h3 className="text-sm font-bold text-indigo-950">자료등록</h3>
           <p className="text-xs text-indigo-900/80">
             {isCompleted
-              ? "지식데이터 생성이 완료되었습니다. 다음 단계에서 구조화 결과를 확인하세요."
+              ? "지식데이터 생성이 완료되었습니다. 다음 단계에서 서비스 내용을 확인하세요."
               : isProcessing || isPendingGeneration
                 ? "자료가 등록되었습니다. 관리자 처리 상태를 확인하세요."
                 : "자료 묶음(.zip)을 첨부해 지식데이터 생성을 요청하세요. 생성 작업은 관리자가 접수 후 진행합니다."}
@@ -237,7 +237,7 @@ export function ProviderWorkerZipImportCard({
           onClick={() => onGoToKnowledge?.()}
           className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"
         >
-          데이터 구조화 결과 확인
+          서비스 내용 확인
         </button>
       ) : null}
 
@@ -327,7 +327,7 @@ export function ProviderWorkerZipImportCard({
                 <li>압축 파일: zip, 7z, rar, tar, gz</li>
                 <li>빌드/캐시 폴더: node_modules, dist, build, target, .next, .cache</li>
                 <li>시스템 파일: .DS_Store, Thumbs.db</li>
-                <li>대용량 또는 구조화 대상이 아닌 바이너리 파일</li>
+                <li>대용량 또는 지식화 대상이 아닌 바이너리 파일</li>
               </ul>
               <p className="text-slate-500">
                 제외된 파일은 지식데이터 생성에 사용되지 않으며, 처리 결과에서 제외 내역을 확인할 수 있습니다.

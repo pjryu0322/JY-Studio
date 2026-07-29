@@ -587,7 +587,7 @@ describe("admin review decision state", () => {
 });
 
 describe("admin review decision UX wiring", () => {
-  it("puts worker zip card on review detail without decision/evidence Builder actions", () => {
+  it("puts workbench panels on review detail without decision/evidence Builder actions", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
@@ -595,8 +595,9 @@ describe("admin review decision UX wiring", () => {
     assert.ok(!page.includes("AdminReviewAcceptTab"));
     assert.ok(!page.includes("AdminReviewEvidenceTabs"));
     assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
-    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
-    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(page.includes("AdminServiceValidationWorkbenchPanel"));
+    assert.ok(page.includes("AdminApprovalPublishWorkbenchPanel"));
+    assert.ok(page.includes("fetchAdminWorkerZipRequestState"));
     assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes("AdminReviewDetailSections"));
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
@@ -613,7 +614,7 @@ describe("admin review decision UX wiring", () => {
     assert.ok(!sources.includes("재검증"));
     assert.ok(sources.includes("원문 보기") || sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
     assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 재점검");
-    assert.equal(ADMIN_REVIEW_CTA_APPROVE, "승인 및 공개");
-    assert.equal(ADMIN_REVIEW_CTA_REJECT, "반려");
+    assert.equal(ADMIN_REVIEW_CTA_APPROVE, "게시");
+    assert.equal(ADMIN_REVIEW_CTA_REJECT, "게시 취소");
   });
 });

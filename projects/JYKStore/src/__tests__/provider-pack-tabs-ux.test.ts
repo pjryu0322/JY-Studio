@@ -26,9 +26,10 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(!tabs.includes("PROVIDER_PACK_TAB_DRAFT"));
     assert.ok(!tabs.includes("PROVIDER_PACK_TAB_INSPECTION"));
     assert.ok(!tabs.includes("PROVIDER_PACK_TAB_PUBLISH"));
-    assert.ok(copy.includes('데이터 구조화'));
-    assert.ok(copy.includes('검색데이터 생성·검증'));
-    assert.ok(copy.includes('유통정보·검수요청'));
+    assert.ok(copy.includes('보완 요청'));
+    assert.ok(copy.includes('서비스 미리보기'));
+    assert.ok(copy.includes('게시 현황'));
+    assert.ok(copy.includes('PROVIDER_PACK_TAB_PAYLOAD = "자료"'));
     assert.ok(tabIds.includes('"basic"'));
     assert.ok(tabIds.includes('"payload"'));
     assert.ok(tabIds.includes('"knowledge"'));
@@ -108,7 +109,7 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(editor.includes("adminGenerationHold"));
     assert.ok(zipCard.includes("자료 완료"));
     assert.ok(zipCard.includes("자료 미등록"));
-    assert.ok(zipCard.includes("데이터 구조화 결과 확인"));
+    assert.ok(zipCard.includes("서비스 내용 확인"));
     assert.ok(zipCard.includes("자료 교체 업로드"));
     assert.ok(!zipCard.includes("자료 미완료"));
   });

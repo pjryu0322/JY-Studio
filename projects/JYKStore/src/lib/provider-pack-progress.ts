@@ -135,11 +135,11 @@ export type BuildProviderPackProgressInput = {
 
 const STEP_DESCRIPTIONS: Record<ProviderPackProgressStepKey, string> = {
   BASIC_INFO: "지식팩 이름·카테고리·설명·문서 언어를 입력합니다.",
-  SOURCE_MATERIALS: "원본문서와 Docling 산출물을 등록하고 확인합니다.",
-  DATA_STRUCTURE: "문서 구조·Knowledge Unit·Retrieval Chunk를 생성합니다.",
+  SOURCE_MATERIALS: "원본문서와 생성 도구 산출물을 등록하고 확인합니다.",
+  DATA_STRUCTURE: "등록 문서의 서비스 반영 상태를 확인하고 보완이 필요한 항목을 남깁니다.",
   SEARCH_DATA_VALIDATION:
-    "검색데이터 생성·검색 품질과 API·MCP·DOWNLOAD를 검증합니다.",
-  DISTRIBUTION_REVIEW: "공개 채널·유통 권한을 입력하고 검수요청을 제출합니다.",
+    "질문으로 서비스 품질을 미리보고 검색·채널 결과를 확인합니다.",
+  DISTRIBUTION_REVIEW: "공개 채널·권한을 입력하고 검수요청을 제출합니다.",
 };
 
 function detailHref(packId: string, tab?: string | null): string {
@@ -445,35 +445,35 @@ export function buildProviderPackProgress(
         actions = materialIsReady
           ? [
               { label: "기본정보 완성", href: detailHref(packId, "basic") },
-              { label: "구조화 결과 확인", href: detailHref(packId, "knowledge") },
+              { label: "서비스 내용 확인", href: detailHref(packId, "knowledge") },
             ]
           : [
               { label: "계속 작성", href: detailHref(packId, "basic") },
-              { label: "자료등록", href: detailHref(packId, "payload") },
+              { label: "자료", href: detailHref(packId, "payload") },
             ];
       } else if (current.id === "SOURCE_MATERIALS") {
         nextActionLabel = "원본문서와 생성 도구 산출물을 등록하세요.";
         actions = [
-          { label: "자료등록", href: detailHref(packId, "payload") },
+          { label: "자료", href: detailHref(packId, "payload") },
           { label: "기본정보 수정", href: detailHref(packId, "basic") },
         ];
       } else if (current.id === "DATA_STRUCTURE") {
-        nextActionLabel = "데이터 구조화를 실행·확인하세요.";
+        nextActionLabel = "보완 요청 단계에서 서비스 내용을 확인하세요.";
         actions = [
-          { label: "데이터 구조화 진행", href: detailHref(packId, "knowledge") },
+          { label: "보완 요청", href: detailHref(packId, "knowledge") },
           { label: "첨부자료 확인", href: detailHref(packId, "payload") },
         ];
       } else if (current.id === "SEARCH_DATA_VALIDATION") {
-        nextActionLabel = "검색데이터 생성·검증을 완료하세요.";
+        nextActionLabel = "서비스 미리보기로 검색 품질을 확인하세요.";
         actions = [
-          { label: "검색데이터 생성·검증", href: detailHref(packId, "serviceValidation") },
-          { label: "구조화 결과 보기", href: detailHref(packId, "knowledge") },
+          { label: "서비스 미리보기", href: detailHref(packId, "serviceValidation") },
+          { label: "보완 요청 보기", href: detailHref(packId, "knowledge") },
         ];
       } else if (!distributionIsReady) {
         nextActionLabel = "출처·라이선스·공개 범위를 입력하세요.";
         actions = [
-          { label: "유통정보 입력", href: detailHref(packId, "distributionReview") },
-          { label: "검증 결과 보기", href: detailHref(packId, "serviceValidation") },
+          { label: "게시 현황", href: detailHref(packId, "distributionReview") },
+          { label: "미리보기 결과", href: detailHref(packId, "serviceValidation") },
         ];
       } else {
         nextActionLabel = "검수 요청을 제출하세요.";

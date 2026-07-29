@@ -102,7 +102,7 @@ function providerConfirmAggregate(
 
 const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   API: {
-    title: "Retrieval API 검색",
+    title: "검색 확인",
     hint: "실제 API와 동일한 검색 경로로 결과 품질을 확인합니다.",
   },
   MCP: {
@@ -327,7 +327,7 @@ function RetrievalConfirmPanel({
           </button>
           <p className="text-xs text-store-muted">
             다른 질문으로 다시 검색하고 보완 사유를 확인해 주세요. 관련 내용이 검색 후보에도
-            나타나지 않을 때 데이터 구조화를 점검하세요.
+            나타나지 않을 때 자료·보완 요청을 점검하세요.
           </p>
         </div>
       ) : null}
@@ -374,12 +374,12 @@ function DownloadConfirmPanel({
     <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-3">
       <p className="text-sm font-semibold text-slate-900">RAG Export 품질 확인</p>
       <p className="text-xs leading-snug text-slate-700">
-        패키지를 다운로드해 Chunk·출처·Checksum을 확인한 뒤 아래 항목을 체크해 주세요.
+        패키지를 다운로드해 출처와 포함 내용을 확인한 뒤 아래 항목을 체크해 주세요.
       </p>
       {summary ? (
         <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-700">
           <li>
-            Schema {summary.schemaVersion ?? "—"} · Chunk {summary.chunkCount ?? "—"}개 · Source{" "}
+            Schema {summary.schemaVersion ?? "—"} · 항목 {summary.chunkCount ?? "—"}개 · 출처{" "}
             {summary.sourceCount ?? "—"}개
           </li>
           <li>
@@ -417,10 +417,10 @@ function DownloadConfirmPanel({
       )}
       {(
         [
-          ["fileNameConfirmed", "패키지에 현재 지식팩의 Chunk가 포함되어 있습니다."],
+          ["fileNameConfirmed", "패키지에 현재 지식팩의 검색 내용이 포함되어 있습니다."],
           [
             "downloadOkConfirmed",
-            "Chunk에서 원문 출처와 페이지를 확인할 수 있습니다.",
+            "항목에서 원문 출처와 페이지를 확인할 수 있습니다.",
           ],
           [
             "fileMatchConfirmed",
@@ -590,7 +590,7 @@ export function ProviderServiceValidationTab({
       onStatusChange?.(svc);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "검색데이터 검증 상태를 불러오지 못했습니다.");
+      setError(err instanceof Error ? err.message : "미리보기 상태를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -631,7 +631,7 @@ export function ProviderServiceValidationTab({
       await loadSearchData();
     } catch (err) {
       // Network / unexpected server errors only — CREATE_FAILED lives in the card.
-      setError(err instanceof Error ? err.message : "검색데이터 요청에 실패했습니다.");
+      setError(err instanceof Error ? err.message : "미리보기 준비 요청에 실패했습니다.");
       await loadSearchData().catch(() => undefined);
     } finally {
       setSearchBusy(false);
@@ -761,7 +761,7 @@ export function ProviderServiceValidationTab({
     displayState === "PROVIDER_REVIEW_REQUIRED";
 
   if (loading) {
-    return <p className="text-sm text-store-muted">검색데이터 검증 상태를 불러오는 중…</p>;
+    return <p className="text-sm text-store-muted">미리보기 상태를 불러오는 중…</p>;
   }
 
   const sd = searchData;
@@ -769,17 +769,17 @@ export function ProviderServiceValidationTab({
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
-        <h2 className="text-base font-bold text-slate-900">검색데이터 생성·검증</h2>
+        <h2 className="text-base font-bold text-slate-900">서비스 미리보기</h2>
         <p className="mt-1 text-sm text-store-muted">
-          구조화된 데이터를 검색 가능한 형태로 생성하고 검색 품질을 확인합니다.
+          질문으로 서비스 품질을 확인합니다. 답변·출처·관련 문서를 검토하세요.
         </p>
         <p className="mt-1 text-xs text-store-muted">
-          검색데이터가 준비되면 API와 MCP 연결도 검증할 수 있습니다.
+          문제가 있으면 업무 관점의 보완 요청으로 남기세요.
         </p>
       </div>
 
       <div className="rounded-xl border border-store-border bg-slate-50 px-3 py-3">
-        <p className="text-sm font-bold text-slate-900">검색데이터</p>
+        <p className="text-sm font-bold text-slate-900">검색 준비</p>
         {sd?.state === "STALE" ? (
           <div className="mt-2 space-y-2">
             <p className="text-sm text-slate-800">{sd.message}</p>
@@ -788,7 +788,7 @@ export function ProviderServiceValidationTab({
               onClick={() => onGoToKnowledge?.()}
               className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-sm font-bold text-white"
             >
-              데이터 구조화로 이동
+              보완 요청으로 이동
             </button>
           </div>
         ) : null}
@@ -796,11 +796,11 @@ export function ProviderServiceValidationTab({
         {sd?.state === "NOT_CREATED" ? (
           <div className="mt-2 space-y-2">
             <p className="text-sm text-slate-800">
-              현재 구조화 결과로 생성된 검색데이터가 없습니다.
+              아직 확인할 검색 결과가 없습니다.
             </p>
             {sd.chunkCount > 0 ? (
               <p className="text-xs text-store-muted">
-                검색 단위 {sd.chunkCount}개를 검색데이터로 변환합니다.
+                등록된 문서 구간 {sd.chunkCount}개로 검색을 준비합니다.
               </p>
             ) : null}
             <button
@@ -809,14 +809,14 @@ export function ProviderServiceValidationTab({
               onClick={() => void handleGenerate(false)}
               className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
             >
-              {searchBusy ? "생성 중…" : "검색데이터 생성"}
+              {searchBusy ? "준비 중…" : "검색 준비"}
             </button>
           </div>
         ) : null}
 
         {sd?.state === "CREATING" ? (
           <div className="mt-2 space-y-2">
-            <p className="text-sm font-semibold text-slate-900">검색데이터 생성 중</p>
+            <p className="text-sm font-semibold text-slate-900">검색 준비 중</p>
             <p className="text-xs text-store-muted">
               처리 {sd.processedCount} / {sd.chunkCount || "…"}
             </p>
@@ -833,7 +833,7 @@ export function ProviderServiceValidationTab({
 
         {sd?.state === "CREATE_FAILED" ? (
           <div className="mt-2 space-y-2">
-            <p className="text-sm font-semibold text-rose-800">검색데이터 생성 실패</p>
+            <p className="text-sm font-semibold text-rose-800">검색 준비 실패</p>
             <p className="text-sm leading-snug text-slate-800">{sd.message}</p>
             {sd.supportRequired ? (
               <p className="text-xs text-store-muted">관리자에게 문의가 필요합니다.</p>
@@ -844,7 +844,7 @@ export function ProviderServiceValidationTab({
                 onClick={() => onGoToKnowledge?.()}
                 className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-sm font-bold text-white"
               >
-                데이터 구조화로 이동
+                보완 요청으로 이동
               </button>
             ) : (
               <button
@@ -853,7 +853,7 @@ export function ProviderServiceValidationTab({
                 onClick={() => void handleGenerate(true)}
                 className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
               >
-                검색데이터 다시 생성
+                검색 다시 준비
               </button>
             )}
           </div>
@@ -861,9 +861,9 @@ export function ProviderServiceValidationTab({
 
         {sd?.state === "CREATED" ? (
           <div className="mt-2 space-y-2">
-            <p className="text-sm font-semibold text-emerald-900">검색데이터 생성 완료</p>
+            <p className="text-sm font-semibold text-emerald-900">검색 준비 완료</p>
             <ul className="grid grid-cols-2 gap-1 text-xs text-slate-700 sm:grid-cols-4">
-              <li>검색 단위 {sd.chunkCount}</li>
+              <li>문서 구간 {sd.chunkCount}</li>
               <li>벡터 {sd.vectorCount}</li>
               <li>모델 {sd.modelLabel ?? sd.model ?? "—"}</li>
               <li>차원 {sd.dimension ?? "—"}</li>
@@ -906,7 +906,7 @@ export function ProviderServiceValidationTab({
                 onClick={() => void handleGenerate(true)}
                 className="min-h-[44px] rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50"
               >
-                검색데이터 다시 생성
+                검색 다시 준비
               </button>
             </div>
           </div>
@@ -917,7 +917,7 @@ export function ProviderServiceValidationTab({
             <div className="space-y-1">
               <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
                 <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                  검색데이터 생성 완료
+                  검색 준비 완료
                 </span>
                 <span
                   className={`w-fit rounded-full border px-2 py-0.5 text-[11px] font-bold ${
@@ -946,9 +946,9 @@ export function ProviderServiceValidationTab({
                   </span>
                 )}
               </div>
-              <p className="text-sm font-semibold text-emerald-900">검색데이터 준비 완료</p>
+              <p className="text-sm font-semibold text-emerald-900">검색 준비 완료</p>
               <p className="text-xs text-slate-700">
-                검색 단위 {sd.chunkCount} · 벡터 {sd.vectorCount} · {sd.modelLabel ?? sd.model ?? "Local E5"}
+                문서 구간 {sd.chunkCount} · 준비 완료
                 {sd.dimension != null ? ` · ${sd.dimension}차원` : ""}
               </p>
             </div>
@@ -992,7 +992,7 @@ export function ProviderServiceValidationTab({
                       {searchBusy ? "실행 중..." : "자동 평가 다시 실행"}
                     </button>
                     <p className="text-xs text-amber-900">
-                      기존 검색데이터는 유지하고 현재 검색 순위 정책으로 평가만 다시 실행합니다.
+                      기존 검색 준비 결과는 유지하고, 현재 정책으로 평가만 다시 실행합니다.
                     </p>
                   </>
                 ) : null}
@@ -1046,7 +1046,7 @@ export function ProviderServiceValidationTab({
         {sd?.technical?.legacyLocalHashPresent &&
         (sd.state === "NOT_CREATED" || sd.state === "CREATE_FAILED") ? (
           <p className="mt-3 text-xs text-store-muted">
-            이전 개발용 검색 결과가 있습니다. 현재 구조화 결과의 검색데이터를 새로 생성해야 합니다.
+            이전 검색 결과가 있습니다. 현재 기준으로 다시 확인해 주세요.
           </p>
         ) : null}
 
@@ -1062,7 +1062,7 @@ export function ProviderServiceValidationTab({
             <ul className="mt-2 space-y-1 break-all rounded-lg border border-store-border bg-white px-3 py-2 font-mono text-[11px] text-slate-600">
               <li>Generation: {sd.technical.searchIndexGenerationId ?? "—"}</li>
               <li>Attempt: {sd.technical.attempt ?? "—"}</li>
-              <li>Chunk Gen: {sd.technical.chunkGenerationId ?? "—"}</li>
+              <li>생성 번호: {sd.technical.chunkGenerationId ?? "—"}</li>
               <li>PipelineRun: {sd.technical.pipelineRunId ?? "—"}</li>
               <li>ND: {sd.technical.normalizedDocumentId ?? "—"}</li>
               <li>Fingerprint: {sd.technical.fingerprint ?? "—"}</li>
@@ -1087,9 +1087,9 @@ export function ProviderServiceValidationTab({
             : status?.validationLockReason === "PACK_NOT_DRAFT"
               ? "현재 지식팩 상태에서는 검색검증 결과를 변경할 수 없습니다."
               : status?.validationLockReason === "BINDING_MISSING"
-                ? "현재 데이터 구조화 결과와 검색검증 연결을 확인할 수 없습니다."
+                ? "현재 미리보기 연결을 확인할 수 없습니다."
                 : status?.validationLockReason === "BINDING_STALE"
-                  ? "자료 또는 구조화 결과가 변경되었습니다. 데이터 구조화를 확인해 주세요."
+                  ? "자료가 변경되었습니다. 보완 요청 단계를 확인해 주세요."
                   : status?.validationLockReason === "SEARCH_DATA_NOT_READY"
                     ? resolveSearchDataNotReadyBanner({
                         rankingPolicyStale: Boolean(sd?.rankingPolicyStale),
@@ -1261,7 +1261,7 @@ export function ProviderServiceValidationTab({
                   </p>
                   <p>
                     <span className="font-semibold text-slate-800">검색 경로</span> ·{" "}
-                    {channel.channel === "API" ? "Retrieval API" : "MCP"}
+                    {channel.channel === "API" ? "검색 API" : "연결 채널"}
                   </p>
                 </div>
               ) : null}
@@ -1318,7 +1318,7 @@ export function ProviderServiceValidationTab({
                           <li>Schema: {channel.downloadSummary.schemaVersion}</li>
                         ) : null}
                         {channel.downloadSummary.chunkCount != null ? (
-                          <li>Chunk: {channel.downloadSummary.chunkCount}개</li>
+                          <li>항목: {channel.downloadSummary.chunkCount}개</li>
                         ) : null}
                         {channel.downloadSummary.sourceCount != null ? (
                           <li>Source: {channel.downloadSummary.sourceCount}개</li>
@@ -1428,7 +1428,7 @@ export function ProviderServiceValidationTab({
                   {channel.confirmation.rejectionReason
                     ? ` · ${channel.confirmation.rejectionReason}`
                     : ""}
-                  . 검색데이터를 보완하거나 다른 질문으로 다시 확인하세요.
+                  . 보완 요청을 남기거나 다른 질문으로 다시 확인하세요.
                 </p>
               ) : null}
 

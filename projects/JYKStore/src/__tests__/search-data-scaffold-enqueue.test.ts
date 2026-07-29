@@ -90,8 +90,8 @@ describe("structure-complete CTA", () => {
 
   it("hides start button when structure is complete", () => {
     assert.match(tab, /primary === "start" && !structureComplete/);
-    assert.match(tab, /검색데이터 생성·검증으로 이동/);
-    assert.match(tab, /데이터 구조화 다시 실행/);
+    assert.match(tab, /서비스 미리보기로 이동|보완 요청으로 이동/);
+    assert.match(tab, /다시 실행/);
     assert.match(tab, /window\.confirm/);
   });
 

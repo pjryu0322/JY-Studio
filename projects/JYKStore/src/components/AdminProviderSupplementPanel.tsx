@@ -251,7 +251,7 @@ export function AdminProviderSupplementPanel({
                       className="mt-1 w-full rounded-lg border border-store-border bg-white px-2.5 py-2 text-xs"
                     >
                       <option value="NONE">지정 안 함</option>
-                      <option value="WORKER_REPROCESS">Worker 재처리</option>
+                      <option value="WORKER_REPROCESS">전체 재생성</option>
                       <option value="QUALITY_RECHECK">품질점검 재진입</option>
                     </select>
                   </label>

@@ -136,19 +136,19 @@ export function resolveProviderPackTabLocks(input: {
       locked: !input.providerConfirmed,
       reason: input.providerConfirmed
         ? null
-        : "자료 등록을 먼저 완료해 주세요.",
+        : "자료를 먼저 완료해 주세요.",
     },
     serviceValidation: {
       locked: !structurePassed,
       reason: structurePassed
         ? null
-        : "Retrieval Chunk 생성이 완료되지 않았습니다.",
+        : "보완 요청 확인을 먼저 진행해 주세요.",
     },
     distributionReview: {
       locked: !input.serviceValidationPassed,
       reason: input.serviceValidationPassed
         ? null
-        : "검색데이터 생성·검증을 완료해야 유통정보 입력과 검수요청을 진행할 수 있습니다.",
+        : "서비스 미리보기를 완료해야 게시 현황을 진행할 수 있습니다.",
     },
   };
 }

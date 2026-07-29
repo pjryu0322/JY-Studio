@@ -81,28 +81,28 @@ const STEP_META: Record<
     description: "지식팩 이름·카테고리·설명·문서 언어",
   },
   SOURCE_MATERIALS: {
-    label: "자료 등록",
+    label: "자료",
     shortLabel: "자료",
     tab: "payload",
-    description: "원본문서·Docling JSON·정규화 확인",
+    description: "원본문서·등록 자료 확인",
   },
   DATA_STRUCTURE: {
-    label: "데이터 구조화",
-    shortLabel: "구조화",
+    label: "보완 요청",
+    shortLabel: "보완",
     tab: "knowledge",
-    description: "구조 확인·Knowledge Unit·Retrieval Chunk",
+    description: "서비스 내용 확인·보완 요청",
   },
   SEARCH_DATA_VALIDATION: {
-    label: "검색데이터 생성·검증",
-    shortLabel: "검색검증",
+    label: "서비스 미리보기",
+    shortLabel: "미리보기",
     tab: "serviceValidation",
-    description: "검색데이터 생성·검색 품질·API·MCP·DOWNLOAD",
+    description: "질문·답변·출처·관련 문서 확인",
   },
   DISTRIBUTION_REVIEW: {
-    label: "유통정보·검수요청",
-    shortLabel: "유통·검수",
+    label: "게시 현황",
+    shortLabel: "게시",
     tab: "distributionReview",
-    description: "공개 채널·권리·검수요청",
+    description: "공개 채널·권리·게시 상태",
   },
 };
 
@@ -189,21 +189,21 @@ export function resolveProviderRegistrationReadiness(
       reason: !input.sourceMaterialsReady
         ? "자료 등록 확인을 완료해 주세요."
         : !input.structurePassed
-          ? "데이터 구조화를 완료하면 검색데이터를 생성할 수 있습니다."
+          ? "보완 요청 단계를 완료하면 서비스 미리보기를 진행할 수 있습니다."
           : !input.pipelineCurrent
-            ? "등록 자료가 변경되어 구조화 결과를 다시 생성해야 합니다."
+            ? "등록 자료가 변경되어 서비스 내용을 다시 확인해야 합니다."
             : null,
     },
     DISTRIBUTION_REVIEW: {
       locked: !searchValidationDone,
       reason: !input.structurePassed
-        ? "데이터 구조화가 완료되지 않았습니다."
+        ? "보완 요청 단계가 완료되지 않았습니다."
         : !input.searchFoundationPassed
-          ? "검색 인덱스·검색 평가가 완료되지 않았습니다."
+          ? "서비스 미리보기 준비가 완료되지 않았습니다."
           : !input.allPreparationChannelsPassed
-            ? "API·MCP·DOWNLOAD 검증 결과를 제공자가 확인하지 않았습니다."
+            ? "검색·채널 결과를 제공자가 확인하지 않았습니다."
             : searchStale
-              ? "검색 검증 증적이 현재 자료와 일치하지 않습니다. 다시 검증해 주세요."
+              ? "미리보기 결과가 현재 자료와 일치하지 않습니다. 다시 확인해 주세요."
               : null,
     },
   };

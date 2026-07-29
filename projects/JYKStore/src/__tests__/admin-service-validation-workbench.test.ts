@@ -205,7 +205,7 @@ describe("admin service validation view model (P2)", () => {
     });
     assert.equal(vm.status, "DONE");
     assert.equal(vm.canMarkPassed, false);
-    assert.match(vm.primaryLabel, /완료됨/);
+    assert.match(vm.primaryLabel, /게시/);
   });
 
   it("isolates service validation into AdminServiceValidationWorkbenchPanel", () => {
@@ -215,13 +215,14 @@ describe("admin service validation view model (P2)", () => {
     assert.ok(detail.includes("onMarkPassed"));
     assert.ok(detail.includes("onRefreshChannels"));
     const panel = readSource("src/components/AdminServiceValidationWorkbenchPanel.tsx");
-    assert.ok(panel.includes("채널별 검증 현황"));
-    assert.ok(panel.includes("완료 조건 체크리스트"));
-    assert.ok(panel.includes("채널 상태 새로고침"));
+    assert.ok(panel.includes("서비스 가능"));
+    assert.ok(panel.includes("주의"));
+    assert.ok(panel.includes("게시 불가"));
+    assert.ok(panel.includes("상세 보기"));
     assert.ok(panel.includes("AdminServiceValidationOpsPanel"));
-    assert.ok(panel.includes("API·MCP·RAG Export"));
+    assert.ok(panel.includes("resolveAdminServiceValidationUxStatus"));
     const vm = readSource("src/lib/role-workspace/admin-service-validation-view-model.ts");
-    assert.ok(vm.includes("ZIP/RAG Export"));
+    assert.ok(vm.includes("resolveAdminServiceValidationUxStatus"));
   });
 });
 

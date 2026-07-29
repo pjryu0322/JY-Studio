@@ -153,6 +153,8 @@ describe("admin approval publish hardening", () => {
     assert.ok(panel.includes("remediationActions"));
     assert.ok(panel.includes("onGoProviderReview"));
     assert.ok(panel.includes("onGoServiceValidation"));
+    assert.ok(panel.includes("보정 없음"));
+    assert.ok(panel.includes("게시"));
   });
 
   it("wires remediation CTAs from detail page", () => {

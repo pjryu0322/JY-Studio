@@ -36,7 +36,7 @@ describe("buildProviderOnboardingSteps", () => {
     });
     assert.equal(withPack.find((s) => s.key === "pack")?.status, "done");
     assert.equal(withPack.find((s) => s.key === "payload")?.status, "current");
-    assert.equal(withPack.find((s) => s.key === "payload")?.title, "자료 등록");
+    assert.equal(withPack.find((s) => s.key === "payload")?.title, "자료");
   });
 
   it("includes distribution onboarding steps without profile registration", () => {
@@ -55,7 +55,7 @@ describe("buildProviderOnboardingSteps", () => {
       steps.map((s) => s.key),
       ["pack", "payload", "distribution", "review", "publish"],
     );
-    assert.equal(steps.find((s) => s.key === "publish")?.title, "유통정보·검수요청");
+    assert.equal(steps.find((s) => s.key === "publish")?.title, "게시 현황");
   });
 });
 

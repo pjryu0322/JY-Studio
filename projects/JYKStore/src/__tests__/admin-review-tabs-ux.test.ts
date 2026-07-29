@@ -148,8 +148,8 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(!page.includes("AdminReviewEvidenceTabs"));
     assert.ok(!page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
     assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
-    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
-    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(page.includes("AdminServiceValidationWorkbenchPanel"));
+    assert.ok(page.includes("AdminApprovalPublishWorkbenchPanel"));
     assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes('activeTab === "accept"'));
     assert.ok(!page.includes('evidenceTab === "advanced"'));
@@ -184,14 +184,14 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(packageTab.includes("검색 평가 Run"));
   });
 
-  it("Case 4/5: review detail keeps worker zip + receipt; decision/evidence cards removed", () => {
+  it("Case 4/5: review detail uses workbench panels; legacy evidence cards removed", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     assert.ok(!page.includes("AdminReviewAcceptTab"));
     assert.ok(!page.includes("AdminReviewEvidenceTabs"));
     assert.ok(!page.includes("AdminReviewPackageSnapshotTab"));
-    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
-    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
-    assert.ok(page.includes("isReviewAccepted(detail)"));
+    assert.ok(page.includes("AdminServiceValidationWorkbenchPanel"));
+    assert.ok(page.includes("AdminApprovalPublishWorkbenchPanel"));
+    assert.ok(page.includes("fetchAdminWorkerZipRequestState"));
 
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
@@ -267,7 +267,7 @@ describe("admin review evidence tabs UX", () => {
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_REJECT"));
-    assert.equal(ADMIN_REVIEW_CTA_APPROVE, "승인 및 공개");
-    assert.equal(ADMIN_REVIEW_CTA_REJECT, "반려");
+    assert.equal(ADMIN_REVIEW_CTA_APPROVE, "게시");
+    assert.equal(ADMIN_REVIEW_CTA_REJECT, "게시 취소");
   });
 });

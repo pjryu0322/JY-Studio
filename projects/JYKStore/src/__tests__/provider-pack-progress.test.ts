@@ -97,10 +97,10 @@ describe("provider pack progress", () => {
     assert.equal(progress.publishedVersion?.version, "0.1.0");
     assert.equal(progress.workingVersion?.version, "0.2.0");
     assert.equal(progress.currentStep, "SOURCE_MATERIALS");
-    assert.equal(progress.currentStepLabel, "자료 등록");
+    assert.equal(progress.currentStepLabel, "자료");
   });
 
-  it("uses 자료 등록 label instead of Payload 등록", () => {
+  it("uses 자료 label instead of Payload 등록", () => {
     const progress = buildProviderPackProgress({
       packId: "draft-1",
       packStatus: "DRAFT",
@@ -118,7 +118,7 @@ describe("provider pack progress", () => {
       },
       publishedVersion: null,
     });
-    assert.ok(progress.steps.some((s) => s.label === "자료 등록"));
+    assert.ok(progress.steps.some((s) => s.label === "자료"));
     assert.ok(!progress.steps.some((s) => s.label.includes("Payload")));
   });
 
@@ -262,7 +262,7 @@ describe("provider pack progress", () => {
         publishedVersion: null,
       },
     });
-    assert.equal(steps.find((s) => s.key === "payload")?.title, "자료 등록");
+    assert.equal(steps.find((s) => s.key === "payload")?.title, "자료");
     assert.equal(steps.find((s) => s.key === "payload")?.status, "current");
   });
 });
