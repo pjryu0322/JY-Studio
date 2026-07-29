@@ -8,8 +8,9 @@ export const DEFAULT_E5_EMBEDDING_DIMENSION = 384 as const;
 
 export const E5_MAX_SEQUENCE_TOKENS = 512 as const;
 
-/** Preferred passage budget during Retrieval Chunk generation (hard limit remains 512). */
-export const E5_TARGET_PASSAGE_TOKENS = 448 as const;
+/** Preferred passage budget during Retrieval Chunk generation (hard limit remains 512).
+ * P4.2: aligned with Worker ZIP chunk_policy.json targetPassageTokens=480. */
+export const E5_TARGET_PASSAGE_TOKENS = 480 as const;
 
 /** Approximate overlap between adjacent passage splits (tokenizer tokens). */
 export const E5_OVERLAP_TOKENS = 48 as const;

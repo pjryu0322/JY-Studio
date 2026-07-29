@@ -91,7 +91,7 @@ describe("worker source document content (quality-gate wiring)", () => {
     assert.match(card, /완료취소/);
     assert.match(card, /onAcknowledgeQualityReview/);
     assert.match(card, /setAdminQualityReviewAcknowledged/);
-    assert.match(card, /\{qualityRefreshing \? "실행 중…" : "실행"\}/);
+    assert.match(card, /\{qualityRefreshing[\s\S]*?"재검사"[\s\S]*?"품질 점검"\}/);
     assert.doesNotMatch(card, /품질점검 실행/);
     assert.doesNotMatch(card, /세부 판단 근거 보기/);
     assert.doesNotMatch(card, /JudgmentEvidenceModal/);

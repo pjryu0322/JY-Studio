@@ -1,0 +1,10 @@
+{
+  "policyVersion": "chunk-policy-v1",
+  "hardMaxTokens": 512,
+  "targetPassageTokens": 480,
+  "overlapTokens": 0,
+  "smallChunkMaxChars": 120,
+  "minContentTokens": 48,
+  "charsPerTokenEstimate": 4,
+  "rationale": "Worker ZIP Generation SoT. Prefer 480 under E5 hard max 512. Store Docling aligns to the same preferred target; overlap remains Docling-path specific (48) when that path is used."
+}

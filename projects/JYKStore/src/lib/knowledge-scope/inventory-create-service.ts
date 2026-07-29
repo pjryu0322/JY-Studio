@@ -177,20 +177,21 @@ async function insertInventoryItemsFromScan(input: {
       sizeBytes,
     });
 
-    itemRows.push({
-      inventoryId: input.inventoryId,
-      relativePath: entry.path,
-      fileName,
-      extension: entry.extension,
-      sizeBytes,
-      previewKind: previewKindForExtension(entry.extension),
-      decision: auto.decision,
-      decisionSource: auto.decisionSource,
-      exclusionReasonCode: mapReasonCode(auto.exclusionReasonCode),
-      exclusionReasonText: auto.exclusionReasonText,
-      providerDecisionStatus: "NONE",
-      decidedAt: auto.decision !== "PENDING" ? now : null,
-    });
+      itemRows.push({
+        inventoryId: input.inventoryId,
+        relativePath: entry.path,
+        fileName,
+        extension: entry.extension,
+        sizeBytes,
+        previewKind: previewKindForExtension(entry.extension),
+        fileCategory: auto.fileCategory ?? auto.capability ?? null,
+        decision: auto.decision,
+        decisionSource: auto.decisionSource,
+        exclusionReasonCode: mapReasonCode(auto.exclusionReasonCode),
+        exclusionReasonText: auto.exclusionReasonText,
+        providerDecisionStatus: "NONE",
+        decidedAt: auto.decision !== "PENDING" && auto.decision !== "REVIEW_REQUIRED" ? now : null,
+      });
 
     if (auto.decision === "EXCLUDED") {
       autoExcludeEvents.push({

@@ -281,6 +281,7 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
     let resolvedGenerationId = "";
     let resetCalled: { packId: string; versionId: string } | null = null;
+    let qualityCalled = false;
 
     const result = await runProviderWorkerZipImport({
       userId: "u1",
@@ -304,6 +305,15 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
           providerReviewMarkersRetired: 0,
           serviceValidationMarkersRetired: 0,
         };
+      },
+      refreshQuality: async () => {
+        qualityCalled = true;
+        return {
+          ok: true,
+          refresh: {} as never,
+          backfilledSourceDocuments: 0,
+          retypedSourceDocuments: 0,
+        } as never;
       },
       synthesizeGeneration: (async ({ generationId }: { generationId: string }) => {
         harness.synthCalledWith.push(generationId);
@@ -334,7 +344,62 @@ describe("runProviderWorkerZipImport (P7 synchronous)", () => {
     assert.deepEqual(harness.transitionCalls, ["EMBEDDING", "INDEXING", "READY"]);
     assert.equal(harness.pipelineRunUpdates.at(-1)?.status, "PASS");
     assert.deepEqual(resetCalled, { packId: "packA", versionId: "verA" });
-    assert.ok(result.warnings.some((w) => w.code === "QUALITY_REFRESH_PENDING"));
+    assert.equal(qualityCalled, true);
+    assert.equal(result.warnings.some((w) => w.code === "QUALITY_REFRESH_PENDING"), false);
+  });
+
+  it("quality refresh failure after READY: ok=false, QUALITY_REFRESH_FAILED, retryable", async () => {
+    const harness: ServiceHarness = { transitionCalls: [], pipelineRunUpdates: [], synthCalledWith: [] };
+
+    const result = await runProviderWorkerZipImport({
+      userId: "u1",
+      clientId: "cl1",
+      packId: "packA",
+      inputZipPath: "/tmp/x.zip",
+      prismaClient: makeServicePrisma(harness),
+      findProfile: async () => ({ id: "prof-1" }),
+      transitions: makeTransitions(harness),
+      resetSuccessorState: async () => ({
+        sourceDocumentsReset: 0,
+        sourceValidationReportsDeleted: 0,
+        structureCoverageReportsDeleted: 0,
+        knowledgeQualityReportsDeleted: 0,
+        chunkQualityReportsDeleted: 0,
+        releaseGateRunsDeleted: 0,
+        retrievalEvaluationSetsDeleted: 0,
+        serviceValidationsInvalidated: 0,
+        providerReviewMarkersRetired: 0,
+        serviceValidationMarkersRetired: 0,
+      }),
+      refreshQuality: async () =>
+        ({
+          ok: false,
+          error: "NO_WORKER_SOURCES",
+          message: "Worker ZIP 원천 문서가 없습니다.",
+        }) as never,
+      synthesizeGeneration: (async ({ generationId }: { generationId: string }) => {
+        harness.synthCalledWith.push(generationId);
+        return { searchIndexGenerationId: generationId, bundleId: "b", normalizedDocumentId: "n" };
+      }) as never,
+      runPipeline: (async (input: {
+        deps: { resolveSearchIndexGenerationId: (ctx: unknown) => Promise<string> };
+      }) => {
+        const gid = await input.deps.resolveSearchIndexGenerationId({
+          payload: makePayload(),
+          packId: "packA",
+          packVersionId: "verA",
+          pipelineRunId: "prun-1",
+        });
+        return okPipelineResult(gid);
+      }) as never,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.generationReady, false);
+    assert.equal(result.nextStep, "RETRY");
+    assert.equal(result.error?.code, "QUALITY_REFRESH_FAILED");
+    assert.equal(result.error?.retryable, true);
+    assert.ok(result.warnings.some((w) => w.code === "QUALITY_REFRESH_FAILED"));
   });
 
   it("READY-transition failure: ok=false, RETRY, generationReady=false, run FAIL", async () => {

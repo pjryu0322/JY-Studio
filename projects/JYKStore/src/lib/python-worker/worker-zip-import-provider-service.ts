@@ -132,6 +132,15 @@ export type RunProviderWorkerZipImportInput = {
    * Injectable for tests.
    */
   resetSuccessorState?: typeof resetWorkerZipSuccessorStateAfterGeneration;
+  /**
+   * After READY + successor reset: automatic quality refresh (P4.2).
+   * Injectable for tests.
+   */
+  refreshQuality?: typeof import("@/lib/python-worker/worker-zip-quality-refresh-service").refreshWorkerZipReviewReadiness;
+  /** Inventory item id by relative path — stamped onto Worker chunks for provenance. */
+  inventoryItemIdByPath?: Record<string, string>;
+  /** Inventory id for provenance import gate. */
+  inventoryId?: string | null;
 };
 
 export type ResolvedWorkerZipPack = {
@@ -783,6 +792,10 @@ export async function runProviderWorkerZipImport(
   const findProfile = input.findProfile ?? findOrEnsureProviderProfileForUser;
   const resetSuccessorState =
     input.resetSuccessorState ?? resetWorkerZipSuccessorStateAfterGeneration;
+  const refreshQuality =
+    input.refreshQuality ??
+    (await import("@/lib/python-worker/worker-zip-quality-refresh-service"))
+      .refreshWorkerZipReviewReadiness;
   const resolvePack =
     input.resolvePack ??
     ((c, i) => requireOwnedDraftPack(c, findProfile, i));
@@ -824,6 +837,8 @@ export async function runProviderWorkerZipImport(
     adminExcludePaths: input.adminExcludePaths,
     sourceRevisionId: input.sourceRevisionId,
     workingCopyId: input.workingCopyId,
+    inventoryId: input.inventoryId,
+    inventoryItemIdByPath: input.inventoryItemIdByPath,
     requirePgvector: input.requirePgvector,
     env: input.env,
     prismaClient: input.prismaClient,
@@ -984,7 +999,7 @@ export async function runProviderWorkerZipImport(
   });
 
   // Knowledge data changed — clear prior quality / confirm successor state so
-  // Admin must re-run 품질점검 and cannot reuse stale PASS reports.
+  // Admin cannot reuse stale PASS reports before the fresh quality refresh below.
   try {
     await resetSuccessorState({
       packId: pack.packId,
@@ -998,15 +1013,55 @@ export async function runProviderWorkerZipImport(
     );
   }
 
-  // Quality gates (원천검증/구조/청킹/검색평가) are NOT auto-run here — they can
-  // take minutes on large packs and would risk timing out the Admin HTTP request
-  // that already waited for the Worker. Admin runs them via
-  // POST .../worker-zip/quality-refresh ("판단 근거 품질 점검").
-  warnings.push({
-    code: "QUALITY_REFRESH_PENDING",
-    message:
-      "지식데이터 생성은 완료되었습니다. 판단 근거(주의 이슈)에 반영하려면 ‘판단 근거 품질 점검’을 실행해 주세요.",
-  });
+  // P4.2: Generation completes only after automatic quality refresh.
+  try {
+    const quality = await refreshQuality({
+      packId: pack.packId,
+      reviewerClientId: input.clientId,
+      prismaClient: client,
+    });
+    if (!quality.ok) {
+      warnings.push({
+        code: "QUALITY_REFRESH_FAILED",
+        message: `${quality.message} ‘품질 재검사’로 다시 시도할 수 있습니다.`,
+      });
+      return {
+        ok: false,
+        ...baseSuccessResult,
+        warnings,
+        nextStep: "RETRY",
+        generationReady: false,
+        error: {
+          code: "QUALITY_REFRESH_FAILED",
+          message: quality.message,
+          retryable: true,
+          supportRequired: false,
+          stage: "INDEXING",
+        },
+      };
+    }
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message.slice(0, 400) : "품질 점검 자동 실행에 실패했습니다.";
+    warnings.push({
+      code: "QUALITY_REFRESH_FAILED",
+      message: `${message} ‘품질 재검사’로 다시 시도할 수 있습니다.`,
+    });
+    return {
+      ok: false,
+      ...baseSuccessResult,
+      warnings,
+      nextStep: "RETRY",
+      generationReady: false,
+      error: {
+        code: "QUALITY_REFRESH_FAILED",
+        message,
+        retryable: true,
+        supportRequired: false,
+        stage: "INDEXING",
+      },
+    };
+  }
 
   return {
     ok: true,
@@ -1331,7 +1386,10 @@ export async function runAdminWorkerZipGeneration(
   const {
     buildWorkerInputManifestFromItems,
     mergeAdminExcludePaths,
+    assertIncludedItemsMatchWorkerCapability,
+    buildInventoryItemIdByPath,
   } = await import("@/lib/knowledge-scope/inventory-worker-manifest");
+  const { KnowledgeScopeInventoryError } = await import("@/lib/knowledge-scope/inventory-types");
 
   const scopeSummary = await getKnowledgeScopeInventoryBySourceRevision({
     versionId: version.id,
@@ -1354,8 +1412,20 @@ export async function runAdminWorkerZipGeneration(
   }
 
   const manifestItems = await listInventoryItemsForWorkerManifest(scopeSummary.id, client);
-  const { excludePaths: inventoryExcludePaths } = buildWorkerInputManifestFromItems(manifestItems);
+  try {
+    assertIncludedItemsMatchWorkerCapability(manifestItems);
+  } catch (error) {
+    if (error instanceof KnowledgeScopeInventoryError) {
+      throw new WorkerZipImportServiceError(error.code, error.message, error.httpStatus);
+    }
+    throw error;
+  }
+  const {
+    excludePaths: inventoryExcludePaths,
+    includedEntries,
+  } = buildWorkerInputManifestFromItems(manifestItems);
   liveExcludePaths = mergeAdminExcludePaths(liveExcludePaths, inventoryExcludePaths);
+  const inventoryItemIdByPath = buildInventoryItemIdByPath(includedEntries);
 
   // Executing implies acceptance: lock the request (접수완료) before running so the
   // Provider can no longer withdraw it mid-generation.
@@ -1382,7 +1452,6 @@ export async function runAdminWorkerZipGeneration(
   const { assertInventoryMatchesWorkingCopyBytes } = await import(
     "@/lib/knowledge-scope/inventory-consistency"
   );
-  const { KnowledgeScopeInventoryError } = await import("@/lib/knowledge-scope/inventory-types");
 
   const workingCopy = await getWorkerZipWorkingCopyById({
     workingCopyId: scopeSummary.workingCopyId,
@@ -1438,6 +1507,8 @@ export async function runAdminWorkerZipGeneration(
           adminExcludePaths: liveExcludePaths,
           sourceRevisionId: revision!.id,
           workingCopyId: workingCopy.id,
+          inventoryId: scopeSummary.id,
+          inventoryItemIdByPath,
           requirePgvector: input.requirePgvector,
           env: input.env,
           prismaClient: input.prismaClient,

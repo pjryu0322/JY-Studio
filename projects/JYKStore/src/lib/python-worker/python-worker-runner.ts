@@ -23,6 +23,11 @@ export type PythonWorkerRunInput = {
    * options.adminExcludePaths so the Worker skips them during extract.
    */
   adminExcludePaths?: readonly string[];
+  /** P4.2 provenance context stamped onto inventory / chunks. */
+  sourceRevisionId?: string | null;
+  workingCopyId?: string | null;
+  inventoryId?: string | null;
+  inventoryItemIdByPath?: Record<string, string>;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -62,6 +67,29 @@ function normalizeAdminExcludePaths(paths: readonly string[] | undefined): strin
   ];
 }
 
+function buildWorkerOptionsPayload(input: PythonWorkerRunInput): Record<string, unknown> | null {
+  const adminExcludePaths = normalizeAdminExcludePaths(input.adminExcludePaths);
+  const inventoryItemIdByPath =
+    input.inventoryItemIdByPath && Object.keys(input.inventoryItemIdByPath).length > 0
+      ? Object.fromEntries(
+          Object.entries(input.inventoryItemIdByPath).map(([k, v]) => [
+            k.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""),
+            v,
+          ]),
+        )
+      : null;
+
+  const options: Record<string, unknown> = {};
+  if (adminExcludePaths.length > 0) options.adminExcludePaths = adminExcludePaths;
+  if (input.sourceRevisionId) options.sourceRevisionId = input.sourceRevisionId;
+  if (input.workingCopyId) options.workingCopyId = input.workingCopyId;
+  if (input.inventoryId) options.inventoryId = input.inventoryId;
+  if (inventoryItemIdByPath) options.inventoryItemIdByPath = inventoryItemIdByPath;
+
+  if (Object.keys(options).length === 0) return null;
+  return { options };
+}
+
 /**
  * Run Python Worker CLI locally. Does not touch Object Storage or DB.
  *
@@ -75,7 +103,7 @@ export async function runPythonWorkerCli(
   const scriptPath = input.scriptPath?.trim() || defaultScriptPath();
   const timeoutMs = input.timeoutMs ?? 30 * 60 * 1000;
   const language = input.language?.trim() || "ko";
-  const adminExcludePaths = normalizeAdminExcludePaths(input.adminExcludePaths);
+  const optionsPayload = buildWorkerOptionsPayload(input);
 
   const args = [
     scriptPath,
@@ -98,14 +126,10 @@ export async function runPythonWorkerCli(
   }
 
   let optionsTempDir: string | null = null;
-  if (adminExcludePaths.length > 0) {
+  if (optionsPayload) {
     optionsTempDir = mkdtempSync(path.join(tmpdir(), "jyk-worker-opts-"));
     const optionsJsonPath = path.join(optionsTempDir, "options.json");
-    writeFileSync(
-      optionsJsonPath,
-      JSON.stringify({ options: { adminExcludePaths } }, null, 0),
-      "utf8",
-    );
+    writeFileSync(optionsJsonPath, JSON.stringify(optionsPayload, null, 0), "utf8");
     args.push("--options-json", optionsJsonPath);
   }
 

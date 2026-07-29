@@ -163,6 +163,10 @@ export type WorkerZipPipelineInput = {
   sourceRevisionId?: string | null;
   /** P1.1: Working Copy execution for SourceDocument scoping. */
   workingCopyId?: string | null;
+  /** Knowledge-scope inventory id for provenance gate. */
+  inventoryId?: string | null;
+  /** Map relative ZIP path → inventory item id (INCLUDED only). */
+  inventoryItemIdByPath?: Record<string, string>;
   /** Upload size guard for the source ZIP (default 200MB). */
   maxSourceZipUploadBytes?: number;
   /** Upload size guard per worker output file (default 100MB). */
@@ -407,6 +411,10 @@ async function runPythonWorker(ctx: WorkerZipPipelineContext): Promise<void> {
     maxFileBytes: input.maxFileBytes,
     maxTotalBytes: input.maxTotalBytes,
     adminExcludePaths: input.adminExcludePaths,
+    sourceRevisionId: input.sourceRevisionId,
+    workingCopyId: input.workingCopyId,
+    inventoryId: input.inventoryId,
+    inventoryItemIdByPath: input.inventoryItemIdByPath,
     env: input.env,
   });
   if (!run.ok) {
@@ -579,6 +587,13 @@ async function importWorkerResult(
     searchIndexGenerationId,
     chunkGenerationId: ctx.input.chunkGenerationId,
     sourceDocumentIdByPath,
+    expectedProvenance: {
+      pipelineRunId: ctx.input.pipelineRunId,
+      inventoryId: ctx.input.inventoryId ?? null,
+      workingCopyId: ctx.input.workingCopyId ?? null,
+      sourceRevisionId: ctx.input.sourceRevisionId ?? null,
+      inventoryItemIdByPath: ctx.input.inventoryItemIdByPath ?? {},
+    },
     prismaClient: ctx.input.prismaClient,
     requirePgvector: ctx.input.requirePgvector,
   });

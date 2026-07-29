@@ -6,23 +6,25 @@ import json
 import re
 from typing import Any
 
+from src.chunk_policy import (
+    chars_per_token_estimate,
+    chunk_policy_version,
+    min_content_tokens,
+    target_passage_tokens,
+)
 from src.embedding import (
     E5_MAX_SEQUENCE_TOKENS,
     build_passage_text,
     estimate_embedding_token_count,
 )
 from src.section_merge import merge_heading_fragments
+from src.small_fragment_merge import dedupe_exact_section_contents, merge_undersized_fragments
 
-# The E5 passage input has a hard 512-token gate in build_embeddings (matching
-# the Store policy). The chunker must never emit a chunk whose passage exceeds
-# that limit, or the whole knowledge build fails at embedding time. We size to a
-# preferred budget below the hard gate to leave headroom for token estimation
-# rounding and the "passage: "/title/section/keywords overhead.
-E5_TARGET_PASSAGE_TOKENS = 480
-_CHARS_PER_TOKEN = 4
-# Always keep enough content budget that a chunk carries meaningful text even
-# when the fixed overhead (title/section/keywords) is large.
-_MIN_CONTENT_TOKENS = 48
+# Canonical preferred target comes from chunk_policy.json (chunk-policy-v1).
+# Keep module-level alias for tests/importers that still import the name.
+E5_TARGET_PASSAGE_TOKENS = target_passage_tokens()
+_CHARS_PER_TOKEN = chars_per_token_estimate()
+_MIN_CONTENT_TOKENS = min_content_tokens()
 
 
 def _slug(text: str) -> str:
@@ -201,6 +203,9 @@ def build_chunks_and_traces(
         # Safety net: fold short Returns/Type/Events fragments even if the
         # upstream parser did not (legacy artifacts / PDF-like structures).
         sections = merge_heading_fragments(list(sections))
+        # P4.2: undersized non-meaningful fragments + exact duplicate bodies.
+        sections = merge_undersized_fragments(sections)
+        sections = dedupe_exact_section_contents(sections)
 
         entity_key = (
             (meta.get("apiName") or "").strip()
@@ -291,6 +296,11 @@ def build_chunks_and_traces(
                     # duplicating it across a split section's chunks.
                     "codeBlocks": code_blocks if part_index == 0 else [],
                     "traceId": trace_id,
+                    "inventoryItemId": inv.get("inventoryItemId") or doc.get("inventoryItemId"),
+                    "workingCopyId": inv.get("workingCopyId") or doc.get("workingCopyId"),
+                    "sourceRevisionId": inv.get("sourceRevisionId") or doc.get("sourceRevisionId"),
+                    "chunkPolicyVersion": chunk_policy_version(),
+                    "autoCorrections": list(section.get("autoCorrections") or []),
                 }
                 trace = {
                     "traceId": trace_id,
@@ -300,6 +310,9 @@ def build_chunks_and_traces(
                     "section": heading,
                     "parser": parser,
                     "parserVersion": parser_version,
+                    "inventoryItemId": chunk["inventoryItemId"],
+                    "workingCopyId": chunk["workingCopyId"],
+                    "sourceRevisionId": chunk["sourceRevisionId"],
                 }
                 chunks.append(chunk)
                 traces.append(trace)

@@ -106,11 +106,27 @@ export async function listKnowledgeScopeInventoryItems(
 export async function listInventoryItemsForWorkerManifest(
   inventoryId: string,
   prismaClient?: typeof prisma,
-): Promise<{ relativePath: string; decision: import("@prisma/client").KnowledgeScopeItemDecision }[]> {
+): Promise<
+  {
+    id: string;
+    relativePath: string;
+    decision: import("@prisma/client").KnowledgeScopeItemDecision;
+    fileName: string;
+    extension: string;
+    fileCategory: string | null;
+  }[]
+> {
   const client = prismaClient ?? prisma;
   return client.knowledgeScopeInventoryItem.findMany({
     where: { inventoryId },
-    select: { relativePath: true, decision: true },
+    select: {
+      id: true,
+      relativePath: true,
+      decision: true,
+      fileName: true,
+      extension: true,
+      fileCategory: true,
+    },
   });
 }
 

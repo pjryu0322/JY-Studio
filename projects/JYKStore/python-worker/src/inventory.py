@@ -76,3 +76,27 @@ def write_inventory(entries: list[dict[str, Any]], output_path: Path) -> None:
 
 def inventory_by_path(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {e["sourcePath"]: e for e in entries}
+
+
+def stamp_inventory_provenance(
+    entries: list[dict[str, Any]],
+    *,
+    inventory_item_id_by_path: dict[str, str] | None = None,
+    working_copy_id: str | None = None,
+    source_revision_id: str | None = None,
+    inventory_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Attach Store inventory / WC / revision ids onto Worker inventory entries."""
+    path_map = inventory_item_id_by_path or {}
+    for entry in entries:
+        source_path = str(entry.get("sourcePath") or "").replace("\\", "/")
+        item_id = path_map.get(source_path)
+        if item_id:
+            entry["inventoryItemId"] = item_id
+        if working_copy_id:
+            entry["workingCopyId"] = working_copy_id
+        if source_revision_id:
+            entry["sourceRevisionId"] = source_revision_id
+        if inventory_id:
+            entry["inventoryId"] = inventory_id
+    return entries

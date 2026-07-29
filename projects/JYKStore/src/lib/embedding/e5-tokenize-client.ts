@@ -458,7 +458,7 @@ export function buildLocalE5EmbeddingProfile(input?: {
     model: input?.model ?? config.model ?? DEFAULT_E5_MODEL_ID,
     revision,
     dimension: input?.dimension ?? config.dimension ?? DEFAULT_E5_EMBEDDING_DIMENSION,
-    targetPassageTokens: 448,
+    targetPassageTokens: 480,
     maxSequenceTokens: E5_MAX_SEQUENCE_TOKENS,
     overlapTokens: 48,
     distanceMetric: "cosine",

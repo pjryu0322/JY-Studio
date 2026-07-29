@@ -1,0 +1,95 @@
+{
+  "policyVersion": "worker-capability-v1",
+  "knowledgeEligible": [
+    {
+      "capability": "SUPPORTED",
+      "fileType": "pdf",
+      "extensions": [".pdf"],
+      "parser": "docling_pdf",
+      "pathRules": [],
+      "reasonCode": null
+    },
+    {
+      "capability": "SUPPORTED",
+      "fileType": "html",
+      "extensions": [".html", ".htm"],
+      "parser": "html_api",
+      "pathRules": ["docs/*/api", "docs/**/api/**"],
+      "reasonCode": null
+    },
+    {
+      "capability": "SUPPORTED",
+      "fileType": "html",
+      "extensions": [".html", ".htm"],
+      "parser": "html_sample",
+      "pathRules": ["samples/**", "react_vue_samples/**", "serversamples/**"],
+      "reasonCode": null
+    }
+  ],
+  "reviewRequired": [
+    {
+      "capability": "REVIEW_REQUIRED",
+      "fileType": "html",
+      "extensions": [".html", ".htm"],
+      "parser": null,
+      "pathRules": ["*"],
+      "reasonCode": "HTML_NOT_IN_KNOWN_KNOWLEDGE_PATH"
+    },
+    {
+      "capability": "REVIEW_REQUIRED",
+      "fileType": "license",
+      "extensions": [],
+      "parser": "license_inspector",
+      "pathRules": [],
+      "reasonCode": "LICENSE_REVIEW"
+    }
+  ],
+  "supporting": [
+    {
+      "capability": "SUPPORTING",
+      "fileType": "image",
+      "extensions": [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tif", ".tiff"],
+      "parser": null,
+      "pathRules": [],
+      "reasonCode": "SUPPORTING_ASSET"
+    },
+    {
+      "capability": "SUPPORTING",
+      "fileType": "sample_companion",
+      "extensions": [".xml", ".json", ".js", ".ts", ".jsx", ".tsx", ".css"],
+      "parser": null,
+      "pathRules": ["samples/**", "react_vue_samples/**", "serversamples/**"],
+      "reasonCode": "SAMPLE_COMPANION"
+    }
+  ],
+  "unsupportedKnowledge": [
+    {
+      "capability": "UNSUPPORTED",
+      "fileType": "markdown",
+      "extensions": [".md", ".markdown"],
+      "parser": null,
+      "reasonCode": "NO_KNOWLEDGE_PARSER"
+    },
+    {
+      "capability": "UNSUPPORTED",
+      "fileType": "text",
+      "extensions": [".txt"],
+      "parser": null,
+      "reasonCode": "NO_KNOWLEDGE_PARSER"
+    },
+    {
+      "capability": "UNSUPPORTED",
+      "fileType": "docx",
+      "extensions": [".docx", ".doc"],
+      "parser": null,
+      "reasonCode": "NO_KNOWLEDGE_PARSER"
+    },
+    {
+      "capability": "UNSUPPORTED",
+      "fileType": "other",
+      "extensions": [],
+      "parser": null,
+      "reasonCode": "NO_KNOWLEDGE_PARSER"
+    }
+  ]
+}

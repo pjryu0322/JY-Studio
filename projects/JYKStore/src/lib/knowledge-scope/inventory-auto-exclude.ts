@@ -1,8 +1,11 @@
 /**
- * P3 knowledge-scope inventory — pure auto-exclusion policy.
- * Maps ZIP preflight / Worker exclusion reasons into Inventory decision fields.
+ * P3/P4.2 knowledge-scope inventory — pure auto-exclusion + Worker capability alignment.
  */
 
+import {
+  assessWorkerCapability,
+  isKnowledgeEligibleForInclude,
+} from "@/lib/python-worker/worker-capability-policy";
 import {
   buildZipExclusionPolicy,
   evaluateZipEntryExclusion,
@@ -28,12 +31,15 @@ export type InventoryExclusionReasonCode =
   | "OTHER";
 
 export type InventoryAutoDecision = {
-  decision: "INCLUDED" | "EXCLUDED" | "PENDING";
+  decision: "INCLUDED" | "EXCLUDED" | "PENDING" | "REVIEW_REQUIRED";
   decisionSource: "SYSTEM";
   exclusionReasonCode: InventoryExclusionReasonCode | null;
   exclusionReasonText: string | null;
   /** Safety exclusions that admin may not override into Worker input. */
   overrideAllowed: boolean;
+  fileCategory?: string | null;
+  capability?: string | null;
+  parser?: string | null;
 };
 
 const EXECUTABLE_EXTS = new Set([
@@ -93,6 +99,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "ZERO_BYTE",
       exclusionReasonText: "파일 크기가 0 Byte입니다.",
       overrideAllowed: false,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -103,6 +111,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "EXECUTABLE",
       exclusionReasonText: `실행 파일(${ext})은 지식화 대상에서 제외합니다.`,
       overrideAllowed: false,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -111,8 +121,10 @@ export function classifyInventoryAutoDecision(input: {
       decision: "EXCLUDED",
       decisionSource: "SYSTEM",
       exclusionReasonCode: "EXECUTABLE_LIBRARY",
-      exclusionReasonText: `실행 라이브러리(${ext})는 지식화 대상에서 제외합니다.`,
+      exclusionReasonText: `실행 라이브러리(${ext})은 지식화 대상에서 제외합니다.`,
       overrideAllowed: false,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -123,6 +135,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "FONT",
       exclusionReasonText: `폰트 파일(${ext})은 지식화 대상에서 제외합니다.`,
       overrideAllowed: true,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -133,6 +147,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "LICENSE_OR_KEY",
       exclusionReasonText: "라이선스·키·자격증명 관련 파일은 제외합니다.",
       overrideAllowed: false,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -143,6 +159,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "BUILD_ARTIFACT",
       exclusionReasonText: "빌드 산출물 경로의 파일입니다.",
       overrideAllowed: true,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -153,6 +171,8 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: "CACHE",
       exclusionReasonText: "캐시·임시·의존성 경로의 파일입니다.",
       overrideAllowed: true,
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
@@ -166,16 +186,81 @@ export function classifyInventoryAutoDecision(input: {
       exclusionReasonCode: code,
       exclusionReasonText: zipHit.detail ?? `정책 제외: ${zipHit.reason}`,
       overrideAllowed: code !== "FILE_SIZE_EXCEEDED",
+      fileCategory: "UNSUPPORTED",
+      capability: "UNSUPPORTED",
     };
   }
 
-  // Default: knowledge candidate pending admin confirmation.
+  const capability = assessWorkerCapability({
+    relativePath: input.relativePath,
+    fileName,
+    extension: ext,
+  });
+
+  if (capability.capability === "SUPPORTING") {
+    return {
+      decision: "EXCLUDED",
+      decisionSource: "SYSTEM",
+      exclusionReasonCode: "NON_KNOWLEDGE_FILE",
+      exclusionReasonText: "지원 자산(검색 Chunk 비대상)입니다.",
+      overrideAllowed: true,
+      fileCategory: capability.capability,
+      capability: capability.capability,
+      parser: capability.parser,
+    };
+  }
+
+  if (capability.capability === "UNSUPPORTED") {
+    return {
+      decision: "EXCLUDED",
+      decisionSource: "SYSTEM",
+      exclusionReasonCode: "UNSUPPORTED",
+      exclusionReasonText:
+        "현재 Worker에 지식화 Parser가 없어 포함으로 확정할 수 없습니다.",
+      overrideAllowed: false,
+      fileCategory: capability.capability,
+      capability: capability.capability,
+      parser: capability.parser,
+    };
+  }
+
+  if (capability.capability === "REVIEW_REQUIRED") {
+    return {
+      decision: "REVIEW_REQUIRED",
+      decisionSource: "SYSTEM",
+      exclusionReasonCode: null,
+      exclusionReasonText: capability.reasonCode
+        ? `Worker capability 확인 필요: ${capability.reasonCode}`
+        : "Worker capability 확인이 필요합니다.",
+      overrideAllowed: true,
+      fileCategory: capability.capability,
+      capability: capability.capability,
+      parser: capability.parser,
+    };
+  }
+
+  if (!isKnowledgeEligibleForInclude(capability)) {
+    return {
+      decision: "EXCLUDED",
+      decisionSource: "SYSTEM",
+      exclusionReasonCode: "UNSUPPORTED",
+      exclusionReasonText: "Worker 지식화 대상이 아닙니다.",
+      overrideAllowed: false,
+      fileCategory: capability.capability,
+      capability: capability.capability,
+      parser: capability.parser,
+    };
+  }
+
   return {
     decision: "PENDING",
     decisionSource: "SYSTEM",
     exclusionReasonCode: null,
     exclusionReasonText: null,
     overrideAllowed: true,
+    fileCategory: capability.capability,
+    capability: capability.capability,
+    parser: capability.parser,
   };
 }
 
@@ -184,7 +269,8 @@ export function isSafetyBlockedOverride(reason: InventoryExclusionReasonCode | n
     reason === "ZERO_BYTE" ||
     reason === "EXECUTABLE" ||
     reason === "EXECUTABLE_LIBRARY" ||
-    reason === "LICENSE_OR_KEY"
+    reason === "LICENSE_OR_KEY" ||
+    reason === "UNSUPPORTED"
   );
 }
 

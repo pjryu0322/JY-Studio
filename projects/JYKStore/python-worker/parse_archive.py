@@ -35,7 +35,7 @@ from src.embedding import (
     resolve_embedding_config,
     write_embeddings,
 )
-from src.inventory import build_inventory, inventory_by_path, write_inventory
+from src.inventory import build_inventory, inventory_by_path, stamp_inventory_provenance, write_inventory
 from src.markdown_writer import write_markdown_review
 from src.normalizer import normalize_documents, write_normalized_documents
 from src.parsers import html_api, html_sample, license_inspector, pdf_docling
@@ -448,6 +448,26 @@ def run_pipeline(cfg: dict[str, Any]) -> int:
         return 1
 
     inventory = build_inventory(extract_root, extraction.get("pathMeta") or {})
+    raw_item_map = opts.get("inventoryItemIdByPath")
+    item_map: dict[str, str] = {}
+    if isinstance(raw_item_map, dict):
+        for k, v in raw_item_map.items():
+            if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
+                item_map[k.replace("\\", "/").strip("/")] = v.strip()
+    stamp_inventory_provenance(
+        inventory,
+        inventory_item_id_by_path=item_map or None,
+        working_copy_id=str(opts["workingCopyId"]).strip()
+        if isinstance(opts.get("workingCopyId"), str) and str(opts.get("workingCopyId")).strip()
+        else None,
+        source_revision_id=str(opts["sourceRevisionId"]).strip()
+        if isinstance(opts.get("sourceRevisionId"), str)
+        and str(opts.get("sourceRevisionId")).strip()
+        else None,
+        inventory_id=str(opts["inventoryId"]).strip()
+        if isinstance(opts.get("inventoryId"), str) and str(opts.get("inventoryId")).strip()
+        else None,
+    )
     write_inventory(inventory, output_dir / "inventory.json")
     by_path = inventory_by_path(inventory)
 

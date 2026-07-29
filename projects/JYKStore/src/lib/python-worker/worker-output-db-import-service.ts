@@ -72,12 +72,22 @@ export type ImportSearchGenerationDescriptor = {
   scope?: string;
 };
 
+export type WorkerImportExpectedProvenance = {
+  pipelineRunId: string;
+  inventoryId?: string | null;
+  workingCopyId?: string | null;
+  sourceRevisionId?: string | null;
+  inventoryItemIdByPath?: Record<string, string>;
+};
+
 export type WorkerOutputDbImportInput = {
   payload: WorkerOutputImportPayload;
   /** Required (P4): worker output DB import is always bound to a search generation. */
   searchIndexGenerationId?: string;
   chunkGenerationId?: string;
   sourceDocumentIdByPath?: Record<string, string>;
+  /** P4.2: reject chunks whose provenance does not match this Generation binding. */
+  expectedProvenance?: WorkerImportExpectedProvenance;
   prismaClient?: PrismaClientLike;
   /** true → pgvector must be available (hard fail on unavailable). */
   requirePgvector?: boolean;
@@ -287,14 +297,73 @@ export function assertGenerationDescriptorMatches(
  * Build a pure (no-DB) import plan from a validated payload and a resolved
  * generation binding. Exposed for unit tests and inspection.
  */
+export function assertWorkerChunkProvenance(input: {
+  chunks: Array<Record<string, unknown>>;
+  expected?: WorkerImportExpectedProvenance | null;
+}): void {
+  const expected = input.expected;
+  if (!expected) return;
+
+  const pathMap = expected.inventoryItemIdByPath ?? {};
+  const hasPathMap = Object.keys(pathMap).length > 0;
+
+  for (const chunk of input.chunks) {
+    const sourcePath =
+      typeof chunk.sourcePath === "string" ? chunk.sourcePath.replace(/\\/g, "/") : "";
+    const chunkRunId =
+      typeof chunk.pipelineRunId === "string" ? chunk.pipelineRunId : null;
+    if (chunkRunId && chunkRunId !== expected.pipelineRunId) {
+      throw new WorkerOutputDbImportError(
+        "PROVENANCE_RUN_MISMATCH",
+        `chunk ${String(chunk.chunkId)} pipelineRunId mismatch`,
+      );
+    }
+
+    const chunkWc =
+      typeof chunk.workingCopyId === "string" ? chunk.workingCopyId : null;
+    if (expected.workingCopyId && chunkWc && chunkWc !== expected.workingCopyId) {
+      throw new WorkerOutputDbImportError(
+        "PROVENANCE_WORKING_COPY_MISMATCH",
+        `chunk ${String(chunk.chunkId)} workingCopyId mismatch`,
+      );
+    }
+
+    const chunkRev =
+      typeof chunk.sourceRevisionId === "string" ? chunk.sourceRevisionId : null;
+    if (expected.sourceRevisionId && chunkRev && chunkRev !== expected.sourceRevisionId) {
+      throw new WorkerOutputDbImportError(
+        "PROVENANCE_SOURCE_REVISION_MISMATCH",
+        `chunk ${String(chunk.chunkId)} sourceRevisionId mismatch`,
+      );
+    }
+
+    const chunkInvItem =
+      typeof chunk.inventoryItemId === "string" ? chunk.inventoryItemId : null;
+    if (hasPathMap && sourcePath) {
+      const expectedItemId = pathMap[sourcePath];
+      if (expectedItemId && chunkInvItem && chunkInvItem !== expectedItemId) {
+        throw new WorkerOutputDbImportError(
+          "PROVENANCE_INVENTORY_ITEM_MISMATCH",
+          `chunk ${String(chunk.chunkId)} inventoryItemId mismatch for ${sourcePath}`,
+        );
+      }
+    }
+  }
+}
+
 export function buildWorkerOutputImportPlan(input: {
   payload: WorkerOutputImportPayload;
   chunkGenerationId: string;
   searchIndexGenerationId: string;
   sourceDocumentIdByPath?: Record<string, string>;
+  expectedProvenance?: WorkerImportExpectedProvenance | null;
 }): WorkerOutputImportPlan {
   const { payload } = input;
   assertWorkerOutputImportable(payload);
+  assertWorkerChunkProvenance({
+    chunks: payload.chunks as Array<Record<string, unknown>>,
+    expected: input.expectedProvenance,
+  });
 
   if (!input.chunkGenerationId) {
     throw new WorkerOutputDbImportError(
@@ -306,10 +375,31 @@ export function buildWorkerOutputImportPlan(input: {
   const searchIndexGenerationId = input.searchIndexGenerationId;
   const sourceDocumentIdByPath = input.sourceDocumentIdByPath ?? {};
   const traceById = new Map(payload.sourceTraces.map((t) => [t.traceId, t]));
+  const expected = input.expectedProvenance;
+  const pathMap = expected?.inventoryItemIdByPath ?? {};
 
   const chunkPlans: WorkerChunkCreatePlan[] = payload.chunks.map((chunk, index) => {
     const tags = resolveTags(chunk);
     const trace = traceById.get(chunk.traceId);
+    const chunkRecord = chunk as Record<string, unknown>;
+    const sourcePath = chunk.sourcePath;
+    const inventoryItemId =
+      (typeof chunkRecord.inventoryItemId === "string" && chunkRecord.inventoryItemId) ||
+      pathMap[sourcePath] ||
+      null;
+    const workingCopyId =
+      (typeof chunkRecord.workingCopyId === "string" && chunkRecord.workingCopyId) ||
+      expected?.workingCopyId ||
+      null;
+    const sourceRevisionId =
+      (typeof chunkRecord.sourceRevisionId === "string" && chunkRecord.sourceRevisionId) ||
+      expected?.sourceRevisionId ||
+      null;
+    const inventoryId =
+      (typeof chunkRecord.inventoryId === "string" && chunkRecord.inventoryId) ||
+      expected?.inventoryId ||
+      null;
+
     const metadata: Record<string, unknown> = {
       importChannel: IMPORT_CHANNELS.WORKER_ZIP_IMPORT,
       workerChunkId: chunk.chunkId,
@@ -326,8 +416,18 @@ export function buildWorkerOutputImportPlan(input: {
       chunkGenerationId,
       searchIndexGenerationId,
       sourceTrace: trace ? { ...trace } : null,
+      inventoryItemId,
+      inventoryId,
+      workingCopyId,
+      sourceRevisionId,
+      chunkPolicyVersion:
+        typeof chunkRecord.chunkPolicyVersion === "string"
+          ? chunkRecord.chunkPolicyVersion
+          : null,
+      autoCorrections: Array.isArray(chunkRecord.autoCorrections)
+        ? chunkRecord.autoCorrections
+        : [],
     };
-    const chunkRecord = chunk as Record<string, unknown>;
     if (typeof chunkRecord.entityKey === "string" && chunkRecord.entityKey.trim()) {
       metadata.entityKey = chunkRecord.entityKey.trim();
     }
@@ -473,6 +573,7 @@ export async function importWorkerOutputToStoreDb(
       chunkGenerationId: resolvedChunkGenerationId,
       searchIndexGenerationId,
       sourceDocumentIdByPath: input.sourceDocumentIdByPath,
+      expectedProvenance: input.expectedProvenance,
     });
 
     // Re-run policy: clear this generation's existing vectors first (no chunk FK

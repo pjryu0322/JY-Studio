@@ -633,13 +633,18 @@ export function AdminWorkerZipGenerationCard({
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
             <p className="font-semibold">지식데이터 생성이 완료되었습니다.</p>
             <p className="text-xs">
-              지식 청크 {result!.importedChunkCount}개 · 검색데이터 {result!.importedEmbeddingCount}개
+              처리 완료 · 지식 청크 {result!.importedChunkCount}개 · 검색데이터{" "}
+              {result!.importedEmbeddingCount}개
             </p>
-            {workbenchMode !== "generation" ? (
-              <p className="mt-1 text-[11px] text-emerald-800">
-                Worker 작업 내역을 확인한 뒤, 아래 품질 점검을 실행해 주세요.
+            {result!.warnings.length > 0 ? (
+              <p className="mt-1 text-[11px] text-amber-900">
+                경고 {result!.warnings.length}건 — 서비스 검증 전에 판단 근거를 확인하세요.
               </p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-[11px] text-emerald-800">
+                품질 점검이 자동으로 실행되었습니다. 필요 시 「재검사」로 다시 돌릴 수 있습니다.
+              </p>
+            )}
           </div>
         ) : null}
 
@@ -739,7 +744,11 @@ export function AdminWorkerZipGenerationCard({
                 }
                 className="min-h-[36px] shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-60"
               >
-                {qualityRefreshing ? "실행 중…" : "실행"}
+                {qualityRefreshing
+                  ? "재검사 중…"
+                  : qualityResult
+                    ? "재검사"
+                    : "품질 점검"}
               </button>
               <button
                 type="button"
@@ -808,7 +817,7 @@ export function AdminWorkerZipGenerationCard({
 
               {!qualityRefreshing && !qualityResult && !evidenceLoading && generationDone ? (
                 <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-store-muted">
-                  품질점검 결과가 없습니다. 「실행」으로 이번 생성분 점검을 시작하세요.
+                  자동 품질 점검 결과가 아직 없습니다. 「품질 점검」으로 재시도하세요.
                 </p>
               ) : null}
             </>

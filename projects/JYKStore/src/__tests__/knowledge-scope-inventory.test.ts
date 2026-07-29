@@ -57,11 +57,23 @@ describe("inventory auto-exclude", () => {
     assert.equal(isSafetyBlockedOverride("EXECUTABLE"), true);
   });
 
-  it("marks ordinary documents as PENDING candidates", () => {
+  it("marks ordinary documents without a Worker parser as EXCLUDED", () => {
     const result = classifyInventoryAutoDecision({
       relativePath: "docs/guide.md",
       fileName: "guide.md",
       extension: ".md",
+      sizeBytes: 2048,
+    });
+    assert.equal(result.decision, "EXCLUDED");
+    assert.equal(result.exclusionReasonCode, "UNSUPPORTED");
+    assert.equal(result.overrideAllowed, false);
+  });
+
+  it("marks supported PDF as PENDING knowledge candidate", () => {
+    const result = classifyInventoryAutoDecision({
+      relativePath: "docs/manual.pdf",
+      fileName: "manual.pdf",
+      extension: ".pdf",
       sizeBytes: 2048,
     });
     assert.equal(result.decision, "PENDING");
