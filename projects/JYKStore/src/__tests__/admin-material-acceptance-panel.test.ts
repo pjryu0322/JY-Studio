@@ -97,12 +97,12 @@ describe("admin material acceptance (workbench step1)", () => {
   it("correction panel is an independent workbench with issue queue", () => {
     const panel = readSource("src/components/AdminKnowledgeCorrectionPanel.tsx");
     const icon = readSource("src/components/role-workspace/RoleRailIcon.tsx");
-    assert.ok(panel.includes("Correction") || panel.includes("예외 보정"));
+    assert.ok(panel.includes("보정"));
     assert.ok(panel.includes("원본 미리보기") || panel.includes("미리보기"));
-    assert.ok(panel.includes("Regenerate"));
-    assert.ok(panel.includes("FILE_EXCLUDE") || panel.includes("Exclude"));
-    assert.ok(panel.includes("title=") && panel.includes("ⓘ"));
+    assert.ok(panel.includes("재생성"));
+    assert.ok(panel.includes("UiTooltip"));
     assert.ok(panel.includes("고급 보기"));
+    assert.ok(panel.includes("더보기"));
     assert.ok(icon.includes('case "correction"'));
   });
 
