@@ -1,97 +1,63 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
-  buildCorrectionQueueIssues,
-  type CorrectionQueueIssue,
-  type CorrectionQueueIssueCategory,
-  type CorrectionQueueIssueSeverity,
-} from "@/lib/admin-correction-queue-issues";
+  applyAdminCorrectionCase,
+  closeAdminCorrectionCase,
+  fetchAdminCorrectionWorkbench,
+  regenerateAdminCorrection,
+  syncAdminCorrectionWorkbench,
+  verifyAdminCorrectionCase,
+  type AdminCorrectionCase,
+  type AdminCorrectionWorkbenchSummary,
+} from "@/lib/admin-review-api";
 import type { AdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 import { adminReviewDetailPath } from "@/lib/routes";
 
 /**
- * Admin correction workbench (`?step=correction`).
- *
- * History policy (schema not added in this MVP):
- * - Do not delete original knowledgeUnitId / chunkId / searchDataId.
- * - Merge / split / search-exclude / keep-independent / provider-request must be auditable later.
- * - Store before/after snapshot, actor, time, reason, reindex flag in a follow-up revision model.
- * - Search should use corrected results only (merged/excluded originals omitted).
- * - After correction, re-run quality and possibly reindex — surfaced in UI below.
- *
- * Merge/split APIs are not wired yet (disabled CTAs). Live paths: regenerate, re-quality, provider review.
+ * P5 Exception-only Correction Workbench (`?step=correction`).
+ * Shows Blocker/Warning cases only — not a full chunk editor.
  */
 
-type IssueFilter = "all" | "block" | "warning";
+type SeverityFilter = "all" | "BLOCKER" | "WARNING";
 
-const FILTERS: { id: IssueFilter; label: string }[] = [
+const FILTERS: { id: SeverityFilter; label: string }[] = [
   { id: "all", label: "전체" },
-  { id: "block", label: "차단" },
-  { id: "warning", label: "주의" },
+  { id: "BLOCKER", label: "차단" },
+  { id: "WARNING", label: "주의" },
 ];
 
-const DISABLED_ACTIONS: { id: string; label: string; hint: string }[] = [
-  {
-    id: "merge-parent",
-    label: "부모 지식단위와 병합",
-    hint: "준비 중 — 병합 API 후속",
-  },
-  {
-    id: "merge-neighbor",
-    label: "인접 지식단위와 병합",
-    hint: "준비 중 — 병합 API 후속",
-  },
-  {
-    id: "merge-prev-chunk",
-    label: "이전 Chunk와 병합",
-    hint: "준비 중 — Chunk 병합 API 후속",
-  },
-  {
-    id: "merge-next-chunk",
-    label: "다음 Chunk와 병합",
-    hint: "준비 중 — Chunk 병합 API 후속",
-  },
-  {
-    id: "split-chunk",
-    label: "Chunk 분리",
-    hint: "준비 중 — 분리 API 후속",
-  },
-  {
-    id: "exclude-search",
-    label: "검색 제외",
-    hint: "현재 비활성 (API 410)",
-  },
-  {
-    id: "keep-independent",
-    label: "독립 유지",
-    hint: "준비 중 — 이력 모델 후속",
-  },
-  {
-    id: "request-provider",
-    label: "제공자 보완요청",
-    hint: "제공자 검토 단계에서 요청",
-  },
-];
+const ACTION_LABELS: Record<string, string> = {
+  FILE_EXCLUDE: "지식화 제외",
+  FILE_REQUEST_PROVIDER: "제공자 확인 요청",
+  STRUCTURE_DELETE: "구조 삭제",
+  STRUCTURE_MERGE: "구조 통합",
+  CHUNK_DELETE: "Chunk 삭제",
+  CHUNK_MERGE: "Chunk 통합",
+};
 
-function severityLabel(severity: CorrectionQueueIssueSeverity): string {
-  if (severity === "block") return "차단";
-  return "주의";
+function statusLabel(status: AdminCorrectionCase["status"]): string {
+  switch (status) {
+    case "OPEN":
+      return "대기";
+    case "APPLIED":
+      return "적용됨";
+    case "REGENERATED":
+      return "재생성됨";
+    case "VERIFIED":
+      return "검증됨";
+    case "CLOSED":
+      return "종료";
+    default:
+      return status;
+  }
 }
 
-function categoryLabel(category: CorrectionQueueIssueCategory): string {
-  if (category === "knowledgeUnit") return "지식단위";
-  if (category === "chunk") return "Chunk";
-  if (category === "searchData") return "검색데이터";
-  if (category === "provider") return "제공자";
-  if (category === "sourceDocument") return "원천문서";
-  return "기타";
-}
-
-function countForFilter(issues: readonly CorrectionQueueIssue[], id: IssueFilter): number {
-  if (id === "all") return issues.length;
-  return issues.filter((i) => i.severity === id).length;
+function targetLabel(type: AdminCorrectionCase["targetType"]): string {
+  if (type === "FILE") return "파일";
+  if (type === "STRUCTURE") return "구조";
+  return "Chunk";
 }
 
 export function AdminKnowledgeCorrectionPanel({
@@ -105,6 +71,7 @@ export function AdminKnowledgeCorrectionPanel({
   onRerunQuality,
   onGoProviderReview,
   onGoSearchValidation,
+  onChanged,
 }: {
   readonly packId: string;
   readonly packName?: string;
@@ -117,6 +84,7 @@ export function AdminKnowledgeCorrectionPanel({
   readonly onRerunQuality?: () => void;
   readonly onGoProviderReview?: () => void;
   readonly onGoSearchValidation?: () => void;
+  readonly onChanged?: () => void;
 }) {
   const generationDone = workerZipPhase === "COMPLETED";
   const readyForProvider =
@@ -124,41 +92,147 @@ export function AdminKnowledgeCorrectionPanel({
   const showSearchValidationCta =
     readyForProvider && providerReviewPhase === "CONFIRMED";
 
-  const issues = useMemo(
-    () => buildCorrectionQueueIssues(quality, detail),
-    [detail, quality],
-  );
-  const [filter, setFilter] = useState<IssueFilter>("all");
+  const [summary, setSummary] = useState<AdminCorrectionWorkbenchSummary | null>(null);
+  const [cases, setCases] = useState<AdminCorrectionCase[]>([]);
+  const [filter, setFilter] = useState<SeverityFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const [secondaryTargetId, setSecondaryTargetId] = useState("");
+  const [showTech, setShowTech] = useState(false);
+  const [lastOutcome, setLastOutcome] = useState<string | null>(null);
 
-  const filterCounts = useMemo(() => {
-    const counts = {} as Record<IssueFilter, number>;
-    for (const f of FILTERS) {
-      counts[f.id] = countForFilter(issues, f.id);
-    }
-    return counts;
-  }, [issues]);
+  const load = useCallback(async () => {
+    const data = await fetchAdminCorrectionWorkbench(packId);
+    setSummary(data.summary);
+    setCases(data.cases);
+  }, [packId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    void syncAdminCorrectionWorkbench(packId)
+      .then((data) => {
+        if (cancelled) return;
+        setSummary(data.summary);
+        setCases(data.cases);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "보정 큐 동기화에 실패했습니다.");
+        void load().catch(() => undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [packId, load, quality.blockers.length, quality.warnings.length, detail?.pack.updatedAt]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return issues;
-    return issues.filter((issue) => issue.severity === filter);
-  }, [filter, issues]);
+    if (filter === "all") return cases;
+    return cases.filter((c) => c.severity === filter);
+  }, [cases, filter]);
 
   const selected =
-    filtered.find((i) => i.id === selectedId) ??
-    issues.find((i) => i.id === selectedId) ??
+    filtered.find((c) => c.id === selectedId) ??
+    cases.find((c) => c.id === selectedId) ??
     filtered[0] ??
     null;
 
+  const filterCounts = useMemo(() => {
+    return {
+      all: cases.length,
+      BLOCKER: cases.filter((c) => c.severity === "BLOCKER").length,
+      WARNING: cases.filter((c) => c.severity === "WARNING").length,
+    };
+  }, [cases]);
+
+  async function runAction(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "요청에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="space-y-3">
+      <div className="rounded-2xl border border-store-border bg-white px-4 py-3 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">예외 보정 Workbench</h2>
+            <p className="mt-0.5 text-[11px] text-store-muted">
+              자동 처리 후에도 남은 예외만 보정합니다. Chunk 전체 목록은 표시하지 않습니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void runAction(async () => {
+                const data = await syncAdminCorrectionWorkbench(packId);
+                setSummary(data.summary);
+                setCases(data.cases);
+              })
+            }
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 disabled:opacity-50"
+          >
+            품질 기준 동기화
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-[10px] text-store-muted">보정 필요</p>
+            <p className="text-lg font-bold tabular-nums text-slate-900">
+              {summary?.openCount ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2">
+            <p className="text-[10px] text-red-800/70">차단</p>
+            <p className="text-lg font-bold tabular-nums text-red-950">
+              {summary?.blockerCount ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+            <p className="text-[10px] text-amber-900/70">주의</p>
+            <p className="text-lg font-bold tabular-nums text-amber-950">
+              {summary?.warningCount ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 sm:col-span-1 lg:col-span-1">
+            <p className="text-[10px] text-store-muted">현재 상태</p>
+            <p className="text-sm font-bold text-slate-900">
+              {summary?.currentStatus ?? "불러오는 중"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 sm:col-span-2 lg:col-span-1">
+            <p className="text-[10px] text-indigo-900/70">다음 작업</p>
+            <p className="text-sm font-bold text-indigo-950">
+              {summary?.nextWork ?? "—"}
+            </p>
+          </div>
+        </div>
+        {lastOutcome ? (
+          <p className="mt-2 text-[11px] text-store-muted">최근 Outcome: {lastOutcome}</p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
       <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
         <div className="rounded-2xl border border-store-border bg-white px-3 py-3 shadow-card">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">보정 큐</h3>
-            <p className="mt-0.5 text-[11px] text-store-muted">
-              품질점검 차단 이슈와 원천 검증 WARNING 문서를 포함한 주의 이슈입니다.
-            </p>
+            <h3 className="text-sm font-bold text-slate-900">차단 / 주의</h3>
+            <p className="mt-0.5 text-[11px] text-store-muted">예외 케이스만 표시합니다.</p>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {FILTERS.map((f) => {
@@ -191,17 +265,17 @@ export function AdminKnowledgeCorrectionPanel({
             {filtered.length === 0 ? (
               <li className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-xs text-store-muted">
                 {quality.completed
-                  ? "표시할 차단·주의 이슈가 없습니다."
-                  : "품질점검 실행 후 차단·주의 이슈가 여기에 표시됩니다."}
+                  ? "표시할 예외 케이스가 없습니다."
+                  : "품질점검 실행 후 예외가 여기에 표시됩니다."}
               </li>
             ) : (
-              filtered.map((issue) => {
-                const active = selected?.id === issue.id;
+              filtered.map((item) => {
+                const active = selected?.id === item.id;
                 return (
-                  <li key={issue.id}>
+                  <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(issue.id)}
+                      onClick={() => setSelectedId(item.id)}
                       className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                         active
                           ? "border-amber-300 bg-amber-50"
@@ -211,19 +285,22 @@ export function AdminKnowledgeCorrectionPanel({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                            issue.severity === "block"
+                            item.severity === "BLOCKER"
                               ? "bg-red-100 text-red-900"
                               : "bg-amber-100 text-amber-950"
                           }`}
                         >
-                          {severityLabel(issue.severity)}
+                          {item.severity === "BLOCKER" ? "차단" : "주의"}
                         </span>
                         <span className="text-[10px] font-medium text-store-muted">
-                          {categoryLabel(issue.category)}
+                          {targetLabel(item.targetType)}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                          {statusLabel(item.status)}
                         </span>
                       </div>
                       <p className="mt-1 line-clamp-3 text-xs font-semibold text-slate-900">
-                        {issue.title}
+                        {item.title}
                       </p>
                     </button>
                   </li>
@@ -240,15 +317,18 @@ export function AdminKnowledgeCorrectionPanel({
               <div className="flex flex-wrap items-center gap-1.5">
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    selected.severity === "block"
+                    selected.severity === "BLOCKER"
                       ? "bg-red-100 text-red-900"
                       : "bg-amber-100 text-amber-950"
                   }`}
                 >
-                  {severityLabel(selected.severity)}
+                  {selected.severity === "BLOCKER" ? "차단" : "주의"}
                 </span>
                 <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
-                  {categoryLabel(selected.category)}
+                  {targetLabel(selected.targetType)}
+                </span>
+                <span className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-900">
+                  {statusLabel(selected.status)}
                 </span>
               </div>
               <div>
@@ -257,59 +337,58 @@ export function AdminKnowledgeCorrectionPanel({
               </div>
               <div>
                 <p className="text-store-muted">출처</p>
-                <p className="font-semibold text-slate-900">{selected.sourceLocation}</p>
+                <p className="font-semibold text-slate-900">
+                  {selected.sourceLocation ?? "—"}
+                </p>
               </div>
               <div
                 className={`rounded-xl border px-3 py-3 ${
-                  selected.severity === "block"
+                  selected.severity === "BLOCKER"
                     ? "border-red-200 bg-red-50"
                     : "border-amber-200 bg-amber-50"
                 }`}
               >
-                <p className="font-semibold text-slate-800">이슈 내용</p>
+                <p className="font-semibold text-slate-800">문제 설명</p>
                 <p
                   className={`mt-1 whitespace-pre-wrap ${
-                    selected.severity === "block" ? "text-red-900" : "text-amber-950"
+                    selected.severity === "BLOCKER" ? "text-red-900" : "text-amber-950"
                   }`}
                 >
-                  {selected.raw}
+                  {selected.description}
                 </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <p className="text-store-muted">심각도</p>
-                  <p className="font-semibold">{severityLabel(selected.severity)}</p>
-                </div>
-                <div>
-                  <p className="text-store-muted">대상 ID</p>
-                  <p className="font-mono text-[11px]">
-                    {selected.targetId ?? "미확인 (품질 메시지에 ID 없음)"}
-                  </p>
-                </div>
               </div>
               {selected.contentPreview ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="font-semibold text-slate-800">원천 문서 미리보기</p>
+                  <p className="font-semibold text-slate-800">원본 미리보기</p>
                   <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-store-muted">
                     {selected.contentPreview}
                   </p>
                 </div>
               ) : null}
               <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2">
-                <p className="font-semibold text-amber-950">추천 조치</p>
-                <p className="mt-1 text-amber-900/80">{selected.recommendedAction}</p>
+                <p className="font-semibold text-amber-950">다음 작업</p>
+                <p className="mt-1 text-amber-900/80">{selected.nextAction}</p>
               </div>
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="font-semibold text-slate-800">보정 대상 미리보기</p>
-                <p className="mt-1 text-store-muted">
-                  지식단위/Chunk 원문·병합 후보는 보정 API 연동 후 표시됩니다. 검색 반영:{" "}
-                  {searchIndexStatus}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowTech((v) => !v)}
+                className="text-[11px] font-semibold text-slate-600 underline"
+              >
+                {showTech ? "기술 정보 숨기기" : "기술 정보 보기"}
+              </button>
+              {showTech ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[10px] text-slate-700">
+                  <p>caseId: {selected.id}</p>
+                  <p>targetId: {selected.targetId}</p>
+                  <p>inventoryItemId: {selected.inventoryItemId ?? "—"}</p>
+                  <p>relativePath: {selected.relativePath ?? "—"}</p>
+                  <p>searchIndex: {searchIndexStatus}</p>
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="mt-3 text-xs text-store-muted">
-              왼쪽 보정 큐에서 이슈를 선택하면 세부 내용이 여기에 표시됩니다.
+              왼쪽에서 예외를 선택하면 미리보기가 표시됩니다.
             </p>
           )}
         </div>
@@ -317,31 +396,119 @@ export function AdminKnowledgeCorrectionPanel({
         <div className="rounded-2xl border border-store-border bg-white px-4 py-3 shadow-card">
           <h3 className="text-sm font-bold text-slate-900">보정 액션</h3>
           <p className="mt-1 text-[11px] text-store-muted">
-            선택 이슈에 대한 조치입니다. 병합·분리는 준비 중이며, 재생성/재점검/단계 이동은
-            사용 가능합니다.
+            FILE / STRUCTURE / CHUNK 예외 액션만 제공합니다. (Label Editor·일반 Split·의미 중복
+            제외)
           </p>
-          <ul className="mt-3 space-y-2">
-            {DISABLED_ACTIONS.map((action) => (
-              <li key={action.id}>
-                <button
-                  type="button"
-                  disabled
-                  title={action.hint}
-                  className="flex w-full min-h-[40px] cursor-not-allowed items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-xs font-semibold text-slate-400"
-                >
-                  <span>{action.label}</span>
-                  <span className="text-[10px] font-bold">준비 중</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+
+          {selected && (selected.status === "OPEN" || selected.status === "APPLIED") ? (
+            <div className="mt-3 space-y-2">
+              {(selected.targetType === "FILE" ||
+                selected.availableActions.includes("FILE_EXCLUDE")) &&
+              selected.targetType === "FILE" ? (
+                <label className="block text-[11px] text-store-muted">
+                  제외 사유
+                  <input
+                    value={reasonText}
+                    onChange={(e) => setReasonText(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900"
+                    placeholder="지식화 제외 사유"
+                    disabled={busy}
+                  />
+                </label>
+              ) : null}
+              {(selected.availableActions.includes("CHUNK_MERGE") ||
+                selected.availableActions.includes("STRUCTURE_MERGE")) &&
+              selected.targetType !== "FILE" ? (
+                <label className="block text-[11px] text-store-muted">
+                  병합 대상 ID
+                  <input
+                    value={secondaryTargetId}
+                    onChange={(e) => setSecondaryTargetId(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 font-mono text-xs text-slate-900"
+                    placeholder="secondaryTargetId"
+                    disabled={busy}
+                  />
+                </label>
+              ) : null}
+              <ul className="space-y-2">
+                {selected.availableActions.map((action) => (
+                  <li key={action}>
+                    <button
+                      type="button"
+                      disabled={busy || selected.status === "APPLIED"}
+                      onClick={() =>
+                        void runAction(async () => {
+                          await applyAdminCorrectionCase(packId, selected.id, {
+                            action,
+                            reasonText: reasonText.trim() || undefined,
+                            providerRequestNote:
+                              action === "FILE_REQUEST_PROVIDER"
+                                ? reasonText.trim() || "제공자 확인 요청"
+                                : undefined,
+                            secondaryTargetId: secondaryTargetId.trim() || undefined,
+                          });
+                        })
+                      }
+                      className="flex w-full min-h-[40px] items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-left text-xs font-semibold text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span>{ACTION_LABELS[action] ?? action}</span>
+                      <span className="text-[10px] font-bold text-slate-500">적용</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              disabled={busy || (summary?.appliedCount ?? 0) === 0}
+              onClick={() =>
+                void runAction(async () => {
+                  const result = await regenerateAdminCorrection(packId);
+                  setLastOutcome(result.quality.outcome);
+                  onRerunQuality?.();
+                })
+              }
+              className="flex w-full min-h-[40px] items-center justify-center rounded-xl bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
+            >
+              재생성 → Auto Quality → Outcome
+            </button>
+            {selected?.status === "REGENERATED" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(async () => {
+                    await verifyAdminCorrectionCase(packId, selected.id);
+                  })
+                }
+                className="flex w-full min-h-[40px] items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-950 disabled:opacity-50"
+              >
+                검증 완료
+              </button>
+            ) : null}
+            {selected?.status === "VERIFIED" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(async () => {
+                    await closeAdminCorrectionCase(packId, selected.id);
+                  })
+                }
+                className="flex w-full min-h-[40px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 disabled:opacity-50"
+              >
+                케이스 종료
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => onGoGeneration?.()}
               className="flex w-full min-h-[40px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
             >
-              전체 재생성으로 이동
+              생성 단계로 이동
             </button>
             {generationDone ? (
               <button

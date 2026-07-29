@@ -990,3 +990,148 @@ export async function finalizeAdminKnowledgeScope(
 export function adminKnowledgeScopePreviewUrl(packId: string, itemId: string): string {
   return `/api/v1/admin/packs/${encodeURIComponent(packId)}/knowledge-scope/items/${encodeURIComponent(itemId)}/preview`;
 }
+
+/** P5 Exception-only Correction Workbench */
+export type AdminCorrectionCase = {
+  id: string;
+  packId: string;
+  versionId: string;
+  targetType: "FILE" | "STRUCTURE" | "CHUNK";
+  targetId: string;
+  secondaryTargetId: string | null;
+  severity: "BLOCKER" | "WARNING";
+  title: string;
+  description: string;
+  sourceLocation: string | null;
+  contentPreview: string | null;
+  recommendedAction: string | null;
+  status: "OPEN" | "APPLIED" | "REGENERATED" | "VERIFIED" | "CLOSED";
+  inventoryItemId: string | null;
+  relativePath: string | null;
+  availableActions: string[];
+  nextAction: string;
+  appliedAt: string | null;
+  regeneratedAt: string | null;
+  verifiedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminCorrectionWorkbenchSummary = {
+  packId: string;
+  versionId: string | null;
+  openCount: number;
+  appliedCount: number;
+  regeneratedCount: number;
+  verifiedCount: number;
+  closedCount: number;
+  blockerCount: number;
+  warningCount: number;
+  currentStatus: string;
+  nextWork: string;
+};
+
+export type AdminCorrectionWorkbenchResponse = {
+  clientId: string;
+  summary: AdminCorrectionWorkbenchSummary;
+  cases: AdminCorrectionCase[];
+  created?: number;
+};
+
+export async function fetchAdminCorrectionWorkbench(
+  packId: string,
+): Promise<AdminCorrectionWorkbenchResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as AdminCorrectionWorkbenchResponse;
+}
+
+export async function syncAdminCorrectionWorkbench(
+  packId: string,
+): Promise<AdminCorrectionWorkbenchResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sync" }),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as AdminCorrectionWorkbenchResponse;
+}
+
+export async function applyAdminCorrectionCase(
+  packId: string,
+  caseId: string,
+  body: {
+    action: string;
+    secondaryTargetId?: string;
+    reasonText?: string;
+    providerRequestNote?: string;
+  },
+): Promise<{ case: AdminCorrectionCase }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction/cases/${encodeURIComponent(caseId)}/apply`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as { case: AdminCorrectionCase };
+}
+
+export async function regenerateAdminCorrection(
+  packId: string,
+  body?: { caseIds?: string[]; skipFullGeneration?: boolean },
+): Promise<{
+  regeneratedCount: number;
+  quality: { outcome: string | null; correctionStillRequired: boolean };
+}> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction/regenerate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as {
+    regeneratedCount: number;
+    quality: { outcome: string | null; correctionStillRequired: boolean };
+  };
+}
+
+export async function verifyAdminCorrectionCase(
+  packId: string,
+  caseId: string,
+): Promise<{ case: AdminCorrectionCase }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction/cases/${encodeURIComponent(caseId)}/verify`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as { case: AdminCorrectionCase };
+}
+
+export async function closeAdminCorrectionCase(
+  packId: string,
+  caseId: string,
+): Promise<{ case: AdminCorrectionCase }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/correction/cases/${encodeURIComponent(caseId)}/close`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as { case: AdminCorrectionCase };
+}

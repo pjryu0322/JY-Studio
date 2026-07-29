@@ -317,6 +317,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           }}
           onGoProviderReview={() => goStep("serviceValidation")}
           onGoSearchValidation={() => goStep("serviceValidation")}
+          onChanged={refreshSilently}
         />
       ) : null}
 

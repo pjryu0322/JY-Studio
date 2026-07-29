@@ -90,6 +90,8 @@ export type UpdateInventoryItemDecisionInput = {
   exclusionReasonCode?: KnowledgeScopeExclusionReason;
   exclusionReasonText?: string;
   providerRequestNote?: string;
+  /** P5: exception-only correction path may mutate FINALIZED inventory. */
+  allowFinalizedCorrectionOverride?: boolean;
 };
 
 export type BulkUpdateInventoryItemDecisionsInput = {
@@ -100,6 +102,8 @@ export type BulkUpdateInventoryItemDecisionsInput = {
   exclusionReasonCode?: KnowledgeScopeExclusionReason;
   exclusionReasonText?: string;
   providerRequestNote?: string;
+  /** P5: exception-only correction path may mutate FINALIZED inventory. */
+  allowFinalizedCorrectionOverride?: boolean;
 };
 
 export type ProviderInventoryDecision = "INCLUDED" | "EXCLUDED";

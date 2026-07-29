@@ -87,6 +87,11 @@ async function applyDecisionToItems(input: {
   exclusionReasonCode?: KnowledgeScopeExclusionReason;
   exclusionReasonText?: string;
   providerRequestNote?: string;
+  /**
+   * P5 Correction Workbench: allow exception-only FILE decisions after FINALIZE.
+   * Normal inventory UI must not set this.
+   */
+  allowFinalizedCorrectionOverride?: boolean;
   prismaClient?: typeof prisma;
 }): Promise<KnowledgeScopeInventoryItemDto[]> {
   const client = input.prismaClient ?? prisma;
@@ -102,7 +107,7 @@ async function applyDecisionToItems(input: {
   if (!inventory) {
     throw new KnowledgeScopeInventoryError("NOT_FOUND", "인벤토리를 찾을 수 없습니다.", 404);
   }
-  if (inventory.status === "FINALIZED") {
+  if (inventory.status === "FINALIZED" && !input.allowFinalizedCorrectionOverride) {
     throw new KnowledgeScopeInventoryError(
       "INVENTORY_FINALIZED",
       "확정된 지식 범위는 변경할 수 없습니다.",
@@ -183,6 +188,8 @@ async function applyDecisionToItems(input: {
         action: input.action,
         itemCount: items.length,
         itemIds: uniqueIds,
+        correctionOverride: Boolean(input.allowFinalizedCorrectionOverride),
+        inventoryStatus: inventory.status,
       },
       client: tx,
     });

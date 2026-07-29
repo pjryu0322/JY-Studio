@@ -150,6 +150,10 @@ enum AuditAction {
   ADMIN_INVENTORY_DECISION
   PROVIDER_INVENTORY_DECISION
   ADMIN_INVENTORY_SCOPE_FINALIZE
+  ADMIN_CORRECTION_APPLY
+  ADMIN_CORRECTION_REGENERATE
+  ADMIN_CORRECTION_VERIFY
+  ADMIN_CORRECTION_CLOSE
   DOCLING_REVIEW_INTEGRITY_VERIFIED
   DOCLING_REVIEW_INTEGRITY_FAILED
   SERVICE_VALIDATION_DOWNLOAD_TEST_SUCCEEDED
@@ -296,6 +300,7 @@ model KnowledgePack {
   workerZipSourceRevisions WorkerZipSourceRevision[]
   workerZipWorkingCopies   WorkerZipWorkingCopy[]
   knowledgeScopeInventories KnowledgeScopeInventory[]
+  correctionCases          CorrectionCase[]
 
   @@index([status])
   @@index([categoryId])
@@ -610,6 +615,7 @@ model KnowledgePackVersion {
   searchIndexGenerations     SearchIndexGeneration[]
   pipelineRuns               PipelineRun[]
   knowledgeScopeInventories   KnowledgeScopeInventory[]
+  correctionCases            CorrectionCase[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -1947,4 +1953,87 @@ model AuditLog {
   @@index([actorUserId])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+/// P5: exception-only correction cases (not a full chunk editor).
+enum CorrectionTargetType {
+  FILE
+  STRUCTURE
+  CHUNK
+}
+
+enum CorrectionSeverity {
+  BLOCKER
+  WARNING
+}
+
+enum CorrectionCaseStatus {
+  OPEN
+  APPLIED
+  REGENERATED
+  VERIFIED
+  CLOSED
+}
+
+enum CorrectionRequestedAction {
+  FILE_EXCLUDE
+  FILE_REQUEST_PROVIDER
+  STRUCTURE_DELETE
+  STRUCTURE_MERGE
+  CHUNK_DELETE
+  CHUNK_MERGE
+}
+
+model CorrectionCase {
+  id                       String                    @id @default(cuid())
+  packId                   String
+  versionId                String
+  targetType               CorrectionTargetType
+  targetId                 String
+  secondaryTargetId        String?
+  issueCode                String?
+  severity                 CorrectionSeverity
+  title                    String
+  description              String
+  sourceLocation           String?
+  contentPreview           String?
+  recommendedAction        CorrectionRequestedAction?
+  status                   CorrectionCaseStatus      @default(OPEN)
+  generationRunId          String?
+  searchIndexGenerationId  String?
+  inventoryItemId          String?
+  relativePath             String?
+  parameters               Json?
+  appliedAt                DateTime?
+  appliedByUserId          String?
+  regeneratedAt            DateTime?
+  verifiedAt               DateTime?
+  closedAt                 DateTime?
+  closedByUserId           String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+
+  pack     KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version  KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  events   CorrectionAuditEvent[]
+
+  @@index([packId, status])
+  @@index([versionId, status])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model CorrectionAuditEvent {
+  id         String               @id @default(cuid())
+  caseId     String
+  actorUserId String?
+  action     String
+  fromStatus CorrectionCaseStatus?
+  toStatus   CorrectionCaseStatus?
+  detail     Json?
+  createdAt  DateTime             @default(now())
+
+  case CorrectionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
 }
