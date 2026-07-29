@@ -41,6 +41,7 @@ next-env.d.ts
 
 # P4.3 real-ZIP validation scratch (large worker outputs)
 /tmp-p4-3-validation/
+/tmp-p4-3-1-e2e/
 
 # Do not commit local embedding model trees if ever copied into the repo
 /models/

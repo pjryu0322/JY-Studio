@@ -545,6 +545,7 @@ describe("P1.1 working copy create + stream", () => {
     });
 
     assert.equal(wc.status, "READY");
+    assert.equal(prisma.currentWorkingCopyId, wc.id);
     assert.notEqual(wc.storageKey, revisionKey);
     assert.deepEqual(storage.objects.get(wc.storageKey)?.bytes, bytes);
     assert.equal(getObjectCalls, 0);

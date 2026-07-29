@@ -273,6 +273,13 @@ export async function createWorkerZipWorkingCopyFromRevision(input: {
         409,
       );
     }
+    // P4.3.1: Accept/Inventory bind the version to the READY (or PROCESSING) WC immediately.
+    if (existing.status === "READY" || existing.status === "PROCESSING") {
+      await client.knowledgePackVersion.update({
+        where: { id: input.versionId },
+        data: { currentWorkingCopyId: existing.id },
+      });
+    }
     return mapWorkingCopy(existing, true);
   }
 
@@ -343,6 +350,12 @@ export async function createWorkerZipWorkingCopyFromRevision(input: {
     const ready = await client.workerZipWorkingCopy.update({
       where: { id: workingCopyId },
       data: { status: "READY", readyAt: now },
+    });
+    // P4.3.1: Inventory/Generation require version.currentWorkingCopyId after Accept.
+    // Pointer flips to SUCCEEDED activation still happen later via activateWorkerZipSourceRevision.
+    await client.knowledgePackVersion.update({
+      where: { id: input.versionId },
+      data: { currentWorkingCopyId: workingCopyId },
     });
     return mapWorkingCopy(ready, false);
   } catch (error) {
