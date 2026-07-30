@@ -1,4 +1,7 @@
-const MAX_TOKENS = 10;
+/** Source (raw) query tokens kept before synonym expansion. */
+export const SOURCE_TOKEN_BUDGET = 12;
+/** Synonym expansions allowed after source tokens are filled. */
+export const EXPANSION_TOKEN_BUDGET = 8;
 
 /** Longest-first Korean particles stripped from query tokens only (조사). */
 const KOREAN_PARTICLE_SUFFIXES = [
@@ -29,10 +32,10 @@ const KOREAN_PARTICLE_SUFFIXES = [
 ] as const;
 
 /**
- * Generic Korean/English query stopwords (not product-specific).
- * Removes conversational filler that otherwise spuriously matches TOC/API index pages.
+ * Conversational filler only — never product/domain vocabulary.
+ * Domain tokens (api/grid/cell/rmate/…) are classified separately, not dropped.
  */
-const QUERY_STOPWORDS = new Set([
+const CONVERSATIONAL_STOPWORDS = new Set([
   "관련",
   "관련된",
   "대해",
@@ -68,11 +71,16 @@ const QUERY_STOPWORDS = new Set([
   "using",
   "into",
   "from",
-  "with",
   "and",
   "or",
   "of",
-  // Generic "api" matches Docs/api Index TOC pages and drowns product terms.
+]);
+
+/**
+ * Domain vocabulary kept in the query (P8.1.1).
+ * Alone they are weak lexical signals; with CORE terms they stay useful.
+ */
+const DOMAIN_TERMS = new Set([
   "api",
   "apis",
   "grid",
@@ -82,6 +90,7 @@ const QUERY_STOPWORDS = new Set([
   "rmate",
   "rmategrid",
   "html5",
+  "셀",
 ]);
 
 /** Small bilingual expansions for common developer terms (query-side only). */
@@ -89,15 +98,52 @@ const QUERY_SYNONYMS: Record<string, readonly string[]> = {
   병합: ["merge", "merging"],
   merge: ["병합"],
   merging: ["병합"],
+  합치: ["merge", "merging", "병합"],
+  합쳐: ["merge", "merging", "병합"],
+  합쳐서: ["merge", "merging", "병합"],
+  묶: ["merge", "merging", "병합"],
+  묶어서: ["merge", "merging", "병합"],
   이벤트: ["event"],
   event: ["이벤트"],
   속성: ["property", "properties"],
   property: ["속성"],
   properties: ["속성"],
+  칸: ["cell", "cells", "셀"],
+};
+
+export type QueryTokenKind = "CORE_TERM" | "DOMAIN_TERM" | "FILLER_TERM";
+
+export type TokenizeSearchQueryResult = {
+  sourceTokens: string[];
+  expansionTokens: string[];
+  /** Tokens used for lexical DB prefilter (excludes domain-only queries' domain flood). */
+  lexicalPrefilterTokens: string[];
+  /** All tokens for keyword scoring (source + expansions). */
+  scoringTokens: string[];
+  truncatedSource: string[];
+  truncatedExpansion: string[];
+  kinds: Record<string, QueryTokenKind>;
 };
 
 function hasHangul(value: string): boolean {
   return /[가-힣]/.test(value);
+}
+
+export function classifyQueryToken(token: string): QueryTokenKind {
+  if (CONVERSATIONAL_STOPWORDS.has(token)) return "FILLER_TERM";
+  if (DOMAIN_TERMS.has(token)) return "DOMAIN_TERM";
+  return "CORE_TERM";
+}
+
+/**
+ * Lexical score multiplier by token kind.
+ * Domain terms stay searchable but do not dominate Index/TOC pages alone.
+ */
+export function queryTokenScoreWeight(token: string): number {
+  const kind = classifyQueryToken(token);
+  if (kind === "DOMAIN_TERM") return 0.35;
+  if (kind === "FILLER_TERM") return 0;
+  return 1;
 }
 
 /**
@@ -107,7 +153,6 @@ function hasHangul(value: string): boolean {
 export function stripKoreanQuerySuffix(token: string): string {
   if (!token) return token;
 
-  // Latin/API tokens with a hanging Hangul particle: "api를" → "api"
   if (!hasHangul(token.slice(0, 1)) && hasHangul(token)) {
     for (const suffix of KOREAN_PARTICLE_SUFFIXES) {
       if (!token.endsWith(suffix)) continue;
@@ -124,7 +169,8 @@ export function stripKoreanQuerySuffix(token: string): string {
   for (const suffix of KOREAN_PARTICLE_SUFFIXES) {
     if (!token.endsWith(suffix)) continue;
     const stem = token.slice(0, -suffix.length);
-    if (stem.length >= 2 && hasHangul(stem)) {
+    // Allow length-1 Hangul stems (e.g. 칸을 → 칸) used as domain/core cues.
+    if (stem.length >= 1 && hasHangul(stem)) {
       return stem;
     }
   }
@@ -135,46 +181,98 @@ export function normalizeSearchText(value: string | null | undefined): string {
   return (value ?? "")
     .toLowerCase()
     .replace(/[\t\n\r]+/g, " ")
-    .replace(/[()[\]{}.,;:|/\\?!'"“”‘’]+/g, " ")
+    .replace(/[()[\]{}.,;:|/\\?!'"]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-export function tokenizeSearchQuery(query: string | null | undefined): string[] {
+function isKeepableToken(token: string): boolean {
+  if (!token) return false;
+  if (CONVERSATIONAL_STOPWORDS.has(token)) return false;
+  const isShortAllowed =
+    token.length === 1 && (/[0-9a-z]/.test(token) || hasHangul(token));
+  if (token.length < 2 && !isShortAllowed) return false;
+  return true;
+}
+
+/**
+ * Detailed tokenize: source tokens fill first, then synonym expansions —
+ * expansions never steal budget from remaining source terms.
+ */
+export function tokenizeSearchQueryDetailed(
+  query: string | null | undefined,
+): TokenizeSearchQueryResult {
   const normalized = normalizeSearchText(query);
-  if (!normalized) return [];
+  const empty: TokenizeSearchQueryResult = {
+    sourceTokens: [],
+    expansionTokens: [],
+    lexicalPrefilterTokens: [],
+    scoringTokens: [],
+    truncatedSource: [],
+    truncatedExpansion: [],
+    kinds: {},
+  };
+  if (!normalized) return empty;
 
   const seen = new Set<string>();
-  const tokens: string[] = [];
+  const sourceTokens: string[] = [];
+  const truncatedSource: string[] = [];
+  const kinds: Record<string, QueryTokenKind> = {};
 
   for (const raw of normalized.split(" ")) {
     const trimmed = raw.trim();
     if (!trimmed) continue;
-
     const token = stripKoreanQuerySuffix(trimmed);
-    if (!token) continue;
-    if (QUERY_STOPWORDS.has(token)) continue;
-
-    const isShortAllowed =
-      token.length === 1 && (/[0-9a-z]/.test(token) || hasHangul(token));
-    if (token.length < 2 && !isShortAllowed) continue;
-
+    if (!isKeepableToken(token)) continue;
     if (seen.has(token)) continue;
-    seen.add(token);
-    tokens.push(token);
 
-    for (const syn of QUERY_SYNONYMS[token] ?? []) {
-      if (seen.has(syn)) continue;
-      if (QUERY_STOPWORDS.has(syn)) continue;
-      seen.add(syn);
-      tokens.push(syn);
-      if (tokens.length >= MAX_TOKENS) break;
+    if (sourceTokens.length >= SOURCE_TOKEN_BUDGET) {
+      truncatedSource.push(token);
+      continue;
     }
-
-    if (tokens.length >= MAX_TOKENS) break;
+    seen.add(token);
+    sourceTokens.push(token);
+    kinds[token] = classifyQueryToken(token);
   }
 
-  return tokens;
+  const expansionTokens: string[] = [];
+  const truncatedExpansion: string[] = [];
+  for (const source of sourceTokens) {
+    for (const syn of QUERY_SYNONYMS[source] ?? []) {
+      if (!isKeepableToken(syn)) continue;
+      if (seen.has(syn)) continue;
+      if (expansionTokens.length >= EXPANSION_TOKEN_BUDGET) {
+        truncatedExpansion.push(syn);
+        continue;
+      }
+      seen.add(syn);
+      expansionTokens.push(syn);
+      kinds[syn] = classifyQueryToken(syn);
+    }
+  }
+
+  const scoringTokens = [...sourceTokens, ...expansionTokens];
+  const hasCore = sourceTokens.some((t) => classifyQueryToken(t) === "CORE_TERM");
+  // Domain terms stay in scoringTokens (weighted) but do not drive lexical DB prefilter
+  // when CORE terms exist — prevents api/grid/cell/rmate from flooding Index/DataGrid.
+  // Domain-only queries: empty lexical prefilter (hybrid/vector supplies recall).
+  const lexicalPrefilterTokens = hasCore
+    ? scoringTokens.filter((t) => classifyQueryToken(t) === "CORE_TERM")
+    : [];
+
+  return {
+    sourceTokens,
+    expansionTokens,
+    lexicalPrefilterTokens,
+    scoringTokens,
+    truncatedSource,
+    truncatedExpansion,
+    kinds,
+  };
+}
+
+export function tokenizeSearchQuery(query: string | null | undefined): string[] {
+  return tokenizeSearchQueryDetailed(query).scoringTokens;
 }
 
 export function includesNormalized(

@@ -23,6 +23,7 @@ import { requireSearchGeneration } from "./hybrid-generation-guard";
 import {
   HYBRID_WEIGHTS,
   MAX_HYBRID_CANDIDATES,
+  VECTOR_CANDIDATE_MAX,
   resolveVectorCandidateTopK,
 } from "./retrieval-config";
 import {
@@ -147,28 +148,36 @@ export async function applyHybridVectorRanking(
     }
 
     // vectorHits === null: pgvector unavailable (development/test only).
-    // Fall back to generation-scoped JSON KnowledgeChunkEmbedding rows.
-    // Still not legacy local-hash — scoped to this generation's descriptor.
-    const chunkIds = scored.map((item) => item.chunk.id);
-    const jsonVectorByChunk = new Map<string, number[]>();
-    if (chunkIds.length > 0) {
-      // Querying with an empty `in` filter is always empty, so skip the round trip.
-      const jsonEmbeddings = await prisma.knowledgeChunkEmbedding.findMany({
-        where: {
-          chunkId: { in: chunkIds },
-          provider: descriptor.provider,
-          model: descriptor.model,
-          searchIndexGenerationId,
-        },
-        select: { chunkId: true, vector: true },
-      });
-      for (const row of jsonEmbeddings) {
-        if (isValidVector(row.vector)) jsonVectorByChunk.set(row.chunkId, row.vector);
-      }
-    }
-    applyVectorScores(scored, queryVector, jsonVectorByChunk);
-    return {
+    // Fall back to generation-scoped JSON KnowledgeChunkEmbedding neighbors —
+    // still independent of the lexical candidate set (not legacy local-hash).
+    const jsonVectorHits = await findJsonEmbeddingNeighbors({
+      searchIndexGenerationId,
+      provider: descriptor.provider,
+      model: descriptor.model,
+      queryVector,
+      limit: vectorTopK,
+    });
+    const merged = await mergeKeywordAndVectorCandidates({
       scored,
+      vectorHits: jsonVectorHits,
+      versionId: input.versionId,
+      searchIndexGenerationId,
+      chunkGenerationId: generation.chunkGenerationId,
+      indexGenerationId: input.indexGenerationId,
+      excludeDraftScope: input.excludeDraftScope,
+      filters,
+      tokens,
+    });
+    await applyVectorScoresPreferringHits({
+      scored: merged,
+      queryVector,
+      vectorHits: jsonVectorHits,
+      searchIndexGenerationId,
+      provider: descriptor.provider,
+      model: descriptor.model,
+    });
+    return {
+      scored: merged.slice(0, MAX_HYBRID_CANDIDATES),
       embeddingProvider: descriptor.provider,
       embeddingModel: descriptor.model,
     };
@@ -210,6 +219,44 @@ export function unionCandidateChunkIds(
     out.push(id);
   }
   return out;
+}
+
+/**
+ * Generation-scoped JSON embedding nearest neighbors (pgvector fallback).
+ * Independent of the lexical candidate set — scans embeddings for this generation only.
+ */
+export async function findJsonEmbeddingNeighbors(input: {
+  searchIndexGenerationId: string;
+  provider: string;
+  model: string;
+  queryVector: number[];
+  limit: number;
+}): Promise<SearchVectorQueryResult[]> {
+  const limit = Math.max(1, Math.min(input.limit, VECTOR_CANDIDATE_MAX));
+  const rows = await prisma.knowledgeChunkEmbedding.findMany({
+    where: {
+      searchIndexGenerationId: input.searchIndexGenerationId,
+      provider: input.provider,
+      model: input.model,
+    },
+    select: { chunkId: true, vector: true },
+  });
+
+  const scored: Array<{ chunkId: string; score: number }> = [];
+  for (const row of rows) {
+    if (!isValidVector(row.vector)) continue;
+    const score = clampedCosineSimilarity(input.queryVector, row.vector);
+    if (score <= 0) continue;
+    scored.push({ chunkId: row.chunkId, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, limit).map((row) => ({
+    chunkId: row.chunkId,
+    score: row.score,
+    title: "",
+    snippet: "",
+  }));
 }
 
 async function mergeKeywordAndVectorCandidates(input: {

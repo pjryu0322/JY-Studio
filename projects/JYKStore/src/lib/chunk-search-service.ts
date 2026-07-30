@@ -2,6 +2,7 @@ import {
   addReason,
   includesNormalized,
   normalizeSearchText,
+  queryTokenScoreWeight,
   tokenizeSearchQuery,
   type SearchScoreReason,
 } from "@/lib/search-utils";
@@ -42,26 +43,65 @@ export function scoreKnowledgeChunk(
   const normalizedTags = chunk.tags.map((tag) => normalizeSearchText(tag));
 
   for (const token of tokens) {
+    const mult = queryTokenScoreWeight(token);
+    if (mult <= 0) continue;
+
     if (normalizedTitle === token) {
-      score += addReason(reasons, "title", token, WEIGHTS.titleExact, "제목 정확 일치");
+      score += addReason(
+        reasons,
+        "title",
+        token,
+        WEIGHTS.titleExact * mult,
+        "제목 정확 일치",
+      );
     } else if (includesNormalized(chunk.title, token)) {
-      score += addReason(reasons, "title", token, WEIGHTS.titleContains, "제목 부분 일치");
+      score += addReason(
+        reasons,
+        "title",
+        token,
+        WEIGHTS.titleContains * mult,
+        "제목 부분 일치",
+      );
     }
 
     if (normalizedTags.includes(token)) {
-      score += addReason(reasons, "tags", token, WEIGHTS.tagExact, "태그 정확 일치");
+      score += addReason(
+        reasons,
+        "tags",
+        token,
+        WEIGHTS.tagExact * mult,
+        "태그 정확 일치",
+      );
     }
 
     if (includesNormalized(chunk.section, token)) {
-      score += addReason(reasons, "section", token, WEIGHTS.sectionContains, "섹션 부분 일치");
+      score += addReason(
+        reasons,
+        "section",
+        token,
+        WEIGHTS.sectionContains * mult,
+        "섹션 부분 일치",
+      );
     }
 
     if (includesNormalized(chunk.chunkType, token)) {
-      score += addReason(reasons, "chunkType", token, WEIGHTS.chunkTypeContains, "청크 유형 일치");
+      score += addReason(
+        reasons,
+        "chunkType",
+        token,
+        WEIGHTS.chunkTypeContains * mult,
+        "청크 유형 일치",
+      );
     }
 
     if (includesNormalized(chunk.content, token)) {
-      score += addReason(reasons, "content", token, WEIGHTS.contentContains, "본문 부분 일치");
+      score += addReason(
+        reasons,
+        "content",
+        token,
+        WEIGHTS.contentContains * mult,
+        "본문 부분 일치",
+      );
     }
   }
 

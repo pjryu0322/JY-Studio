@@ -4,7 +4,7 @@ import type {
   RetrievalMode,
   RetrievalResponseDto,
 } from "@/lib/retrieval-dto";
-import { tokenizeSearchQuery } from "@/lib/search-utils";
+import { tokenizeSearchQueryDetailed } from "@/lib/search-utils";
 import {
   applyHybridVectorRanking,
   type ApplyHybridVectorRankingInput,
@@ -105,20 +105,39 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
   hybridTestHooks?: Pick<ApplyHybridVectorRankingInput, "requireGeneration" | "resolveAdapter">;
 }): Promise<InternalRetrievalExecution> {
   const searchQuery = input.query?.trim() ?? "";
-  const tokens = tokenizeSearchQuery(searchQuery);
+  const tokenized = tokenizeSearchQueryDetailed(searchQuery);
+  const tokens = tokenized.scoringTokens;
+  const lexicalTokens = tokenized.lexicalPrefilterTokens;
   const filterKeys = Object.keys(input.filters);
   const hasFilters = filterKeys.length > 0;
-  const hasQuery = tokens.length > 0;
+  // Hybrid runs on raw query text even when conversational stopwords leave few tokens.
+  const useHybrid = input.retrievalMode === "hybrid" && searchQuery.length > 0;
+  const hasQuery = tokens.length > 0 || useHybrid;
 
-  const { collected, scanned, collectionMode } = await collectRetrievalCandidates({
-    versionId: input.versionId,
-    filters: input.filters,
-    hasFilters,
-    hasQuery,
-    queryTokens: tokens,
-    indexGenerationId: input.indexGenerationId,
-    excludeDraftScope: input.excludeDraftScope,
-  });
+  let collected: Awaited<ReturnType<typeof collectRetrievalCandidates>>["collected"];
+  let scanned: number;
+  let collectionMode: Awaited<ReturnType<typeof collectRetrievalCandidates>>["collectionMode"];
+
+  if (searchQuery && lexicalTokens.length === 0 && !hasFilters) {
+    // No lexical prefilter terms (domain-only / filler-stripped). Do not fall back to
+    // default-page scan — hybrid vector path supplies independent recall.
+    collected = [];
+    scanned = 0;
+    collectionMode = "query-scan";
+  } else {
+    const gathered = await collectRetrievalCandidates({
+      versionId: input.versionId,
+      filters: input.filters,
+      hasFilters,
+      hasQuery: lexicalTokens.length > 0 || hasFilters,
+      queryTokens: lexicalTokens,
+      indexGenerationId: input.indexGenerationId,
+      excludeDraftScope: input.excludeDraftScope,
+    });
+    collected = gathered.collected;
+    scanned = gathered.scanned;
+    collectionMode = gathered.collectionMode;
+  }
 
   const scored = scoreRetrievalCandidates({
     candidates: collected,
@@ -126,7 +145,6 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
     filters: input.filters,
   });
 
-  const useHybrid = input.retrievalMode === "hybrid" && tokens.length > 0;
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
   let hybridScored = scored;
