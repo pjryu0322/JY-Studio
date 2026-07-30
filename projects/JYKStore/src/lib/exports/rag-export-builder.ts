@@ -211,18 +211,21 @@ export async function buildRagExportPackage(
     where: {
       packId: input.packId,
       versionId: version.id,
-      status: "READY",
+      // Public consume path passes PROMOTED; Provider DOWNLOAD validation may still be READY.
+      status: { in: ["READY", "PROMOTED"] },
+      staleAt: null,
+      retiredAt: null,
       ...(input.expectedSearchIndexGenerationId
         ? { id: input.expectedSearchIndexGenerationId }
         : {}),
       ...(input.expectedPipelineRunId ? { pipelineRunId: input.expectedPipelineRunId } : {}),
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ promotedAt: "desc" }, { createdAt: "desc" }],
   });
   if (!generation) {
     throw new RagExportBuildError(
       "RAG_EXPORT_BUILD_FAILED",
-      "READY 상태의 검색 인덱스를 찾을 수 없습니다.",
+      "게시된 검색 인덱스를 찾을 수 없습니다.",
     );
   }
   if (
@@ -301,9 +304,26 @@ export async function buildRagExportPackage(
     where: { runId: generation.pipelineRunId, step: "SEARCH_EVALUATING" },
     select: { status: true, details: true, finishedAt: true },
   });
+  const retrievalEval = await prisma.retrievalEvaluationRun.findFirst({
+    where: {
+      packId: input.packId,
+      versionId: version.id,
+      status: "PASS",
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      createdAt: true,
+      totalCaseCount: true,
+      passCaseCount: true,
+      warningCaseCount: true,
+      failCaseCount: true,
+    },
+  });
   const evalDetails = asMeta(evalStep?.details);
   const evalStatus =
-    evalStep?.status === "PASS"
+    evalStep?.status === "PASS" || retrievalEval?.status === "PASS"
       ? "PASS"
       : evalStep?.status === "FAIL"
         ? "FAIL"
@@ -318,7 +338,7 @@ export async function buildRagExportPackage(
     (typeof evalDetails?.retrievalRankingPolicyVersion === "string"
       ? evalDetails.retrievalRankingPolicyVersion
       : null) || RETRIEVAL_RANKING_POLICY_VERSION;
-  if (rankingPolicy !== RETRIEVAL_RANKING_POLICY_VERSION) {
+  if (evalStep?.status === "PASS" && rankingPolicy !== RETRIEVAL_RANKING_POLICY_VERSION) {
     throw new RagExportBuildError(
       "RAG_EXPORT_BINDING_STALE",
       "검색 순위 정책이 변경되었습니다. 자동 평가 후 RAG Export를 다시 실행해 주세요.",
@@ -417,6 +437,7 @@ export async function buildRagExportPackage(
       packId: pack.packId,
       name: pack.name,
       version: version.version,
+      versionId: version.id,
       language: version.language ?? null,
       contentType: distribution?.contentType ?? "DOCUMENT",
     },
@@ -426,6 +447,8 @@ export async function buildRagExportPackage(
       sourceCount: sourcesPayload.length,
       searchIndexGenerationId: generation.id,
       pipelineRunId: generation.pipelineRunId,
+      scope: generation.scope,
+      status: generation.status,
     },
     retrieval: {
       rankingPolicyVersion: rankingPolicy,
@@ -454,11 +477,23 @@ export async function buildRagExportPackage(
         ? evalDetails.totalCases
         : typeof evalDetails?.caseCount === "number"
           ? evalDetails.caseCount
-          : 0,
-    passedCases: typeof evalDetails?.passedCases === "number" ? evalDetails.passedCases : 0,
-    warningCases: typeof evalDetails?.warningCases === "number" ? evalDetails.warningCases : 0,
-    failedCases: typeof evalDetails?.failedCases === "number" ? evalDetails.failedCases : 0,
-    evaluatedAt: evalStep?.finishedAt?.toISOString() ?? generatedAt,
+          : retrievalEval?.totalCaseCount ?? 0,
+    passedCases:
+      typeof evalDetails?.passedCases === "number"
+        ? evalDetails.passedCases
+        : retrievalEval?.passCaseCount ?? 0,
+    warningCases:
+      typeof evalDetails?.warningCases === "number"
+        ? evalDetails.warningCases
+        : retrievalEval?.warningCaseCount ?? 0,
+    failedCases:
+      typeof evalDetails?.failedCases === "number"
+        ? evalDetails.failedCases
+        : retrievalEval?.failCaseCount ?? 0,
+    evaluatedAt:
+      evalStep?.finishedAt?.toISOString() ??
+      retrievalEval?.createdAt.toISOString() ??
+      generatedAt,
   };
 
   const sourcesFile = {

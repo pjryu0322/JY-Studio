@@ -25,8 +25,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "지식팩을 찾을 수 없습니다." }, { status: 404 });
     }
     const generation = await prisma.searchIndexGeneration.findFirst({
-      where: { packId: trimmed, versionId: version.id, status: "READY" },
-      orderBy: { createdAt: "desc" },
+      where: {
+        packId: trimmed,
+        versionId: version.id,
+        status: { in: ["READY", "PROMOTED"] },
+        staleAt: null,
+        retiredAt: null,
+      },
+      orderBy: [{ promotedAt: "desc" }, { createdAt: "desc" }],
     });
     if (!generation) {
       return NextResponse.json({ error: "RAG Export를 생성할 검색데이터가 없습니다." }, { status: 404 });

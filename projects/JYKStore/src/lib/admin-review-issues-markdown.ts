@@ -55,7 +55,7 @@ function appendSourceDocumentDetail(
   lines.push(``);
   lines.push(`**검증 요약**`);
   lines.push(``);
-  lines.push(escapeMd(doc.validationSummary) || "(요약 없음)");
+  lines.push(escapeMd(doc.validationSummary ?? "") || "(요약 없음)");
   lines.push(``);
 
   const issues = doc.validationIssues ?? [];

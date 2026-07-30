@@ -350,7 +350,10 @@ async function main() {
       wcMismatch === 0 &&
       revMismatch === 0 &&
       pathMismatch === 0,
-    autoQuality: report.autoQuality.executedWithoutManualCta,
+    autoQuality: Boolean(
+      (report.autoQuality as { executedWithoutManualCta?: boolean } | undefined)
+        ?.executedWithoutManualCta,
+    ),
   };
   const allPass = Object.values(report.passGates as Record<string, boolean>).every(Boolean);
   report.verdict = allPass ? "P4 REAL ZIP E2E PASSED" : "P4.3.1 E2E HARDENING REQUIRED";

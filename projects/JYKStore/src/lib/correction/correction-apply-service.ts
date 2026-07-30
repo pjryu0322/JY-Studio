@@ -158,7 +158,7 @@ async function structureMerge(input: {
     mergeChunksRows.shift();
   }
 
-  let keepId = keepAnchor.id;
+  const keepId = keepAnchor.id;
   let keepContent: string = keepAnchor.content;
   let moved = 0;
   for (const row of mergeChunksRows) {

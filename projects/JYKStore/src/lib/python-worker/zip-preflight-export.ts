@@ -148,7 +148,9 @@ export function downloadUint8ArrayFile(
   fileName: string,
   mimeType: string,
 ): void {
-  const blob = new Blob([bytes], { type: mimeType });
+  const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {
+    type: mimeType,
+  });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
