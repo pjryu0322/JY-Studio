@@ -169,5 +169,8 @@ describe("admin approval publish hardening", () => {
     const service = readSource("src/lib/admin-review-service.ts");
     assert.ok(service.includes("PROVIDER_SUPPLEMENT_OPEN"));
     assert.ok(service.includes("SERVICE_VALIDATION_REQUIRED"));
+    assert.ok(service.includes("PROVIDER_CONFIRM_REQUIRED"));
+    assert.ok(service.includes("assertProviderReviewBindingCurrent"));
+    assert.ok(service.includes("UNRESOLVED_CORRECTION"));
   });
 });

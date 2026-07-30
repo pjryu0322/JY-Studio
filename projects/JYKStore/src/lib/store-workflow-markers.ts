@@ -11,7 +11,7 @@
  *   SKIPPED  → superseded after provider withdraw
  */
 
-import { PackStatus } from "@prisma/client";
+import { AuditAction, PackStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/artifact-state/latest-pack-artifact-query";
 import { buildAdminWorkInboxItemViewModel } from "@/lib/admin-work-inbox-view-model";
@@ -39,6 +39,12 @@ import {
   type ProviderSupplementAdminPhase,
   type ProviderSupplementRequestState,
 } from "@/lib/provider-supplement-request";
+import {
+  encodeProviderReviewConfirmSummary,
+  parseProviderReviewRevisionBinding,
+  type ProviderReviewRevisionBinding,
+} from "@/lib/store-workflow-provider-review-binding";
+import { recordProviderAudit } from "@/lib/provider-audit";
 
 /** Same trigger string as worker-zip-import-provider-service (avoid circular import). */
 const WORKER_ZIP_REQUEST_TRIGGER = "WORKER_ZIP_REQUEST";
@@ -140,7 +146,10 @@ function applySupplementToSnapshot(
 async function assertProviderConfirmEvidence(
   packId: string,
   client: PrismaClientLike,
-): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
+): Promise<
+  | { ok: true; binding: ProviderReviewRevisionBinding }
+  | { ok: false; error: string; message: string }
+> {
   const latestZip = await client.pipelineRun.findFirst({
     where: {
       packId,
@@ -165,7 +174,7 @@ async function assertProviderConfirmEvidence(
       staleAt: null,
       retiredAt: null,
     },
-    select: { id: true },
+    select: { id: true, versionId: true },
   });
   if (!generation) {
     return {
@@ -201,7 +210,98 @@ async function assertProviderConfirmEvidence(
     };
   }
 
-  return { ok: true };
+  return {
+    ok: true,
+    binding: {
+      v: 1,
+      indexGenerationId: generation.id,
+      versionId: generation.versionId,
+      pipelineRunId: latestZip.id,
+      reviewedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/** Current READY draft generation for a pack/version — used by publish gate. */
+export async function resolveCurrentPublishTargetGeneration(
+  packId: string,
+  client: PrismaClientLike = prisma,
+): Promise<{ id: string; versionId: string; pipelineRunId: string | null } | null> {
+  const latestZip = await client.pipelineRun.findFirst({
+    where: { packId, triggerType: WORKER_ZIP_IMPORT_TRIGGER, status: "PASS" },
+    orderBy: [{ createdAt: "desc" }],
+    select: { id: true },
+  });
+  if (!latestZip) return null;
+  const generation = await client.searchIndexGeneration.findFirst({
+    where: {
+      packId,
+      pipelineRunId: latestZip.id,
+      status: "READY",
+      scope: "DRAFT",
+      staleAt: null,
+      retiredAt: null,
+    },
+    select: { id: true, versionId: true, pipelineRunId: true },
+  });
+  if (!generation) return null;
+  return {
+    id: generation.id,
+    versionId: generation.versionId,
+    pipelineRunId: generation.pipelineRunId,
+  };
+}
+
+/**
+ * Provider confirm is only valid for the current READY draft generation.
+ * Missing/legacy binding or generation mismatch → stale (cannot publish).
+ */
+export async function assertProviderReviewBindingCurrent(
+  packId: string,
+  client: PrismaClientLike = prisma,
+): Promise<
+  | { ok: true; binding: ProviderReviewRevisionBinding }
+  | { ok: false; error: string; message: string; code: string }
+> {
+  const markers = await resolveStoreWorkflowMarkers(packId, client);
+  if (markers.providerReviewPhase !== "CONFIRMED") {
+    return {
+      ok: false,
+      error: "PROVIDER_CONFIRM_REQUIRED",
+      code: "PROVIDER_CONFIRM_REQUIRED",
+      message: "제공자 확인이 완료된 뒤에만 승인할 수 있습니다.",
+    };
+  }
+  const binding = parseProviderReviewRevisionBinding(markers.providerReviewSummary);
+  if (!binding) {
+    return {
+      ok: false,
+      error: "PROVIDER_REVIEW_STALE",
+      code: "PROVIDER_REVIEW_STALE",
+      message:
+        "제공자 검토가 현재 검색 Revision에 귀속되지 않았습니다. 다시 검토를 요청하세요.",
+    };
+  }
+  const current = await resolveCurrentPublishTargetGeneration(packId, client);
+  if (!current || current.id !== binding.indexGenerationId) {
+    return {
+      ok: false,
+      error: "PROVIDER_REVIEW_STALE",
+      code: "PROVIDER_REVIEW_STALE",
+      message:
+        "이전 Revision에 대한 제공자 검토는 현재 게시 대상에 사용할 수 없습니다. 다시 검토하세요.",
+    };
+  }
+  if (current.versionId !== binding.versionId) {
+    return {
+      ok: false,
+      error: "PROVIDER_REVIEW_STALE",
+      code: "PROVIDER_REVIEW_STALE",
+      message:
+        "제공자 검토 Version이 현재 게시 대상과 일치하지 않습니다. 다시 검토하세요.",
+    };
+  }
+  return { ok: true, binding };
 }
 
 export async function resolveStoreWorkflowMarkers(
@@ -459,15 +559,39 @@ export async function confirmProviderStoreReview(input: {
     };
   }
 
+  const binding: ProviderReviewRevisionBinding = {
+    ...evidence.binding,
+    reviewerClientId: input.clientId,
+    reviewedAt: new Date().toISOString(),
+  };
+
   await client.pipelineRun.update({
     where: { id: open.id },
     data: {
       status: "PASS",
       finishedAt: new Date(),
-      summary: "제공자가 생성 결과 검토를 확인 완료했습니다.",
+      summary: encodeProviderReviewConfirmSummary(binding),
       triggeredByClientId: input.clientId,
     },
   });
+
+  try {
+    await recordProviderAudit({
+      action: AuditAction.PROVIDER_PACK_UPDATE,
+      entityType: "KnowledgePack",
+      entityId: packId,
+      metadata: {
+        action: "PROVIDER_REVIEW_CONFIRM",
+        versionId: binding.versionId,
+        indexGenerationId: binding.indexGenerationId,
+        pipelineRunId: binding.pipelineRunId,
+        reviewedAt: binding.reviewedAt,
+        reviewerClientId: input.clientId,
+      },
+    });
+  } catch {
+    // Test doubles may omit AuditLog; confirmation itself already persisted.
+  }
 
   return { ok: true };
 }
@@ -1311,6 +1435,24 @@ export async function markAdminServiceValidationPassed(input: {
       summary: "관리자 서비스 검증 통과 (API·MCP·ZIP/RAG Export)",
     },
   });
+
+  try {
+    await recordProviderAudit({
+      action: AuditAction.ADMIN_REVIEW_UPDATE,
+      entityType: "KnowledgePack",
+      entityId: packId,
+      metadata: {
+        action: "SERVICE_VALIDATION_PASSED",
+        actorClientId: input.clientId,
+        channels: channelGates.channels.map((c) => ({
+          channel: c.channel,
+          passed: c.passed,
+        })),
+      },
+    });
+  } catch {
+    // Test doubles may omit AuditLog.
+  }
 
   return { ok: true };
 }

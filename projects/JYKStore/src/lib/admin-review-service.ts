@@ -37,7 +37,8 @@ import {
   isDoclingBundleReviewSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
-import { resolveStoreWorkflowMarkers, batchResolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
+import { resolveStoreWorkflowMarkers, batchResolveStoreWorkflowMarkers, assertProviderReviewBindingCurrent } from "@/lib/store-workflow-markers";
+import { canPublish } from "@/lib/workflow/admin-workflow-gates";
 import {
   assertDoclingReviewIntegrityOrThrow,
   summarizeDoclingReviewIntegrity,
@@ -652,23 +653,54 @@ export async function approvePackReview(input: {
     };
   }
   if (
-    workflowMarkers.providerReviewPhase === "REQUESTED" ||
-    workflowMarkers.providerReviewPhase === "WITHDRAWN"
+    !canPublish({
+      serviceValidationPhase: workflowMarkers.serviceValidationPhase,
+      providerReviewPhase: workflowMarkers.providerReviewPhase,
+      openSupplement: isOpenProviderSupplementPhase(workflowMarkers.providerSupplementPhase),
+      packStatus: detailBefore.pack.status,
+    })
   ) {
+    if (workflowMarkers.providerReviewPhase !== "CONFIRMED") {
+      return {
+        error: "INCOMPLETE" as const,
+        message: "제공자 확인이 완료된 뒤에만 승인할 수 있습니다.",
+        code: "PROVIDER_CONFIRM_REQUIRED" as const,
+      };
+    }
+    if (workflowMarkers.serviceValidationPhase !== "PASSED") {
+      return {
+        error: "INCOMPLETE" as const,
+        message: "서비스 검증이 완료된 뒤에만 승인할 수 있습니다.",
+        code: "SERVICE_VALIDATION_REQUIRED" as const,
+      };
+    }
     return {
       error: "INCOMPLETE" as const,
-      message: "제공자 확인이 완료된 뒤에만 승인할 수 있습니다.",
-      code: "PROVIDER_CONFIRM_REQUIRED" as const,
+      message: "게시 조건을 충족하지 않습니다.",
+      code: "PUBLISH_GATE_NOT_READY" as const,
     };
   }
-  if (
-    workflowMarkers.providerReviewPhase === "CONFIRMED" &&
-    workflowMarkers.serviceValidationPhase !== "PASSED"
-  ) {
+
+  const reviewBinding = await assertProviderReviewBindingCurrent(packId);
+  if (!reviewBinding.ok) {
     return {
       error: "INCOMPLETE" as const,
-      message: "서비스 검증이 완료된 뒤에만 승인할 수 있습니다.",
-      code: "SERVICE_VALIDATION_REQUIRED" as const,
+      message: reviewBinding.message,
+      code: reviewBinding.code as "PROVIDER_CONFIRM_REQUIRED" | "PROVIDER_REVIEW_STALE",
+    };
+  }
+
+  const openCorrections = await prisma.correctionCase.count({
+    where: {
+      packId,
+      status: { in: ["OPEN", "APPLIED", "REGENERATED"] },
+    },
+  });
+  if (openCorrections > 0) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "미해결 보정 건이 있어 게시할 수 없습니다.",
+      code: "UNRESOLVED_CORRECTION" as const,
     };
   }
 
@@ -840,6 +872,14 @@ export async function approvePackReview(input: {
           snapshot: evidence.snapshot,
         });
 
+        if (evidence.generation.id !== reviewBinding.binding.indexGenerationId) {
+          throw new PayloadServiceError(
+            "APPROVAL_SNAPSHOT_MISMATCH",
+            "이전 Revision에 대한 제공자 검토는 현재 게시 대상에 사용할 수 없습니다. 다시 검토하세요.",
+            409,
+          );
+        }
+
         await promoteDraftIndexToProduction({
           versionId: evidence.versionId,
           pipelineRunId: evidence.pipelineRunId,
@@ -936,8 +976,14 @@ export async function approvePackReview(input: {
   } else {
     const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
     const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+    const { promoteSearchGeneration } = await import(
+      "@/lib/search-generation/search-generation-service"
+    );
     try {
       await prisma.$transaction(async (tx) => {
+        // Worker ZIP / legacy path: promote the provider-reviewed READY draft generation.
+        await promoteSearchGeneration(reviewBinding.binding.indexGenerationId, tx);
+
         const packTransition = await tx.knowledgePack.updateMany({
           where: { packId, status: PackStatus.REVIEWING },
           data: {
@@ -989,14 +1035,11 @@ export async function approvePackReview(input: {
             adminUserId: input.reviewerUserId ?? null,
             reviewerClientId: input.reviewerClientId ?? null,
             action: "APPROVE",
-            pipelineRunId:
-              isDoclingBundleReviewSnapshot(approveSnapshot)
-                ? approveSnapshot.pipelineRunId ?? null
-                : null,
-            indexGenerationId:
-              isDoclingBundleReviewSnapshot(approveSnapshot)
-                ? approveSnapshot.indexGenerationId ?? null
-                : null,
+            versionId: reviewBinding.binding.versionId,
+            pipelineRunId: reviewBinding.binding.pipelineRunId,
+            indexGenerationId: reviewBinding.binding.indexGenerationId,
+            searchIndexGenerationId: reviewBinding.binding.indexGenerationId,
+            providerReviewedAt: reviewBinding.binding.reviewedAt,
           },
         });
       });
@@ -1137,4 +1180,94 @@ export async function rejectPackReview(input: {
 
   const detail = await getAdminReviewDetail(packId);
   return { detail: detail! };
+}
+
+/**
+ * P6.1 — Unpublish a published pack without deleting Published Revision data.
+ * Public retrieval is blocked by pack status; SearchIndexGeneration rows remain.
+ */
+export async function unpublishPackReview(input: {
+  packId: string;
+  reviewerClientId?: string;
+  reviewerUserId?: string | null;
+  memo?: string;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) return { error: "NOT_FOUND" as const };
+  if (pack.status !== PackStatus.PUBLISHED && pack.status !== PackStatus.VERIFIED) {
+    return { error: "NOT_PUBLISHED" as const };
+  }
+
+  const production = await prisma.searchIndexGeneration.findFirst({
+    where: {
+      packId,
+      scope: "PRODUCTION",
+      status: "PROMOTED",
+    },
+    orderBy: { promotedAt: "desc" },
+    select: { id: true, versionId: true },
+  });
+
+  const now = new Date();
+  const memo = input.memo?.trim() || null;
+  try {
+    const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+    await prisma.$transaction(async (tx) => {
+      const packTransition = await tx.knowledgePack.updateMany({
+        where: {
+          packId,
+          status: { in: [PackStatus.PUBLISHED, PackStatus.VERIFIED] },
+        },
+        data: {
+          status: PackStatus.DRAFT,
+          isVerified: false,
+        },
+      });
+      if (packTransition.count !== 1) {
+        throw new PayloadServiceError(
+          "APPROVAL_TRANSITION_CONFLICT",
+          "게시 상태가 변경되어 게시 취소할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+          409,
+        );
+      }
+
+      await recordAuditInTx({
+        client: tx,
+        action: AuditAction.DEPRECATE,
+        entityType: "KnowledgePack",
+        entityId: packId,
+        actorUserId: input.reviewerUserId,
+        metadata: {
+          action: "UNPUBLISH",
+          memo,
+          previousStatus: pack.status,
+          unpublishedAt: now.toISOString(),
+          adminUserId: input.reviewerUserId ?? null,
+          reviewerClientId: input.reviewerClientId ?? null,
+          preservedProductionGenerationId: production?.id ?? null,
+          preservedVersionId: production?.versionId ?? null,
+          dataDeleted: false,
+        },
+      });
+    });
+  } catch (error) {
+    const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    if (isPayloadServiceError(error) && error.httpStatus === 409) {
+      return {
+        error: "CONFLICT" as const,
+        message: error.message,
+        code: error.code,
+      };
+    }
+    throw error;
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return {
+    detail: detail!,
+    preservedGenerationId: production?.id ?? null,
+    preservedVersionId: production?.versionId ?? null,
+  };
 }

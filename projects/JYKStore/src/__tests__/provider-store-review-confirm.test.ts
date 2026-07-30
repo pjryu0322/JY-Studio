@@ -64,7 +64,10 @@ function createConfirmClient(opts: {
       update: async () => ({ id: "updated" }),
     },
     searchIndexGeneration: {
-      findFirst: async () => opts.generation ?? null,
+      findFirst: async () =>
+        opts.generation
+          ? { id: opts.generation.id, versionId: "ver-1" }
+          : null,
     },
     structureCoverageReport: {
       findFirst: async () =>

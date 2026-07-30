@@ -89,12 +89,15 @@ describe("admin provider review P0 (open supplement)", () => {
 
   it("markAdminServiceValidationPassed rejects open supplement with PROVIDER_SUPPLEMENT_OPEN", () => {
     const markers = readSource("src/lib/store-workflow-markers.ts");
-    assert.ok(markers.includes("PROVIDER_SUPPLEMENT_OPEN"));
-    assert.ok(markers.includes("isOpenProviderSupplementPhase"));
+    const fnStart = markers.indexOf("export async function markAdminServiceValidationPassed");
+    assert.ok(fnStart >= 0);
+    const fnBody = markers.slice(fnStart, fnStart + 2500);
+    assert.ok(fnBody.includes("PROVIDER_SUPPLEMENT_OPEN"));
+    assert.ok(fnBody.includes("isOpenProviderSupplementPhase"));
     assert.ok(
-      markers.includes("제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다."),
+      fnBody.includes("제공자 보완요청이 처리되지 않아 서비스 검증을 완료할 수 없습니다."),
     );
-    assert.ok(!markers.includes("PROVIDER_CONFIRM_REQUIRED"));
+    assert.ok(!fnBody.includes("PROVIDER_CONFIRM_REQUIRED"));
     const route = readSource(
       "src/app/api/v1/admin/packs/[packId]/store-workflow/service-validation/route.ts",
     );
