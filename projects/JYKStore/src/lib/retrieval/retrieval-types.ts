@@ -9,6 +9,8 @@ export type CandidateCollectInput = {
   filters: RetrievalFilters;
   hasFilters: boolean;
   hasQuery: boolean;
+  /** Tokenized query terms for DB prefilter (avoids early sortOrder scan misses). */
+  queryTokens?: string[];
   /** When set, only chunks for this index generation are candidates (draft eval). */
   indexGenerationId?: string | null;
   /**

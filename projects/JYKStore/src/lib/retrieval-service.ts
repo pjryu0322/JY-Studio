@@ -115,6 +115,7 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
     filters: input.filters,
     hasFilters,
     hasQuery,
+    queryTokens: tokens,
     indexGenerationId: input.indexGenerationId,
     excludeDraftScope: input.excludeDraftScope,
   });
