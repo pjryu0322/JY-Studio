@@ -18,6 +18,7 @@ import {
   querySearchIndexVectorsByGeneration,
   type SearchVectorQueryResult,
 } from "@/lib/search-vector/search-vector-query";
+import { buildHybridQueryEmbeddingText } from "@/lib/search-utils";
 import { clampedCosineSimilarity, isValidVector } from "@/lib/vector-similarity";
 import { requireSearchGeneration } from "./hybrid-generation-guard";
 import {
@@ -98,9 +99,10 @@ export async function applyHybridVectorRanking(
       dimension: generation.embeddingDimension,
     };
     // P7.6: runtime query embedding only — never re-embeds documents/chunks.
+    // Append synonym expansions so Korean paraphrases align with indexed merge/cell terms.
     const queryEmbedding = await embedSearchQuery({
       descriptor,
-      text: searchQuery,
+      text: buildHybridQueryEmbeddingText(searchQuery),
       resolveAdapter: input.resolveAdapter,
     });
     const queryVector = queryEmbedding.vector;

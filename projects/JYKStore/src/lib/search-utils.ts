@@ -15,10 +15,7 @@ const KOREAN_PARTICLE_SUFFIXES = [
   "한테",
   "과",
   "와",
-  "이",
-  "가",
-  "은",
-  "는",
+  // Avoid bare 은/는/이/가 — they destroy adjectives/verbs (같은→같, 보여주는→보여주).
   "을",
   "를",
   "의",
@@ -27,7 +24,7 @@ const KOREAN_PARTICLE_SUFFIXES = [
   "나",
   "도",
   "만",
-  "께",
+  // Do not strip bare 께 — destroys 함께 → 함.
   "할",
 ] as const;
 
@@ -51,6 +48,7 @@ const CONVERSATIONAL_STOPWORDS = new Set([
   "있는",
   "하는",
   "하는가",
+  "싶어",
   "please",
   "how",
   "what",
@@ -103,12 +101,27 @@ const QUERY_SYNONYMS: Record<string, readonly string[]> = {
   합쳐서: ["merge", "merging", "병합"],
   묶: ["merge", "merging", "병합"],
   묶어서: ["merge", "merging", "병합"],
+  묶는: ["merge", "merging", "병합"],
+  인접한: ["merge", "merging", "병합"],
+  반복되는: ["merge", "merging", "병합"],
+  연속된: ["merge", "merging", "병합"],
+  이어: ["merge", "merging", "병합"],
+  이어주는: ["merge", "merging", "병합"],
+  하나처럼: ["merge", "merging", "병합"],
   이벤트: ["event"],
   event: ["이벤트"],
-  속성: ["property", "properties"],
+  속성: ["property", "properties", "attribute"],
   property: ["속성"],
   properties: ["속성"],
   칸: ["cell", "cells", "셀"],
+  칸들: ["칸", "cell", "cells", "셀"],
+  이어지는: ["merge", "merging", "병합"],
+  영역처럼: ["merge", "merging", "병합"],
+  area: ["merge", "merging", "병합"],
+  줄: ["rowspan", "span"],
+  스타일: ["style"],
+  객체: ["object", "attribute"],
+  객체는: ["object", "attribute"],
 };
 
 export type QueryTokenKind = "CORE_TERM" | "DOMAIN_TERM" | "FILLER_TERM";
@@ -171,9 +184,16 @@ export function stripKoreanQuerySuffix(token: string): string {
     const stem = token.slice(0, -suffix.length);
     // Allow length-1 Hangul stems (e.g. 칸을 → 칸) used as domain/core cues.
     if (stem.length >= 1 && hasHangul(stem)) {
-      return stem;
+      token = stem;
+      break;
     }
   }
+
+  // Plural marker: 칸들 → 칸 (after particle strip of 칸들을).
+  if (token.endsWith("들") && token.length >= 3 && hasHangul(token.slice(0, -1))) {
+    token = token.slice(0, -1);
+  }
+
   return token;
 }
 
@@ -186,9 +206,23 @@ export function normalizeSearchText(value: string | null | undefined): string {
     .trim();
 }
 
+/** Soft topic-marker strip used only for stopword matching (not token mutation). */
+const STOPWORD_TOPIC_MARKERS = ["은", "는", "이", "가", "을", "를"] as const;
+
+function isConversationalStopword(token: string): boolean {
+  if (CONVERSATIONAL_STOPWORDS.has(token)) return true;
+  // 기능은/방법은 keep the topic marker after we stopped stripping bare 은/는.
+  for (const marker of STOPWORD_TOPIC_MARKERS) {
+    if (!token.endsWith(marker) || token.length <= marker.length + 1) continue;
+    const stem = token.slice(0, -marker.length);
+    if (CONVERSATIONAL_STOPWORDS.has(stem)) return true;
+  }
+  return false;
+}
+
 function isKeepableToken(token: string): boolean {
   if (!token) return false;
-  if (CONVERSATIONAL_STOPWORDS.has(token)) return false;
+  if (isConversationalStopword(token)) return false;
   const isShortAllowed =
     token.length === 1 && (/[0-9a-z]/.test(token) || hasHangul(token));
   if (token.length < 2 && !isShortAllowed) return false;
@@ -255,9 +289,11 @@ export function tokenizeSearchQueryDetailed(
   const hasCore = sourceTokens.some((t) => classifyQueryToken(t) === "CORE_TERM");
   // Domain terms stay in scoringTokens (weighted) but do not drive lexical DB prefilter
   // when CORE terms exist — prevents api/grid/cell/rmate from flooding Index/DataGrid.
+  // Synonym expansions also stay out of lexical prefilter: they score after union so
+  // vector-only paraphrase recovery is not short-circuited by merge/cell flood.
   // Domain-only queries: empty lexical prefilter (hybrid/vector supplies recall).
   const lexicalPrefilterTokens = hasCore
-    ? scoringTokens.filter((t) => classifyQueryToken(t) === "CORE_TERM")
+    ? sourceTokens.filter((t) => classifyQueryToken(t) === "CORE_TERM")
     : [];
 
   return {
@@ -273,6 +309,21 @@ export function tokenizeSearchQueryDetailed(
 
 export function tokenizeSearchQuery(query: string | null | undefined): string[] {
   return tokenizeSearchQueryDetailed(query).scoringTokens;
+}
+
+/**
+ * Query text for runtime embedding: original query plus bilingual synonym
+ * expansions. Helps paraphrase/natural-language queries align with indexed
+ * EN/KO passage terms without hard-coding product API names.
+ */
+export function buildHybridQueryEmbeddingText(query: string | null | undefined): string {
+  const raw = (query ?? "").trim();
+  if (!raw) return "";
+  const expansions = tokenizeSearchQueryDetailed(raw).expansionTokens.filter(
+    (t) => t.length >= 2,
+  );
+  if (expansions.length === 0) return raw;
+  return `${raw} ${expansions.join(" ")}`.trim();
 }
 
 export function includesNormalized(

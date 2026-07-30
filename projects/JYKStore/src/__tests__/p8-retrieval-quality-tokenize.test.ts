@@ -43,6 +43,25 @@ test("P8.1.1 Korean query tokenization", async (t) => {
     assert.equal(detailed.lexicalPrefilterTokens.length, 0);
   });
 
+  await t.test("synonym expansions stay out of lexical prefilter", () => {
+    const detailed = tokenizeSearchQueryDetailed(
+      "같은 값이 이어지는 칸들을 하나처럼 보이게 하려면?",
+    );
+    assert.ok(detailed.expansionTokens.includes("merge"));
+    assert.ok(detailed.scoringTokens.includes("merge"));
+    assert.ok(!detailed.lexicalPrefilterTokens.includes("merge"));
+    assert.ok(!detailed.lexicalPrefilterTokens.includes("병합"));
+    assert.ok(detailed.lexicalPrefilterTokens.includes("이어지는"));
+  });
+
+  await t.test("preserves 함께 and drops topic-marked stopwords", () => {
+    const detailed = tokenizeSearchQueryDetailed("셀에 줄 수와 스타일을 함께 넣는 속성 객체는?");
+    assert.ok(detailed.sourceTokens.includes("함께"));
+    assert.ok(!detailed.sourceTokens.includes("함"));
+    assert.ok(!detailed.sourceTokens.includes("기능은"));
+    assert.ok(detailed.scoringTokens.includes("rowspan") || detailed.scoringTokens.includes("style"));
+  });
+
   await t.test("paraphrase synonyms without explicit merge word", () => {
     const tokens = tokenizeSearchQuery("여러 칸을 합쳐서 하나의 영역처럼 보이게");
     assert.ok(tokens.includes("합쳐") || tokens.includes("merge") || tokens.includes("병합"));

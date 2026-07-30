@@ -1,4 +1,5 @@
 import { makeWordShingles, jaccardSimilarity } from "@/lib/chunk-quality/chunk-quality-runner";
+import { tokenizeSearchQueryDetailed } from "@/lib/search-utils";
 import type { ScoredCandidate } from "./retrieval-types";
 
 /** Near-duplicate body similarity threshold (Jaccard over word shingles). */
@@ -269,6 +270,12 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
 }
 
 function normalizeQueryTerms(query: string): string[] {
+  // Prefer scoring tokens (source + synonyms) so paraphrase queries can match
+  // indexed EN/KO terms like merge/병합 without changing the raw user query.
+  const scored = tokenizeSearchQueryDetailed(query).scoringTokens.filter(
+    (t) => t.length >= 2,
+  );
+  if (scored.length > 0) return [...new Set(scored.map((t) => normalizeForDedupe(t)).filter(Boolean))];
   const norm = normalizeForDedupe(query);
   if (!norm) return [];
   const parts = norm.split(" ").filter((t) => t.length >= 2);
