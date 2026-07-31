@@ -37,31 +37,43 @@ function isTruthyEnv(value: string | undefined): boolean {
 
 /**
  * When true, missing pgvector must hard-fail even outside production
- * (P5.2 integration / local retrieval verification).
+ * (P5.2 integration / local retrieval verification / P8.1.3 production path).
  */
 export function isPgvectorRequired(env: NodeJS.ProcessEnv = process.env): boolean {
   return isProductionRuntime(env) || isTruthyEnv(env.JYKSTORE_REQUIRE_PGVECTOR);
 }
 
 /**
+ * Explicit JSON vector-neighbor fallback (P8.1.3).
+ * Allowed for NODE_ENV=test and when JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK is set.
+ * Not a silent production path — callers must surface vectorBackend=json_fallback.
+ */
+export function isJsonVectorFallbackAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isPgvectorRequired(env)) return false;
+  if (isTruthyEnv(env.JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK)) return true;
+  return env.NODE_ENV === "test";
+}
+
+/**
  * Central policy for "what happens when pgvector is unavailable":
  *  - production OR JYKSTORE_REQUIRE_PGVECTOR: hard fail — SEARCH_RUNTIME_UNAVAILABLE.
- *  - development/test otherwise: return a sentinel so the caller can fall back to JSON-only.
+ *  - NODE_ENV=test or JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK: return "fallback".
+ *  - otherwise (e.g. next dev without allow flag): hard fail — do not silently JSON-scan.
  */
 export function handlePgvectorUnavailable(
   context: string,
   env: NodeJS.ProcessEnv = process.env,
 ): "fallback" {
-  if (isPgvectorRequired(env)) {
-    throw new EmbeddingProviderError(
-      "SEARCH_RUNTIME_UNAVAILABLE",
-      `${context}: pgvector runtime is unavailable` +
-        (isProductionRuntime(env)
-          ? " in production. No fallback to JSON-only/local-hash search is permitted."
-          : " (JYKSTORE_REQUIRE_PGVECTOR=true). No JSON-only fallback is permitted."),
-    );
+  if (isJsonVectorFallbackAllowed(env)) {
+    return "fallback";
   }
-  return "fallback";
+  throw new EmbeddingProviderError(
+    "SEARCH_RUNTIME_UNAVAILABLE",
+    `${context}: pgvector runtime is unavailable` +
+      (isProductionRuntime(env)
+        ? " in production. No fallback to JSON-only/local-hash search is permitted."
+        : ". Set JYKSTORE_REQUIRE_PGVECTOR=false and JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK=true for explicit degraded JSON neighbors, or fix pgvector."),
+  );
 }
 
 export function isFiniteNumberVector(value: unknown): value is number[] {

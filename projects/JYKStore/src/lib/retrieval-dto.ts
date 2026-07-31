@@ -110,6 +110,14 @@ export type RetrievalResponseDto = {
     retrievalMode: RetrievalMode;
     embeddingProvider?: string;
     embeddingModel?: string;
+    /**
+     * Internal diagnostic (P8.1.3): which vector neighbor backend served hybrid.
+     * `pgvector` = production canonical; `json_fallback` = explicit degraded path.
+     */
+    vectorBackend?: "pgvector" | "json_fallback" | "none";
+    vectorCandidateCount?: number;
+    queryEmbeddingLatencyMs?: number;
+    vectorQueryLatencyMs?: number;
     scannedCandidateCount: number;
     filteredCandidateCount: number;
     candidateCollectionMode: CandidateCollectionMode;

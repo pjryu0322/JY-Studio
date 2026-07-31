@@ -19,6 +19,7 @@ import {
   type SearchVectorQueryResult,
 } from "@/lib/search-vector/search-vector-query";
 import { buildHybridQueryEmbeddingText } from "@/lib/search-utils";
+import { isJsonVectorFallbackAllowed } from "@/lib/search-vector/search-vector-runtime";
 import { clampedCosineSimilarity, isValidVector } from "@/lib/vector-similarity";
 import { requireSearchGeneration } from "./hybrid-generation-guard";
 import {
@@ -62,10 +63,20 @@ export type ApplyHybridVectorRankingInput = {
   queryVectorsByGeneration?: typeof querySearchIndexVectorsByGeneration;
 };
 
+export type VectorRetrievalBackend = "pgvector" | "json_fallback" | "none";
+
 export type ApplyHybridVectorRankingResult = {
   scored: ScoredCandidate[];
   embeddingProvider?: string;
   embeddingModel?: string;
+  /** Internal/diagnostic: which vector neighbor path ran (P8.1.3). */
+  vectorBackend?: VectorRetrievalBackend;
+  /** pgvector or JSON neighbor hit count before union (diagnostics). */
+  vectorCandidateCount?: number;
+  /** Wall time for vector neighbor query only (not query embedding). */
+  vectorQueryLatencyMs?: number;
+  /** Wall time for query embedding only. */
+  queryEmbeddingLatencyMs?: number;
 };
 
 /**
@@ -100,11 +111,13 @@ export async function applyHybridVectorRanking(
     };
     // P7.6: runtime query embedding only — never re-embeds documents/chunks.
     // Append synonym expansions so Korean paraphrases align with indexed merge/cell terms.
+    const embedStarted = Date.now();
     const queryEmbedding = await embedSearchQuery({
       descriptor,
       text: buildHybridQueryEmbeddingText(searchQuery),
       resolveAdapter: input.resolveAdapter,
     });
+    const queryEmbeddingLatencyMs = Date.now() - embedStarted;
     const queryVector = queryEmbedding.vector;
     const topK = input.topK ?? 10;
     const vectorTopK = resolveVectorCandidateTopK(topK);
@@ -113,6 +126,7 @@ export async function applyHybridVectorRanking(
 
     const queryVectorsByGeneration =
       input.queryVectorsByGeneration ?? querySearchIndexVectorsByGeneration;
+    const vectorStarted = Date.now();
     const vectorHits = await queryVectorsByGeneration({
       searchIndexGenerationId,
       provider: descriptor.provider,
@@ -121,6 +135,7 @@ export async function applyHybridVectorRanking(
       dimension: descriptor.dimension,
       limit: vectorTopK,
     });
+    const vectorQueryLatencyMs = Date.now() - vectorStarted;
 
     if (vectorHits) {
       const merged = await mergeKeywordAndVectorCandidates({
@@ -146,12 +161,25 @@ export async function applyHybridVectorRanking(
         scored: merged.slice(0, MAX_HYBRID_CANDIDATES),
         embeddingProvider: descriptor.provider,
         embeddingModel: descriptor.model,
+        vectorBackend: "pgvector",
+        vectorCandidateCount: vectorHits.length,
+        vectorQueryLatencyMs,
+        queryEmbeddingLatencyMs,
       };
     }
 
-    // vectorHits === null: pgvector unavailable (development/test only).
-    // Fall back to generation-scoped JSON KnowledgeChunkEmbedding neighbors —
-    // still independent of the lexical candidate set (not legacy local-hash).
+    // vectorHits === null: pgvector unavailable and JSON fallback explicitly allowed.
+    if (!isJsonVectorFallbackAllowed()) {
+      // Defensive: query layer should already have thrown SEARCH_RUNTIME_UNAVAILABLE.
+      throw new Error(
+        "applyHybridVectorRanking: pgvector unavailable and JSON vector fallback is not allowed",
+      );
+    }
+    console.warn(
+      "[retrieval] vectorBackend=json_fallback — generation-scoped JSON neighbors (degraded; not production canonical)",
+      { searchIndexGenerationId, provider: descriptor.provider, model: descriptor.model },
+    );
+    const jsonStarted = Date.now();
     const jsonVectorHits = await findJsonEmbeddingNeighbors({
       searchIndexGenerationId,
       provider: descriptor.provider,
@@ -159,6 +187,7 @@ export async function applyHybridVectorRanking(
       queryVector,
       limit: vectorTopK,
     });
+    const jsonLatencyMs = Date.now() - jsonStarted;
     const merged = await mergeKeywordAndVectorCandidates({
       scored,
       vectorHits: jsonVectorHits,
@@ -182,6 +211,10 @@ export async function applyHybridVectorRanking(
       scored: merged.slice(0, MAX_HYBRID_CANDIDATES),
       embeddingProvider: descriptor.provider,
       embeddingModel: descriptor.model,
+      vectorBackend: "json_fallback",
+      vectorCandidateCount: jsonVectorHits.length,
+      vectorQueryLatencyMs: jsonLatencyMs,
+      queryEmbeddingLatencyMs,
     };
   }
 
@@ -205,7 +238,12 @@ export async function applyHybridVectorRanking(
   }
 
   applyVectorScores(scored, queryEmbedding.vector, vectorByChunk);
-  return { scored, embeddingProvider, embeddingModel };
+  return {
+    scored,
+    embeddingProvider,
+    embeddingModel,
+    vectorBackend: "none",
+  };
 }
 
 /** Pure helper: union keyword scored rows with vector hit ids (for unit tests). */

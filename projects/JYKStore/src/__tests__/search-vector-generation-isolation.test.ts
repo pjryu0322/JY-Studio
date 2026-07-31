@@ -121,14 +121,26 @@ test("isPgvectorUnavailableError recognizes missing table/type errors", () => {
   assert.equal(isPgvectorUnavailableError(new Error("unique constraint failed")), false);
 });
 
-test("handlePgvectorUnavailable throws SEARCH_RUNTIME_UNAVAILABLE in production, falls back otherwise", () => {
+test("handlePgvectorUnavailable: production/require hard-fail; test/allow JSON fallback", () => {
   assert.throws(
     () => handlePgvectorUnavailable("ctx", { NODE_ENV: "production" }),
     (error: unknown) =>
       isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",
   );
-  assert.equal(handlePgvectorUnavailable("ctx", { NODE_ENV: "development" }), "fallback");
+  // Development without explicit allow: hard-fail (no silent JSON path).
+  assert.throws(
+    () => handlePgvectorUnavailable("ctx", { NODE_ENV: "development" }),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",
+  );
   assert.equal(handlePgvectorUnavailable("ctx", { NODE_ENV: "test" }), "fallback");
+  assert.equal(
+    handlePgvectorUnavailable("ctx", {
+      NODE_ENV: "development",
+      JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK: "true",
+    }),
+    "fallback",
+  );
 });
 
 test("JYKSTORE_REQUIRE_PGVECTOR forces hard-fail outside production", () => {
@@ -142,6 +154,17 @@ test("JYKSTORE_REQUIRE_PGVECTOR forces hard-fail outside production", () => {
       handlePgvectorUnavailable("ctx", {
         NODE_ENV: "development",
         JYKSTORE_REQUIRE_PGVECTOR: "true",
+      }),
+    (error: unknown) =>
+      isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",
+  );
+  // Require wins over allow flag.
+  assert.throws(
+    () =>
+      handlePgvectorUnavailable("ctx", {
+        NODE_ENV: "development",
+        JYKSTORE_REQUIRE_PGVECTOR: "true",
+        JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK: "true",
       }),
     (error: unknown) =>
       isEmbeddingProviderError(error) && error.code === "SEARCH_RUNTIME_UNAVAILABLE",

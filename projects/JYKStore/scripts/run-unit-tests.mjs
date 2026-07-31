@@ -38,7 +38,11 @@ for (let i = 0; i < files.length; i += BATCH) {
     {
       cwd: root,
       stdio: "inherit",
-      env: process.env,
+      env: {
+        ...process.env,
+        // P8.1.3: JSON vector fallback is allowed under NODE_ENV=test only (unless explicit allow).
+        NODE_ENV: process.env.NODE_ENV ?? "test",
+      },
       shell: false,
     },
   );

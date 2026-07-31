@@ -76,6 +76,10 @@ export function mapRetrievalResponse(input: {
   requestId: string;
   embeddingProvider?: string;
   embeddingModel?: string;
+  vectorBackend?: "pgvector" | "json_fallback" | "none";
+  vectorCandidateCount?: number;
+  queryEmbeddingLatencyMs?: number;
+  vectorQueryLatencyMs?: number;
   scanned: number;
   filteredCount: number;
   collectionMode: CandidateCollectionMode;
@@ -126,6 +130,14 @@ export function mapRetrievalResponse(input: {
       retrievalMode: input.useHybrid ? "hybrid" : "keyword",
       embeddingProvider: input.embeddingProvider,
       embeddingModel: input.embeddingModel,
+      ...(input.useHybrid
+        ? {
+            vectorBackend: input.vectorBackend,
+            vectorCandidateCount: input.vectorCandidateCount,
+            queryEmbeddingLatencyMs: input.queryEmbeddingLatencyMs,
+            vectorQueryLatencyMs: input.vectorQueryLatencyMs,
+          }
+        : {}),
       scannedCandidateCount: input.scanned,
       filteredCandidateCount: input.filteredCount,
       candidateCollectionMode: input.collectionMode,

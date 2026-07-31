@@ -147,6 +147,10 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
 
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
+  let vectorBackend: "pgvector" | "json_fallback" | "none" | undefined;
+  let vectorCandidateCount: number | undefined;
+  let queryEmbeddingLatencyMs: number | undefined;
+  let vectorQueryLatencyMs: number | undefined;
   let hybridScored = scored;
   if (useHybrid) {
     const hybrid = await applyHybridVectorRanking({
@@ -164,6 +168,10 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
     hybridScored = hybrid.scored;
     embeddingProvider = hybrid.embeddingProvider;
     embeddingModel = hybrid.embeddingModel;
+    vectorBackend = hybrid.vectorBackend;
+    vectorCandidateCount = hybrid.vectorCandidateCount;
+    queryEmbeddingLatencyMs = hybrid.queryEmbeddingLatencyMs;
+    vectorQueryLatencyMs = hybrid.vectorQueryLatencyMs;
   }
 
   const { selected, stats } = selectRetrievalCandidatesWithStats({
@@ -185,6 +193,10 @@ export async function retrieveContextsForVersionWithDiagnostics(input: {
       requestId: input.requestId,
       embeddingProvider,
       embeddingModel,
+      vectorBackend,
+      vectorCandidateCount,
+      queryEmbeddingLatencyMs,
+      vectorQueryLatencyMs,
       scanned,
       filteredCount: hybridScored.length,
       collectionMode,

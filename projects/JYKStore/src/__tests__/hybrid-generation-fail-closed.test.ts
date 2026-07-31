@@ -153,19 +153,31 @@ describe("hybrid generation fail-closed", () => {
     };
 
     // Without pgvector this falls through to generation-scoped JSON path after one embed.
-    const result = await applyHybridVectorRanking({
-      scored: [],
-      searchQuery: "행을 정렬하는 방법",
-      searchIndexGenerationId: "gen-1",
-      requireGeneration: async () => fakeGeneration(),
-      resolveAdapter: () => adapter,
-      // No pgvector in this unit test; simulate "unavailable" so the JSON fallback path
-      // is exercised without touching a live database.
-      queryVectorsByGeneration: async () => null,
-    });
+    const prevAllow = process.env.JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK;
+    const prevRequire = process.env.JYKSTORE_REQUIRE_PGVECTOR;
+    process.env.JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK = "true";
+    delete process.env.JYKSTORE_REQUIRE_PGVECTOR;
+    try {
+      const result = await applyHybridVectorRanking({
+        scored: [],
+        searchQuery: "행을 정렬하는 방법",
+        searchIndexGenerationId: "gen-1",
+        requireGeneration: async () => fakeGeneration(),
+        resolveAdapter: () => adapter,
+        // No pgvector in this unit test; simulate "unavailable" so the JSON fallback path
+        // is exercised without touching a live database.
+        queryVectorsByGeneration: async () => null,
+      });
 
-    assert.equal(embedCalls, 1);
-    assert.equal(result.embeddingProvider, LOCAL_E5_EMBEDDING_PROVIDER);
-    assert.equal(result.embeddingModel, DEFAULT_E5_MODEL_ID);
+      assert.equal(embedCalls, 1);
+      assert.equal(result.embeddingProvider, LOCAL_E5_EMBEDDING_PROVIDER);
+      assert.equal(result.embeddingModel, DEFAULT_E5_MODEL_ID);
+      assert.equal(result.vectorBackend, "json_fallback");
+    } finally {
+      if (prevAllow === undefined) delete process.env.JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK;
+      else process.env.JYKSTORE_ALLOW_JSON_VECTOR_FALLBACK = prevAllow;
+      if (prevRequire === undefined) delete process.env.JYKSTORE_REQUIRE_PGVECTOR;
+      else process.env.JYKSTORE_REQUIRE_PGVECTOR = prevRequire;
+    }
   });
 });
