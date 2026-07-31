@@ -1271,3 +1271,168 @@ export async function unpublishPackReview(input: {
     preservedVersionId: production?.versionId ?? null,
   };
 }
+
+/**
+ * Canonical post-unpublish restore (P9).
+ *
+ * `approvePackReview` requires `REVIEWING` and cannot republish a DRAFT left by
+ * `unpublishPackReview`. This transition restores PUBLISHED/VERIFIED serving when:
+ * - pack is DRAFT (post-unpublish)
+ * - PRODUCTION+PROMOTED generation still exists
+ * - publish gates still hold (SV PASSED + provider CONFIRMED, no open supplement/corrections)
+ *
+ * Not a first-time publish path and not a raw status flip from callers/tests.
+ */
+export async function restorePublishedPackAfterUnpublish(input: {
+  packId: string;
+  reviewerClientId?: string;
+  reviewerUserId?: string | null;
+  memo?: string;
+  publishAsVerified?: boolean;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) return { error: "NOT_FOUND" as const };
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_UNPUBLISHED_DRAFT" as const };
+  }
+
+  const production = await prisma.searchIndexGeneration.findFirst({
+    where: {
+      packId,
+      scope: "PRODUCTION",
+      status: "PROMOTED",
+    },
+    orderBy: { promotedAt: "desc" },
+    select: { id: true, versionId: true },
+  });
+  if (!production) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "보존된 PRODUCTION 검색 세대가 없어 재게시할 수 없습니다.",
+      code: "SEARCH_GENERATION_NOT_READY" as const,
+    };
+  }
+
+  const workflowMarkers = await resolveStoreWorkflowMarkers(packId);
+  if (isOpenProviderSupplementPhase(workflowMarkers.providerSupplementPhase)) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "제공자 보완요청이 처리되지 않아 재게시할 수 없습니다.",
+      code: "PROVIDER_SUPPLEMENT_OPEN" as const,
+    };
+  }
+  if (
+    !canPublish({
+      serviceValidationPhase: workflowMarkers.serviceValidationPhase,
+      providerReviewPhase: workflowMarkers.providerReviewPhase,
+      openSupplement: isOpenProviderSupplementPhase(workflowMarkers.providerSupplementPhase),
+      packStatus: pack.status,
+    })
+  ) {
+    if (workflowMarkers.providerReviewPhase !== "CONFIRMED") {
+      return {
+        error: "INCOMPLETE" as const,
+        message: "제공자 확인이 완료된 뒤에만 재게시할 수 있습니다.",
+        code: "PROVIDER_CONFIRM_REQUIRED" as const,
+      };
+    }
+    if (workflowMarkers.serviceValidationPhase !== "PASSED") {
+      return {
+        error: "INCOMPLETE" as const,
+        message: "서비스 검증이 완료된 뒤에만 재게시할 수 있습니다.",
+        code: "SERVICE_VALIDATION_REQUIRED" as const,
+      };
+    }
+    return {
+      error: "INCOMPLETE" as const,
+      message: "게시 조건을 충족하지 않습니다.",
+      code: "PUBLISH_GATE_NOT_READY" as const,
+    };
+  }
+
+  const reviewBinding = await assertProviderReviewBindingCurrent(packId);
+  if (!reviewBinding.ok) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: reviewBinding.message,
+      code: reviewBinding.code as "PROVIDER_CONFIRM_REQUIRED" | "PROVIDER_REVIEW_STALE",
+    };
+  }
+
+  const openCorrections = await prisma.correctionCase.count({
+    where: {
+      packId,
+      status: { in: ["OPEN", "APPLIED", "REGENERATED"] },
+    },
+  });
+  if (openCorrections > 0) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "미해결 보정 건이 있어 재게시할 수 없습니다.",
+      code: "UNRESOLVED_CORRECTION" as const,
+    };
+  }
+
+  const nextStatus = input.publishAsVerified ? PackStatus.VERIFIED : PackStatus.PUBLISHED;
+  const now = new Date();
+  const memo = input.memo?.trim() || null;
+
+  try {
+    const { PayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    const { recordProviderAudit: recordAuditInTx } = await import("@/lib/provider-audit");
+    await prisma.$transaction(async (tx) => {
+      const packTransition = await tx.knowledgePack.updateMany({
+        where: { packId, status: PackStatus.DRAFT },
+        data: {
+          status: nextStatus,
+          isVerified: nextStatus === PackStatus.VERIFIED,
+          publishedAt: pack.publishedAt ?? now,
+        },
+      });
+      if (packTransition.count !== 1) {
+        throw new PayloadServiceError(
+          "APPROVAL_TRANSITION_CONFLICT",
+          "게시 상태가 변경되어 재게시할 수 없습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+          409,
+        );
+      }
+
+      await recordAuditInTx({
+        client: tx,
+        action: AuditAction.ADMIN_PACK_APPROVE,
+        entityType: "KnowledgePack",
+        entityId: packId,
+        actorUserId: input.reviewerUserId,
+        metadata: {
+          action: "RESTORE_PUBLISH_AFTER_UNPUBLISH",
+          memo,
+          restoredAt: now.toISOString(),
+          adminUserId: input.reviewerUserId ?? null,
+          reviewerClientId: input.reviewerClientId ?? null,
+          preservedProductionGenerationId: production.id,
+          preservedVersionId: production.versionId,
+          nextStatus,
+        },
+      });
+    });
+  } catch (error) {
+    const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    if (isPayloadServiceError(error) && error.httpStatus === 409) {
+      return {
+        error: "CONFLICT" as const,
+        message: error.message,
+        code: error.code,
+      };
+    }
+    throw error;
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return {
+    detail: detail!,
+    preservedGenerationId: production.id,
+    preservedVersionId: production.versionId,
+    status: nextStatus,
+  };
+}

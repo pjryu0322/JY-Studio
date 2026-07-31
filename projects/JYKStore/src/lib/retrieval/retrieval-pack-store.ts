@@ -3,10 +3,14 @@ import { PUBLIC_PACK_STATUSES } from "./retrieval-config";
 import type { RetrievalPackContext } from "./retrieval-types";
 
 /**
- * knowledgePackId로 PUBLISHED/VERIFIED pack과 최신 version 1개를 조회한다.
+ * knowledgePackId로 PUBLISHED/VERIFIED pack과 공개 서빙 version을 조회한다.
  * - 비공개 pack이면 null
  * - version이 없으면 null
- * NOTE: packId 전용 API Key 권한은 향후 확장 예정이다.
+ *
+ * Version selection (P9): prefer the version that owns the current PRODUCTION+PROMOTED
+ * SearchIndexGeneration for this pack. Do not pick an arbitrary newest `createdAt` draft
+ * version while a published generation still points at an older version.
+ * Fallback: latest createdAt only when no PRODUCTION generation exists (legacy packs).
  */
 export async function loadPublicRetrievalPack(
   knowledgePackId: string,
@@ -16,20 +20,33 @@ export async function loadPublicRetrievalPack(
       packId: knowledgePackId,
       status: { in: [...PUBLIC_PACK_STATUSES] },
     },
-    include: {
-      versions: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        include: { distributionMetadata: true },
-      },
+    select: { packId: true },
+  });
+  if (!pack) return null;
+
+  const production = await prisma.searchIndexGeneration.findFirst({
+    where: {
+      packId: knowledgePackId,
+      scope: "PRODUCTION",
+      status: "PROMOTED",
     },
+    orderBy: { promotedAt: "desc" },
+    select: { versionId: true },
   });
 
-  if (!pack || pack.versions.length === 0) {
-    return null;
-  }
+  const version = production
+    ? await prisma.knowledgePackVersion.findFirst({
+        where: { id: production.versionId, packId: knowledgePackId },
+        include: { distributionMetadata: true },
+      })
+    : await prisma.knowledgePackVersion.findFirst({
+        where: { packId: knowledgePackId },
+        orderBy: { createdAt: "desc" },
+        include: { distributionMetadata: true },
+      });
 
-  const version = pack.versions[0]!;
+  if (!version) return null;
+
   const meta = version.distributionMetadata;
   return {
     packId: pack.packId,

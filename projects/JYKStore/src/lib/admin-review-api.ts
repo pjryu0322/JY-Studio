@@ -520,6 +520,43 @@ export async function rejectAdminReview(
   return (await response.json()) as AdminReviewDetailResponse;
 }
 
+/** Unpublish PUBLISHED/VERIFIED → DRAFT without deleting production generation. */
+export async function unpublishAdminReview(
+  packId: string,
+  input: { memo?: string } = {},
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(`/api/v1/admin/reviews/${encodeURIComponent(packId)}/unpublish`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
+
+/** Restore PUBLISHED after unpublish (DRAFT) via publish gates — not raw status flip. */
+export async function restorePublishAdminReview(
+  packId: string,
+  input: { memo?: string; publishAsVerified?: boolean } = {},
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/restore-publish`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
+
 export async function fetchAdminDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;

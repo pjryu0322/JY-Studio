@@ -1,9 +1,7 @@
 /**
- * P8.2.3 — Published serving lifecycle: Unpublish blocks public/MCP retrieval
- * without deleting generations; restoring PUBLISHED reuses the same PRODUCTION generation.
- *
- * Does not add a /republish API — restore uses status-only recovery because
- * approvePackReview requires REVIEWING and cannot republish an already-PROMOTED pack.
+ * P8.2.3 / P9 — Published serving lifecycle: Unpublish blocks public/MCP retrieval
+ * without deleting generations; restore uses restorePublishedPackAfterUnpublish
+ * (application transition), not a raw status flip.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -17,11 +15,16 @@ import {
   DEFAULT_E5_MODEL_ID,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "../lib/embedding/e5-embedding-constants.ts";
-import { unpublishPackReview } from "../lib/admin-review-service.ts";
+import { unpublishPackReview, restorePublishedPackAfterUnpublish } from "../lib/admin-review-service.ts";
 import { prisma } from "../lib/prisma.ts";
 import { executeRetrievalApiRequest } from "../lib/retrieval/retrieval-api-adapter.ts";
 import { loadPublicRetrievalPack } from "../lib/retrieval/retrieval-pack-store.ts";
 import { resolvePublicRetrievalGenerationScope } from "../lib/retrieval/retrieval-generation-scope.ts";
+import {
+  STORE_PROVIDER_REVIEW_TRIGGER,
+  STORE_SERVICE_VALIDATION_TRIGGER,
+} from "../lib/store-workflow-markers.ts";
+import { encodeProviderReviewConfirmSummary } from "../lib/store-workflow-provider-review-binding.ts";
 
 function ensureDatabaseUrlFromDotEnv(): void {
   if (process.env.DATABASE_URL?.trim()) return;
@@ -105,7 +108,7 @@ async function seedLifecycleFixture(suffix: string) {
   const pipeline = await prisma.pipelineRun.create({
     data: {
       packId,
-      triggerType: "TEST",
+      triggerType: "WORKER_ZIP_IMPORT",
       status: "PASS",
       summary: "p823",
       startedAt: new Date(),
@@ -185,6 +188,35 @@ async function seedLifecycleFixture(suffix: string) {
         sourcePath: "Docs/api/SpanMergingField.html",
       },
       isActive: true,
+    },
+  });
+
+  // Publish gates for restorePublishedPackAfterUnpublish (SV + provider binding to DRAFT READY).
+  await prisma.pipelineRun.create({
+    data: {
+      packId,
+      triggerType: STORE_SERVICE_VALIDATION_TRIGGER,
+      status: "PASS",
+      summary: "P8.2.3 SV",
+      startedAt: new Date(),
+      finishedAt: new Date(),
+    },
+  });
+  await prisma.pipelineRun.create({
+    data: {
+      packId,
+      triggerType: STORE_PROVIDER_REVIEW_TRIGGER,
+      status: "PASS",
+      summary: encodeProviderReviewConfirmSummary({
+        v: 1,
+        indexGenerationId: draft.id,
+        versionId: version.id,
+        pipelineRunId: pipeline.id,
+        reviewedAt: new Date().toISOString(),
+        reviewerClientId: "p823-test",
+      }),
+      startedAt: new Date(),
+      finishedAt: new Date(),
     },
   });
 
@@ -301,13 +333,16 @@ describe("P8.2.3 published serving lifecycle (skipped without DATABASE_URL)", {
       sourceCountBefore,
     );
 
-    await prisma.knowledgePack.update({
-      where: { packId: seeded.packId },
-      data: { status: PackStatus.PUBLISHED, publishedAt: new Date() },
+    const restore = await restorePublishedPackAfterUnpublish({
+      packId: seeded.packId,
+      memo: "P9 canonical restore after unpublish",
     });
+    assert.ok(!("error" in restore && restore.error), JSON.stringify(restore));
+    assert.equal(restore.status, PackStatus.PUBLISHED);
 
     const restoredPack = await loadPublicRetrievalPack(seeded.packId);
     assert.ok(restoredPack);
+    assert.equal(restoredPack!.versionId, seeded.versionId);
     const restoredScope = await resolvePublicRetrievalGenerationScope(seeded.versionId);
     assert.equal(restoredScope.searchIndexGenerationId, seeded.productionId);
 
