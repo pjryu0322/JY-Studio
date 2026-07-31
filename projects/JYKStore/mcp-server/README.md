@@ -71,7 +71,7 @@ npm test
 
 ## Tools
 
-- `jykstore_retrieval_query` → `POST /api/v1/retrieval/query`
+- `jykstore_retrieval_query` → `POST /api/v1/mcp/retrieval/query`
 - `jykstore_graph_query` → `POST /api/v1/graph/query`
 - `jykstore_export_package` → `GET /api/v1/exports/package`
 - `jykstore_export_rag_jsonl` → `GET /api/v1/exports/rag-jsonl`

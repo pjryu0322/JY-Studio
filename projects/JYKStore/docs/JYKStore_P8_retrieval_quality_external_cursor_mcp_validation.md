@@ -5,7 +5,7 @@
 | Phase | Verdict |
 |-------|---------|
 | P8.1 | **P8.1 RETRIEVAL SEMANTIC QUALITY PASSED** |
-| P8.2 | **P8.2 EXTERNAL CLIENT VALIDATION PENDING** |
+| P8.2 | **P8.2 CURSOR/MCP EXTERNAL CLIENT VALIDATION PENDING** — see [`JYKStore_P8_2_cursor_mcp_external_client_validation.md`](./JYKStore_P8_2_cursor_mcp_external_client_validation.md) |
 
 ## 1. Base / Work Commit
 
