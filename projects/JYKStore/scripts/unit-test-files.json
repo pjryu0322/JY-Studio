@@ -236,5 +236,6 @@
   "src/__tests__/p8-retrieval-quality-tokenize.test.ts",
   "src/__tests__/p8-1-1-retrieval-recall-hardening.test.ts",
   "src/__tests__/p8-1-2-live-hybrid-semantic.test.ts",
-  "src/__tests__/p8-1-3-pgvector-production.test.ts"
+  "src/__tests__/p8-1-3-pgvector-production.test.ts",
+  "src/__tests__/p8-1-4-retrieval-latency.test.ts"
 ]

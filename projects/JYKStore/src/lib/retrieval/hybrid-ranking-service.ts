@@ -436,6 +436,7 @@ async function applyVectorScoresPreferringHits(input: {
 
   if (missingForLoad.length === 0) return;
 
+  const missingSet = new Set(missingForLoad);
   const vectorMap = await loadSearchIndexVectorsByChunkIds({
     searchIndexGenerationId: input.searchIndexGenerationId,
     provider: input.provider,
@@ -444,7 +445,7 @@ async function applyVectorScoresPreferringHits(input: {
   });
   if (!vectorMap) return;
   applyVectorScores(
-    input.scored.filter((item) => missingForLoad.includes(item.chunk.id)),
+    input.scored.filter((item) => missingSet.has(item.chunk.id)),
     input.queryVector,
     vectorMap,
   );

@@ -8,6 +8,16 @@ export const NEAR_DUPLICATE_SIMILARITY = 0.9;
 /** Minimum normalized body length for Jaccard near-duplicate checks. */
 export const NEAR_DUPLICATE_MIN_CHARS = 80;
 
+/**
+ * Near-duplicate Jaccard is only applied while `kept.length` is below this cap
+ * (candidates arrive score-descending). Exact hash dedupe still applies to the full pool.
+ * Preserves Top-K quality while avoiding O(n²) on 500+ long bodies (P8.1.4).
+ */
+export const NEAR_DUPLICATE_COMPARE_CAP = 120;
+
+/** Skip Jaccard when normalized lengths differ by more than this ratio. */
+export const NEAR_DUPLICATE_LENGTH_RATIO = 0.7;
+
 /** Rank 2–3 must keep at least this fraction of rank-1 final relevance. */
 export const RANK_23_RELATIVE_FLOOR = 0.85;
 
@@ -28,7 +38,7 @@ export const TOP5_MAX_SAME_FAMILY = 2;
  * Ranking policy version for ServiceValidationRun details / fingerprints.
  * Bump when rerank/dedupe rules change in a way that invalidates prior PASS runs.
  */
-export const RETRIEVAL_RANKING_POLICY_VERSION = "relevance_diversity_v2";
+export const RETRIEVAL_RANKING_POLICY_VERSION = "relevance_diversity_v3";
 
 const WEIGHTS = {
   normalizedVectorScore: 0.8,
@@ -38,6 +48,36 @@ const WEIGHTS = {
   provenanceCompletenessBonus: 0.02,
   missingSourcePenalty: 0.1,
 } as const;
+
+type BodyDedupeCache = {
+  normalized: string;
+  shingles: Set<string> | null;
+};
+
+function getBodyDedupeCache(
+  cache: Map<string, BodyDedupeCache>,
+  chunkId: string,
+  content: string,
+): BodyDedupeCache {
+  const hit = cache.get(chunkId);
+  if (hit) return hit;
+  const normalized = normalizeBodyForDedupe(content);
+  const entry: BodyDedupeCache = {
+    normalized,
+    shingles:
+      normalized.length >= NEAR_DUPLICATE_MIN_CHARS
+        ? makeWordShingles(normalized, 3)
+        : null,
+  };
+  cache.set(chunkId, entry);
+  return entry;
+}
+
+function lengthsComparable(aLen: number, bLen: number): boolean {
+  if (aLen <= 0 || bLen <= 0) return false;
+  const ratio = aLen <= bLen ? aLen / bLen : bLen / aLen;
+  return ratio >= NEAR_DUPLICATE_LENGTH_RATIO;
+}
 
 export type RerankStats = {
   candidateCount: number;
@@ -105,7 +145,22 @@ export function bodySimilarity(a: string, b: string): number {
   if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
     return 0;
   }
+  if (!lengthsComparable(na.length, nb.length)) return 0;
   return jaccardSimilarity(makeWordShingles(na, 3), makeWordShingles(nb, 3));
+}
+
+function bodySimilarityCached(a: BodyDedupeCache, b: BodyDedupeCache): number {
+  if (!a.normalized || !b.normalized) return 0;
+  if (a.normalized === b.normalized) return 1;
+  if (
+    a.normalized.length < NEAR_DUPLICATE_MIN_CHARS ||
+    b.normalized.length < NEAR_DUPLICATE_MIN_CHARS
+  ) {
+    return 0;
+  }
+  if (!lengthsComparable(a.normalized.length, b.normalized.length)) return 0;
+  if (!a.shingles || !b.shingles) return 0;
+  return jaccardSimilarity(a.shingles, b.shingles);
 }
 
 export function bodyDiversityScore(a: string, b: string): number {
@@ -181,15 +236,16 @@ export function pickDuplicateRepresentative(
   return a.chunk.id <= b.chunk.id ? a : b;
 }
 
-function isNearDuplicateContent(a: string, b: string): boolean {
-  const na = normalizeBodyForDedupe(a);
-  const nb = normalizeBodyForDedupe(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  if (na.length < NEAR_DUPLICATE_MIN_CHARS || nb.length < NEAR_DUPLICATE_MIN_CHARS) {
+function isNearDuplicateContentCached(a: BodyDedupeCache, b: BodyDedupeCache): boolean {
+  if (!a.normalized || !b.normalized) return false;
+  if (a.normalized === b.normalized) return true;
+  if (
+    a.normalized.length < NEAR_DUPLICATE_MIN_CHARS ||
+    b.normalized.length < NEAR_DUPLICATE_MIN_CHARS
+  ) {
     return false;
   }
-  return bodySimilarity(a, b) >= NEAR_DUPLICATE_SIMILARITY;
+  return bodySimilarityCached(a, b) >= NEAR_DUPLICATE_SIMILARITY;
 }
 
 /**
@@ -204,13 +260,16 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
   const seenChunkIds = new Set<string>();
   const seenHashes = new Map<string, number>();
   const seenSourcePageSectionHash = new Map<string, number>();
+  const bodyCache = new Map<string, BodyDedupeCache>();
+  const keptBody: BodyDedupeCache[] = [];
 
   for (const item of scored) {
     if (seenChunkIds.has(item.chunk.id)) continue;
     seenChunkIds.add(item.chunk.id);
 
     const meta = extractCandidateMeta(item);
-    const hash = contentDedupeKey(item.chunk.content);
+    const body = getBodyDedupeCache(bodyCache, item.chunk.id, item.chunk.content);
+    const hash = body.normalized;
     const section = (item.chunk.section ?? "").trim().toLowerCase();
     const sourcePageSection =
       item.chunk.sourceDocumentId && meta.pageStart != null
@@ -231,10 +290,11 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
       if (idx != null) duplicateOf = idx;
     }
 
-    // Near-duplicate body vs kept candidates.
-    if (duplicateOf == null) {
-      for (let i = 0; i < kept.length; i++) {
-        if (isNearDuplicateContent(kept[i]!.chunk.content, item.chunk.content)) {
+    // Near-duplicate body vs kept candidates (score-ordered prefix only).
+    if (duplicateOf == null && kept.length < NEAR_DUPLICATE_COMPARE_CAP) {
+      const compareLimit = Math.min(kept.length, NEAR_DUPLICATE_COMPARE_CAP);
+      for (let i = 0; i < compareLimit; i++) {
+        if (isNearDuplicateContentCached(keptBody[i]!, body)) {
           duplicateOf = i;
           break;
         }
@@ -245,7 +305,9 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
       const winner = pickDuplicateRepresentative(kept[duplicateOf]!, item);
       if (winner !== kept[duplicateOf]) {
         kept[duplicateOf] = winner;
-        const wHash = contentDedupeKey(winner.chunk.content);
+        const wBody = getBodyDedupeCache(bodyCache, winner.chunk.id, winner.chunk.content);
+        keptBody[duplicateOf] = wBody;
+        const wHash = wBody.normalized;
         if (wHash.length > 0) seenHashes.set(wHash, duplicateOf);
         const wMeta = extractCandidateMeta(winner);
         const wSection = (winner.chunk.section ?? "").trim().toLowerCase();
@@ -260,6 +322,7 @@ export function deduplicateScoredCandidates(scored: ScoredCandidate[]): {
 
     const idx = kept.length;
     kept.push(item);
+    keptBody.push(body);
     if (hash.length > 0) seenHashes.set(hash, idx);
     if (sourcePageSection && hash.length > 0) {
       seenSourcePageSectionHash.set(`${sourcePageSection}|${hash}`, idx);

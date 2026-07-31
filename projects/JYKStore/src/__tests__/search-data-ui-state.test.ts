@@ -259,7 +259,7 @@ describe("buildSearchDataStatusResponse", () => {
         evaluationStepStatus: "PASS",
         evaluationTotalCases: 5,
         evaluationPassedCases: 5,
-        evaluationRankingPolicyVersion: "relevance_diversity_v2",
+        evaluationRankingPolicyVersion: "relevance_diversity_v3",
       }),
     );
     assert.equal(dto.state, "VALIDATED");
@@ -281,7 +281,7 @@ describe("buildSearchDataStatusResponse", () => {
     assert.equal(dto.canRunServiceValidation, false);
     assert.equal(dto.canValidate, true);
     assert.equal(dto.rankingPolicyStale, true);
-    assert.equal(dto.currentRankingPolicyVersion, "relevance_diversity_v2");
+    assert.equal(dto.currentRankingPolicyVersion, "relevance_diversity_v3");
     assert.equal(dto.evaluatedRankingPolicyVersion, "relevance_diversity_v1");
   });
 });

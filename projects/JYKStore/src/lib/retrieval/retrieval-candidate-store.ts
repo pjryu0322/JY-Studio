@@ -49,11 +49,14 @@ async function loadCandidatePage(
 ): Promise<CandidateChunk[]> {
   return prisma.knowledgeChunk.findMany({
     where: baseWhere(versionId, indexGenerationId),
-    include: { sourceDocument: true },
+    include: {
+      // Ranking/references only need id+title — avoid hydrating full source payloads.
+      sourceDocument: { select: { id: true, title: true } },
+    },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     take: CANDIDATE_PAGE_SIZE,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-  });
+  }) as Promise<CandidateChunk[]>;
 }
 
 /**
@@ -85,7 +88,9 @@ async function collectByQueryTokens(
     titleOr.length > 0
       ? await prisma.knowledgeChunk.findMany({
           where: { AND: [base, { OR: titleOr }] },
-          include: { sourceDocument: true },
+          include: {
+            sourceDocument: { select: { id: true, title: true } },
+          },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
           take: 250,
         })
@@ -102,13 +107,15 @@ async function collectByQueryTokens(
               ...(seen.size > 0 ? [{ id: { notIn: [...seen] } }] : []),
             ],
           },
-          include: { sourceDocument: true },
+          include: {
+            sourceDocument: { select: { id: true, title: true } },
+          },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
           take: 250,
         })
       : [];
 
-  const rows = [...titleRows, ...contentRows];
+  const rows = [...titleRows, ...contentRows] as CandidateChunk[];
   const collected: CandidateChunk[] = [];
   for (const chunk of rows) {
     if (!passesIndexScope(chunk, input)) continue;

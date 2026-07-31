@@ -217,8 +217,8 @@ describe("relevance-diversity-rerank", () => {
     assert.ok(score <= 0.85); // without body 0.15 max from other signals only
   });
 
-  it("exports ranking policy v2", () => {
-    assert.equal(RETRIEVAL_RANKING_POLICY_VERSION, "relevance_diversity_v2");
+  it("exports ranking policy v3", () => {
+    assert.equal(RETRIEVAL_RANKING_POLICY_VERSION, "relevance_diversity_v3");
   });
 
   it("normalizes title suffix and punctuation for dedupe", () => {
