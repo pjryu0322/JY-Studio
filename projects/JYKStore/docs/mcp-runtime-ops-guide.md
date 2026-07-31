@@ -99,13 +99,16 @@ MCP Streamable HTTP endpoint: `POST http://localhost:3014/`
 
 ### Cursor local stdio
 
+Cursor on Windows may spawn MCP servers **without honoring `cwd`** (process starts under `%USERPROFILE%`). Use the absolute-path launcher:
+
 ```json
 {
   "mcpServers": {
     "jykstore": {
-      "command": "npx",
-      "args": ["tsx", "mcp-server/server.ts", "--transport", "stdio"],
-      "cwd": "C:/project/JY-Studio/projects/JYKStore",
+      "command": "node",
+      "args": [
+        "C:/project/JY-Studio/projects/JYKStore/scripts/mcp-stdio-launcher.mjs"
+      ],
       "env": {
         "JYKSTORE_BASE_URL": "http://localhost:3004",
         "JYKSTORE_API_KEY": "<API_KEY>"
@@ -115,7 +118,7 @@ MCP Streamable HTTP endpoint: `POST http://localhost:3014/`
 }
 ```
 
-Replace `cwd` for your machine. Never commit a real API key.
+Also see [`docs/examples/cursor-mcp.jykstore.example.json`](./examples/cursor-mcp.jykstore.example.json). Never commit a real API key.
 
 ### HTTP mode
 

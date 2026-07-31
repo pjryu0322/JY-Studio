@@ -44,7 +44,7 @@
     "test:docling-markdown-optional": "node --import tsx --test src/__tests__/docling-markdown-validator.test.ts src/__tests__/docling-markdown-optional.test.ts",
     "test:pack-language": "node --import tsx --test src/__tests__/pack-language.test.ts src/__tests__/p29-b-distribution-foundation.test.ts src/__tests__/docling-import-service.test.ts",
     "test:docling-revalidation-e2e": "node --import tsx --test src/__tests__/docling-revalidation-e2e.test.ts",
-    "mcp:stdio": "tsx mcp-server/server.ts --transport stdio",
+    "mcp:stdio": "node scripts/mcp-stdio-launcher.mjs",
     "mcp:http": "tsx mcp-server/server.ts --transport http",
     "mcp:test": "node --import tsx --test src/__tests__/mcp-*.test.ts",
     "mcp:test:runtime": "node --import tsx --test src/__tests__/mcp-*-runtime.test.ts src/__tests__/mcp-registration.test.ts",

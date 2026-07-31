@@ -1,9 +1,10 @@
 ﻿{
   "mcpServers": {
     "jykstore": {
-      "command": "cmd",
-      "args": ["/c", "npx", "tsx", "mcp-server/server.ts", "--transport", "stdio"],
-      "cwd": "C:/project/JY-Studio/projects/JYKStore",
+      "command": "node",
+      "args": [
+        "C:/project/JY-Studio/projects/JYKStore/scripts/mcp-stdio-launcher.mjs"
+      ],
       "env": {
         "JYKSTORE_BASE_URL": "http://localhost:3004",
         "JYKSTORE_API_KEY": "<API_KEY with mcp:invoke>"
