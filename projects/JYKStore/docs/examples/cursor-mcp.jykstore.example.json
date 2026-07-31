@@ -3,7 +3,7 @@
     "jykstore": {
       "command": "node",
       "args": [
-        "C:/project/JY-Studio/projects/JYKStore/scripts/mcp-stdio-launcher.mjs"
+        "<ABSOLUTE_PATH_TO_JYKSTORE>/scripts/mcp-stdio-launcher.mjs"
       ],
       "env": {
         "JYKSTORE_BASE_URL": "http://localhost:3004",

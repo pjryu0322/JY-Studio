@@ -144,15 +144,16 @@ Query string이 없으면 기존 full resource 동작을 유지합니다.
 
 ## Cursor MCP config example
 
-Paths and keys differ per machine. Use placeholders only.
+Cursor on Windows may ignore `cwd` when spawning MCP servers. Prefer the absolute-path launcher (`scripts/mcp-stdio-launcher.mjs`) and placeholders only:
 
 ```json
 {
   "mcpServers": {
     "jykstore": {
-      "command": "npm",
-      "args": ["run", "mcp:stdio"],
-      "cwd": "C:/project/JY-Studio/projects/JYKStore",
+      "command": "node",
+      "args": [
+        "<ABSOLUTE_PATH_TO_JYKSTORE>/scripts/mcp-stdio-launcher.mjs"
+      ],
       "env": {
         "JYKSTORE_BASE_URL": "http://localhost:3004",
         "JYKSTORE_API_KEY": "<YOUR_JYKSTORE_API_KEY>"
@@ -162,9 +163,11 @@ Paths and keys differ per machine. Use placeholders only.
 }
 ```
 
+See also [`../docs/examples/cursor-mcp.jykstore.example.json`](../docs/examples/cursor-mcp.jykstore.example.json).
+
 ## Desktop MCP client config example
 
-Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` and API key for your environment.
+Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace the absolute launcher path and API key for your environment.
 
 ## Guards
 

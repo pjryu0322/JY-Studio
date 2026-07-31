@@ -9,7 +9,10 @@
  *
  * Usage (mcp.json):
  *   "command": "node"
- *   "args": ["C:/project/JY-Studio/projects/JYKStore/scripts/mcp-stdio-launcher.mjs"]
+ *   "args": ["<ABSOLUTE_PATH_TO_JYKSTORE>/scripts/mcp-stdio-launcher.mjs"]
+ *
+ * Cursor on Windows may ignore mcp.json `cwd`; this launcher derives the project
+ * root from its own path so relative `mcp-server/server.ts` resolution stays stable.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
