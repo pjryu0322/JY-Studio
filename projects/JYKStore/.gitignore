@@ -44,6 +44,7 @@ next-env.d.ts
 /tmp-p4-3-1-e2e/
 /tmp-p*-e2e/
 /tmp-p*-browser-e2e/
+/tmp-p11-clean-reset/
 
 # Do not commit local embedding model trees if ever copied into the repo
 /models/

@@ -212,6 +212,47 @@ async function seedPack(pack: KnowledgePack) {
   }
 }
 
+async function seedCanonicalAccounts() {
+  const accounts = [
+    { email: "admin@jyk.local", name: "JYKStore Admin", accountRole: "ADMIN" },
+    { email: "provider@jyk.local", name: "JYKStore Provider", accountRole: "PROVIDER" },
+    { email: "user@jyk.local", name: "JYKStore User", accountRole: "USER" },
+  ] as const;
+
+  let providerUserId = "";
+  for (const account of accounts) {
+    const user = await prisma.user.upsert({
+      where: { email: account.email },
+      create: {
+        email: account.email,
+        name: account.name,
+        accountRole: account.accountRole,
+      },
+      update: {
+        name: account.name,
+        accountRole: account.accountRole,
+      },
+    });
+    if (account.accountRole === "PROVIDER") providerUserId = user.id;
+  }
+
+  const existing = await prisma.providerProfile.findFirst({
+    where: { userId: providerUserId },
+  });
+  if (!existing) {
+    await prisma.providerProfile.create({
+      data: {
+        userId: providerUserId,
+        displayName: "JYKStore Provider",
+        description: "Canonical provider profile",
+        contactEmail: "provider@jyk.local",
+        status: "ACTIVE",
+        clientId: `seed-provider-${providerUserId.slice(0, 8)}`,
+      },
+    });
+  }
+}
+
 async function main() {
   console.log("Seeding JYKStore database…");
 
@@ -223,6 +264,9 @@ async function main() {
 
   await ensureStructureTemplatesSeeded();
   console.log("  ✓ structure templates");
+
+  await seedCanonicalAccounts();
+  console.log("  ✓ 3 canonical accounts (admin/provider/user@jyk.local) + 1 ProviderProfile");
 
   console.log("Seed complete.");
 }
