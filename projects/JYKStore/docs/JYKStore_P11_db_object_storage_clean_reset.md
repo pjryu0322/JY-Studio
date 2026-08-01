@@ -1,11 +1,11 @@
-# JYKStore P11 ? DB / Object Storage Clean Reset
+# JYKStore P11 - DB / Object Storage Clean Reset
 
 ## 1. Base / Work SHA
 
 | | SHA |
 |---|---|
 | Base | `f9185449` (P10 PASSED) |
-| Work | a38b928abf478ba20fd3bb21a5b02844931a4009 / `ca661c5c` (reset impl) |
+| Work | `afed4276` (docs) / `ca661c5c` (reset) |
 
 ## 2. Maintenance
 
