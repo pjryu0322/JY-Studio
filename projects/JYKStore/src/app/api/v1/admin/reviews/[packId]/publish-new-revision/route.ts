@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { restorePublishedPackAfterUnpublish } from "@/lib/admin-review-service";
+import { publishNewRevisionAfterUnpublish } from "@/lib/admin-review-service";
 import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { requireAdminSession } from "@/lib/admin-route-guard";
 
@@ -17,8 +17,8 @@ async function parseJsonBody(request: NextRequest) {
 }
 
 /**
- * P9.1 Restore Existing — resume Unpublish-preserved PRODUCTION (not Draft B review).
- * When a new revision exists, returns NEW_REVISION_PENDING (use publish-new-revision).
+ * P9.1 — Publish a new DRAFT READY revision after unpublish (promote + publish).
+ * Distinct from restore-publish (resume preserved PRODUCTION).
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await parseJsonBody(request);
-    const result = await restorePublishedPackAfterUnpublish({
+    const result = await publishNewRevisionAfterUnpublish({
       packId: packId?.trim() ?? "",
       reviewerClientId: getClientIdFromRequest(request) ?? clientId,
       reviewerUserId: adminAuth.adminUserId,
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     if (result.error === "NOT_UNPUBLISHED_DRAFT") {
       return jsonWithClientIdCookie(
-        { error: "게시 중단된(DRAFT) 지식팩만 기존 게시본을 다시 게시할 수 있습니다." },
+        { error: "게시 중단된(DRAFT) 지식팩만 새 Revision을 게시할 수 있습니다." },
         clientId,
         { status: 409 },
       );
@@ -60,17 +60,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
     if (result.error === "CONFLICT") {
-      return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 409 });
+      return jsonWithClientIdCookie({ error: result.message, code: result.code }, clientId, {
+        status: 409,
+      });
     }
 
     return jsonWithClientIdCookie(
       {
         clientId,
         detail: result.detail,
-        preservedGenerationId: result.preservedGenerationId,
-        preservedVersionId: result.preservedVersionId,
-        restoredGenerationId: result.restoredGenerationId,
-        restoredVersionId: result.restoredVersionId,
+        reviewedGenerationId: result.reviewedGenerationId,
+        publishedGenerationId: result.publishedGenerationId,
+        servedGenerationId: result.servedGenerationId,
+        versionId: result.versionId,
         status: result.status,
       },
       clientId,
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     logSafeRouteError({
       scope: "admin-review",
       method: "POST",
-      path: "/api/v1/admin/reviews/[packId]/restore-publish",
+      path: "/api/v1/admin/reviews/[packId]/publish-new-revision",
       error,
     });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });

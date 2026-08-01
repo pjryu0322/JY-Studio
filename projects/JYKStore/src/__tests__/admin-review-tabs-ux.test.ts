@@ -268,6 +268,6 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_REJECT"));
     assert.equal(ADMIN_REVIEW_CTA_APPROVE, "게시");
-    assert.equal(ADMIN_REVIEW_CTA_REJECT, "게시 취소");
+    assert.equal(ADMIN_REVIEW_CTA_REJECT, "검수 반려");
   });
 });

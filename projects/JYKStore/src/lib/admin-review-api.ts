@@ -537,7 +537,7 @@ export async function unpublishAdminReview(
   return (await response.json()) as AdminReviewDetailResponse;
 }
 
-/** Restore PUBLISHED after unpublish (DRAFT) via publish gates — not raw status flip. */
+/** Restore Existing — resume Unpublish-preserved PRODUCTION. */
 export async function restorePublishAdminReview(
   packId: string,
   input: { memo?: string; publishAsVerified?: boolean } = {},
@@ -555,6 +555,43 @@ export async function restorePublishAdminReview(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as AdminReviewDetailResponse;
+}
+
+/** New Revision Publish after unpublish — promote current DRAFT READY. */
+export async function publishNewRevisionAdminReview(
+  packId: string,
+  input: { memo?: string; publishAsVerified?: boolean } = {},
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/publish-new-revision`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
+
+export async function fetchPublishRecoveryAdminReview(packId: string): Promise<{
+  clientId: string;
+  recovery: import("@/lib/workflow/publish-recovery").PublishRecoveryResolution;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/publish-recovery`,
+    { method: "GET", credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    recovery: import("@/lib/workflow/publish-recovery").PublishRecoveryResolution;
+  };
 }
 
 export async function fetchAdminDoclingImportApi(packId: string): Promise<{

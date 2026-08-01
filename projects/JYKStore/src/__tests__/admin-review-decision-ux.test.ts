@@ -615,6 +615,6 @@ describe("admin review decision UX wiring", () => {
     assert.ok(sources.includes("원문 보기") || sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
     assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 재점검");
     assert.equal(ADMIN_REVIEW_CTA_APPROVE, "게시");
-    assert.equal(ADMIN_REVIEW_CTA_REJECT, "게시 취소");
+    assert.equal(ADMIN_REVIEW_CTA_REJECT, "검수 반려");
   });
 });

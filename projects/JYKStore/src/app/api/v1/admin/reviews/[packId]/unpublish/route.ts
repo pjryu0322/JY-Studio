@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     if (result.error === "NOT_PUBLISHED") {
       return jsonWithClientIdCookie(
-        { error: "게시된 지식팩만 게시 취소할 수 있습니다." },
+        { error: "게시된 지식팩만 게시 중단할 수 있습니다." },
         clientId,
         { status: 409 },
       );

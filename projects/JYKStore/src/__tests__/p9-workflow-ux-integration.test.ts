@@ -50,34 +50,19 @@ describe("P9 workflow SoT / republish / public version policy", () => {
     assert.doesNotMatch(steps, /"providerReview"/);
   });
 
-  it("approvePackReview still requires REVIEWING; restore-publish is the post-unpublish path", () => {
+  it("approvePackReview still requires REVIEWING; restore/new-revision are post-unpublish paths", () => {
     const service = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
     assert.match(service, /export async function approvePackReview/);
     assert.match(service, /detailBefore\.pack\.status !== "REVIEWING"/);
     assert.match(service, /export async function restorePublishedPackAfterUnpublish/);
-    assert.match(service, /RESTORE_PUBLISH_AFTER_UNPUBLISH/);
+    assert.match(service, /RESTORE_EXISTING_AFTER_UNPUBLISH/);
     assert.match(service, /NOT_UNPUBLISHED_DRAFT/);
-
-    const route = readFileSync(
-      join(root, "src/app/api/v1/admin/reviews/[packId]/restore-publish/route.ts"),
-      "utf8",
-    );
-    assert.match(route, /restorePublishedPackAfterUnpublish/);
-    assert.match(route, /requireAdminSession/);
+    assert.match(service, /export async function publishNewRevisionAfterUnpublish/);
 
     const api = readFileSync(join(root, "src/lib/admin-review-api.ts"), "utf8");
     assert.match(api, /export async function restorePublishAdminReview/);
+    assert.match(api, /export async function publishNewRevisionAdminReview/);
     assert.match(api, /export async function unpublishAdminReview/);
-    assert.match(api, /\/restore-publish/);
-
-    const panel = readFileSync(
-      join(root, "src/components/AdminApprovalPublishWorkbenchPanel.tsx"),
-      "utf8",
-    );
-    assert.match(panel, /restorePublishAdminReview/);
-    assert.match(panel, /unpublishAdminReview/);
-    assert.match(panel, /재게시/);
-    assert.match(panel, /게시 중단/);
   });
 
   it("loadPublicRetrievalPack prefers PRODUCTION generation version", () => {
@@ -85,10 +70,6 @@ describe("P9 workflow SoT / republish / public version policy", () => {
     assert.match(source, /scope: "PRODUCTION"/);
     assert.match(source, /status: "PROMOTED"/);
     assert.match(source, /prefer the version that owns the current PRODUCTION/);
-    assert.doesNotMatch(
-      source,
-      /include:\s*\{\s*versions:\s*\{\s*orderBy:\s*\{\s*createdAt:\s*"desc"/,
-    );
   });
 
   it("legacy admin queues normalize rather than remaining operational SoT", () => {

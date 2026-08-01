@@ -346,7 +346,11 @@ export const ADMIN_REVIEW_STATE_CHANGED_BODY =
 
 export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 재점검";
 export const ADMIN_REVIEW_CTA_APPROVE = "게시";
-export const ADMIN_REVIEW_CTA_REJECT = "게시 취소";
+/** Reject during review (not unpublish). */
+export const ADMIN_REVIEW_CTA_REJECT = "검수 반려";
+export const ADMIN_REVIEW_CTA_UNPUBLISH = "게시 중단";
+export const ADMIN_REVIEW_CTA_RESTORE_EXISTING = "기존 게시본 다시 게시";
+export const ADMIN_REVIEW_CTA_PUBLISH_NEW_REVISION = "새 Revision 게시";
 export const ADMIN_REVIEW_CTA_REFRESH_ALL = "현재 데이터 기준 전체 재점검";
 export const ADMIN_REVIEW_CTA_RETRIEVAL_REEVAL = "검색 품질 재평가";
 export const ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE = "고급 작업";

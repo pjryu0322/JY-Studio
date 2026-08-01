@@ -36,6 +36,20 @@ ensureDatabaseUrlFromDotEnv();
 const hasDb = Boolean(process.env.DATABASE_URL?.trim());
 const SHA = "fcfc26bf355882620c48df58be112275bd756f50";
 
+async function requireDb(t: { skip: (msg?: string) => void }): Promise<boolean> {
+  if (!hasDb) {
+    t.skip("DATABASE_URL not set");
+    return false;
+  }
+  try {
+    await prisma.$queryRawUnsafe("SELECT 1");
+    return true;
+  } catch {
+    t.skip("PostgreSQL unreachable at DATABASE_URL");
+    return false;
+  }
+}
+
 describe("P9 public retrieval version selection (skipped without DATABASE_URL)", {
   skip: !hasDb,
 }, () => {
@@ -44,7 +58,8 @@ describe("P9 public retrieval version selection (skipped without DATABASE_URL)",
     for (const fn of cleanups.reverse()) await fn();
   });
 
-  it("serves the version that owns PRODUCTION+PROMOTED, not a newer draft version", async () => {
+  it("serves the version that owns PRODUCTION+PROMOTED, not a newer draft version", async (t) => {
+    if (!(await requireDb(t))) return;
     const suffix = randomUUID().slice(0, 8);
     const packId = `p9v-pack-${suffix}`;
     const category =

@@ -1,6 +1,5 @@
 /**
- * P8.2.3 / P9.1 — Unpublish blocks public retrieval; Restore Existing resumes PRODUCTION A.
- * New-revision path covered in p9-1-publish-revision-identity.db.test.ts.
+ * P9.1 — Restore Existing vs New Revision Publish separation + identity invariants.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -14,11 +13,21 @@ import {
   DEFAULT_E5_MODEL_ID,
   LOCAL_E5_EMBEDDING_PROVIDER,
 } from "../lib/embedding/e5-embedding-constants.ts";
-import { unpublishPackReview, restorePublishedPackAfterUnpublish } from "../lib/admin-review-service.ts";
+import {
+  publishNewRevisionAfterUnpublish,
+  restorePublishedPackAfterUnpublish,
+  unpublishPackReview,
+} from "../lib/admin-review-service.ts";
 import { prisma } from "../lib/prisma.ts";
 import { executeRetrievalApiRequest } from "../lib/retrieval/retrieval-api-adapter.ts";
 import { loadPublicRetrievalPack } from "../lib/retrieval/retrieval-pack-store.ts";
 import { resolvePublicRetrievalGenerationScope } from "../lib/retrieval/retrieval-generation-scope.ts";
+import {
+  STORE_PROVIDER_REVIEW_TRIGGER,
+  STORE_SERVICE_VALIDATION_TRIGGER,
+} from "../lib/store-workflow-markers.ts";
+import { encodeProviderReviewConfirmSummary } from "../lib/store-workflow-provider-review-binding.ts";
+import { resolvePublishRecoveryForPack } from "../lib/workflow/publish-recovery.ts";
 
 function ensureDatabaseUrlFromDotEnv(): void {
   if (process.env.DATABASE_URL?.trim()) return;
@@ -54,30 +63,30 @@ async function requireDb(t: { skip: (msg?: string) => void }): Promise<boolean> 
   }
 }
 
-async function seedLifecycleFixture(suffix: string) {
-  const packId = `p823-pack-${suffix}`;
+async function seedPublishedPack(suffix: string) {
+  const packId = `p91-pack-${suffix}`;
   const category =
     (await prisma.packCategory.findFirst({ select: { categoryId: true } })) ??
     (await prisma.packCategory.create({
       data: {
-        categoryId: `p823-cat-${suffix}`,
-        name: "P823",
+        categoryId: `p91-cat-${suffix}`,
+        name: "P91",
         description: "t",
         icon: "book",
       },
     }));
   const user = await prisma.user.create({
-    data: { email: `p823-${suffix}@example.com`, name: "P823", accountRole: "PROVIDER" },
+    data: { email: `p91-${suffix}@example.com`, name: "P91", accountRole: "PROVIDER" },
   });
   const profile = await prisma.providerProfile.create({
-    data: { displayName: "P823", description: "t", userId: user.id, status: "ACTIVE" },
+    data: { displayName: "P91", description: "t", userId: user.id, status: "ACTIVE" },
   });
   await prisma.knowledgePack.create({
     data: {
       packId,
-      name: "P823 Pack",
+      name: "P91 Pack",
       categoryId: category.categoryId,
-      providerName: "P823",
+      providerName: "P91",
       providerType: "COMMUNITY",
       status: PackStatus.PUBLISHED,
       publishedAt: new Date(),
@@ -118,14 +127,14 @@ async function seedLifecycleFixture(suffix: string) {
       packId,
       triggerType: "WORKER_ZIP_IMPORT",
       status: "PASS",
-      summary: "p823",
+      summary: "p91",
       startedAt: new Date(),
       finishedAt: new Date(),
     },
   });
   const bundle = await prisma.doclingImportBundle.create({
     data: {
-      id: `p823-b-${suffix}`,
+      id: `p91-b-${suffix}`,
       packId,
       versionId: version.id,
       status: "REVIEW_READY",
@@ -135,48 +144,57 @@ async function seedLifecycleFixture(suffix: string) {
   });
   const normalized = await prisma.normalizedDocument.create({
     data: {
-      id: `p823-nd-${suffix}`,
+      id: `p91-nd-${suffix}`,
       bundleId: bundle.id,
       packId,
       versionId: version.id,
       adapterVersion: "test",
-      fingerprint: `p823-fp-${suffix}`,
+      fingerprint: `p91-fp-${suffix}`,
       isActive: true,
     },
   });
   const source = await prisma.sourceDocument.create({
     data: {
-      id: `p823-src-${suffix}`,
+      id: `p91-src-${suffix}`,
       versionId: version.id,
       title: "SpanMergingField",
       content: "cell merge api",
     },
   });
-  const production = await prisma.searchIndexGeneration.create({
-    data: {
-      id: `p823-gen-${suffix}-production`,
-      packId,
-      versionId: version.id,
-      pipelineRunId: pipeline.id,
-      normalizedDocumentId: normalized.id,
-      chunkGenerationId: `p823-cg-${suffix}-production`,
-      fingerprint: `p823-gfp-${suffix}-PRODUCTION`,
-      embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
-      embeddingModel: DEFAULT_E5_MODEL_ID,
-      embeddingModelRevision: SHA,
-      embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
-      distanceMetric: "cosine",
-      status: "PROMOTED",
-      scope: "PRODUCTION",
-      generationFingerprint: `p823-gf-${suffix}-PRODUCTION`,
-      chunkCount: 1,
-      embeddedCount: 1,
-      promotedAt: new Date(),
-    },
-  });
+
+  async function createGeneration(
+    scope: "DRAFT" | "PRODUCTION",
+    status: "READY" | "PROMOTED",
+    tag: string,
+  ) {
+    return prisma.searchIndexGeneration.create({
+      data: {
+        id: `p91-gen-${suffix}-${tag}`,
+        packId,
+        versionId: version.id,
+        pipelineRunId: pipeline.id,
+        normalizedDocumentId: normalized.id,
+        chunkGenerationId: `p91-cg-${suffix}-${tag}`,
+        fingerprint: `p91-gfp-${suffix}-${tag}`,
+        embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+        embeddingModel: DEFAULT_E5_MODEL_ID,
+        embeddingModelRevision: SHA,
+        embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+        distanceMetric: "cosine",
+        status,
+        scope,
+        generationFingerprint: `p91-gf-${suffix}-${tag}`,
+        chunkCount: 1,
+        embeddedCount: 1,
+        promotedAt: status === "PROMOTED" ? new Date() : null,
+      },
+    });
+  }
+
+  const production = await createGeneration("PRODUCTION", "PROMOTED", "prod-a");
   await prisma.knowledgeChunk.create({
     data: {
-      id: `p823-chunk-${suffix}`,
+      id: `p91-chunk-${suffix}`,
       versionId: version.id,
       sourceDocumentId: source.id,
       chunkType: "retrieval",
@@ -198,6 +216,8 @@ async function seedLifecycleFixture(suffix: string) {
     versionId: version.id,
     sourceId: source.id,
     productionId: production.id,
+    pipelineId: pipeline.id,
+    normalizedId: normalized.id,
     async cleanup() {
       await prisma.knowledgeChunk.deleteMany({ where: { versionId: version.id } }).catch(() => undefined);
       await prisma.searchIndexGeneration.deleteMany({ where: { packId } }).catch(() => undefined);
@@ -215,7 +235,7 @@ async function seedLifecycleFixture(suffix: string) {
   };
 }
 
-describe("P8.2.3 published serving lifecycle (skipped without DATABASE_URL)", {
+describe("P9.1 publish revision identity (skipped without DATABASE_URL)", {
   skip: !hasDb,
 }, () => {
   const cleanups: Array<() => Promise<void>> = [];
@@ -223,74 +243,144 @@ describe("P8.2.3 published serving lifecycle (skipped without DATABASE_URL)", {
     for (const fn of cleanups.reverse()) await fn();
   });
 
-  it("unpublish blocks public retrieval; Restore Existing reuses preserved PRODUCTION", async (t) => {
+  it("Case A: Restore Existing resumes preserved PRODUCTION A (no new draft)", async (t) => {
     if (!(await requireDb(t))) return;
     const suffix = randomUUID().slice(0, 8);
-    const seeded = await seedLifecycleFixture(suffix);
+    const seeded = await seedPublishedPack(suffix);
     cleanups.push(seeded.cleanup);
-
-    const beforeScope = await resolvePublicRetrievalGenerationScope(seeded.versionId);
-    assert.equal(beforeScope.searchIndexGenerationId, seeded.productionId);
-
-    const publishedQuery = await executeRetrievalApiRequest({
-      knowledgePackId: seeded.packId,
-      query: "SpanMergingField merge cells",
-      topK: 3,
-      retrievalMode: "keyword",
-      requestId: `req_p823_pub_${suffix}`,
-      serviceChannel: "MCP",
-      executionMode: "PUBLIC",
-    });
-    assert.equal(publishedQuery.ok, true);
-
-    const genCountBefore = await prisma.searchIndexGeneration.count({
-      where: { packId: seeded.packId },
-    });
 
     const unpublish = await unpublishPackReview({
       packId: seeded.packId,
-      memo: "P8.2.3 lifecycle regression",
+      memo: "P9.1 case A",
     });
     assert.ok(!("error" in unpublish && unpublish.error));
     assert.equal(unpublish.preservedGenerationId, seeded.productionId);
     assert.equal(await loadPublicRetrievalPack(seeded.packId), null);
 
-    const blocked = await executeRetrievalApiRequest({
-      knowledgePackId: seeded.packId,
-      query: "SpanMergingField merge cells",
-      topK: 3,
-      retrievalMode: "keyword",
-      requestId: `req_p823_block_${suffix}`,
-      serviceChannel: "MCP",
-      executionMode: "PUBLIC",
-    });
-    assert.equal(blocked.ok, false);
-    if (!blocked.ok) assert.equal(blocked.code, "PACK_NOT_FOUND");
-
-    assert.equal(
-      await prisma.searchIndexGeneration.count({ where: { packId: seeded.packId } }),
-      genCountBefore,
-    );
+    const recovery = await resolvePublishRecoveryForPack(seeded.packId);
+    assert.equal(recovery.mode, "RESTORE_EXISTING");
+    assert.equal(recovery.preservedGenerationId, seeded.productionId);
 
     const restore = await restorePublishedPackAfterUnpublish({
       packId: seeded.packId,
-      memo: "P9.1 Restore Existing",
+      memo: "restore A",
     });
     assert.ok(!("error" in restore && restore.error), JSON.stringify(restore));
     assert.equal(restore.restoredGenerationId, seeded.productionId);
+    assert.equal(restore.status, PackStatus.PUBLISHED);
 
-    const restoredScope = await resolvePublicRetrievalGenerationScope(seeded.versionId);
-    assert.equal(restoredScope.searchIndexGenerationId, seeded.productionId);
+    const scope = await resolvePublicRetrievalGenerationScope(seeded.versionId);
+    assert.equal(scope.searchIndexGenerationId, seeded.productionId);
+    const pack = await loadPublicRetrievalPack(seeded.packId);
+    assert.ok(pack);
+    assert.equal(pack!.versionId, seeded.versionId);
 
-    const restoredQuery = await executeRetrievalApiRequest({
+    const query = await executeRetrievalApiRequest({
       knowledgePackId: seeded.packId,
       query: "SpanMergingField merge cells",
       topK: 3,
       retrievalMode: "keyword",
-      requestId: `req_p823_restored_${suffix}`,
+      requestId: `req_p91_a_${suffix}`,
       serviceChannel: "MCP",
       executionMode: "PUBLIC",
     });
-    assert.equal(restoredQuery.ok, true);
+    assert.equal(query.ok, true);
+  });
+
+  it("Case B: Draft B after unpublish blocks Restore A; New Revision Publish serves B", async (t) => {
+    if (!(await requireDb(t))) return;
+    const suffix = randomUUID().slice(0, 8);
+    const seeded = await seedPublishedPack(suffix);
+    cleanups.push(seeded.cleanup);
+
+    await unpublishPackReview({ packId: seeded.packId, memo: "P9.1 case B" });
+
+    // Create new DRAFT READY B after unpublish + provider review binding to B.
+    const draftB = await prisma.searchIndexGeneration.create({
+      data: {
+        id: `p91-gen-${suffix}-draft-b`,
+        packId: seeded.packId,
+        versionId: seeded.versionId,
+        pipelineRunId: seeded.pipelineId,
+        normalizedDocumentId: seeded.normalizedId,
+        chunkGenerationId: `p91-cg-${suffix}-draft-b`,
+        fingerprint: `p91-gfp-${suffix}-draft-b`,
+        embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+        embeddingModel: DEFAULT_E5_MODEL_ID,
+        embeddingModelRevision: SHA,
+        embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+        distanceMetric: "cosine",
+        status: "READY",
+        scope: "DRAFT",
+        generationFingerprint: `p91-gf-${suffix}-draft-b`,
+        chunkCount: 1,
+        embeddedCount: 1,
+      },
+    });
+    assert.notEqual(draftB.id, seeded.productionId);
+
+    await prisma.pipelineRun.create({
+      data: {
+        packId: seeded.packId,
+        triggerType: STORE_SERVICE_VALIDATION_TRIGGER,
+        status: "PASS",
+        summary: "SV for B",
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      },
+    });
+    await prisma.pipelineRun.create({
+      data: {
+        packId: seeded.packId,
+        triggerType: STORE_PROVIDER_REVIEW_TRIGGER,
+        status: "PASS",
+        summary: encodeProviderReviewConfirmSummary({
+          v: 1,
+          indexGenerationId: draftB.id,
+          versionId: seeded.versionId,
+          pipelineRunId: seeded.pipelineId,
+          reviewedAt: new Date().toISOString(),
+          reviewerClientId: "p91-b",
+        }),
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      },
+    });
+
+    const recovery = await resolvePublishRecoveryForPack(seeded.packId);
+    assert.equal(recovery.mode, "PUBLISH_NEW_REVISION");
+    assert.equal(recovery.code, "NEW_REVISION_PENDING");
+
+    const blocked = await restorePublishedPackAfterUnpublish({
+      packId: seeded.packId,
+      memo: "should block — would serve A with B review",
+    });
+    assert.equal(blocked.error, "INCOMPLETE");
+    assert.equal(blocked.code, "NEW_REVISION_PENDING");
+
+    const published = await publishNewRevisionAfterUnpublish({
+      packId: seeded.packId,
+      memo: "publish B",
+    });
+    assert.ok(!("error" in published && published.error), JSON.stringify(published));
+    assert.equal(published.reviewedGenerationId, draftB.id);
+    assert.equal(published.publishedGenerationId, draftB.id);
+    assert.equal(published.servedGenerationId, draftB.id);
+
+    const prod = await prisma.searchIndexGeneration.findUnique({
+      where: { id: draftB.id },
+      select: { scope: true, status: true },
+    });
+    assert.deepEqual(prod, { scope: "PRODUCTION", status: "PROMOTED" });
+
+    const retiredA = await prisma.searchIndexGeneration.findUnique({
+      where: { id: seeded.productionId },
+      select: { status: true },
+    });
+    assert.equal(retiredA?.status, "RETIRED");
+
+    const scope = await resolvePublicRetrievalGenerationScope(seeded.versionId);
+    assert.equal(scope.searchIndexGenerationId, draftB.id);
+    assert.notEqual(scope.searchIndexGenerationId, seeded.productionId);
   });
 });
