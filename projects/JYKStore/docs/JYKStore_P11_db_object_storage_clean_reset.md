@@ -5,7 +5,7 @@
 | | SHA |
 |---|---|
 | Base | `f9185449` (P10 PASSED) |
-| Work | `1c825a90` (docs) / `ca661c5c` (reset) |
+| Work | `501d4cd8` (HEAD) / `ca661c5c` (reset impl) |
 
 ## 2. Maintenance
 
@@ -19,7 +19,7 @@
 ## 3. DB Inventory Before
 
 | Model | Count |
-|---:|---:|
+|---|---:|
 | User | 5 |
 | ProviderProfile | 44 |
 | KnowledgePack | 31 |
@@ -31,7 +31,7 @@
 | KnowledgeScopeInventoryItem | 1,734 |
 | PackCategory (keep) | 13 |
 
-Pack IDs included empirical packs (`rmategridh5webv60`, `p431e2ems633k5n`, `ra-pack-*`, `rh-pack-*`, ?? ??**all deleted**.
+Pack IDs included empirical packs (`rmategridh5webv60`, `p431e2ems633k5n`, `ra-pack-*`, `rh-pack-*`, ?) ? **all deleted**.
 
 ## 4. Object Inventory Before
 
@@ -67,17 +67,26 @@ All other users deleted. Quick Login lists exactly these 3.
 ## 7. Pack Allowlist
 
 ```text
-???? Pack = 0
+keep Pack = 0
 ```
 
-## 8??. Dry-run
+## 8. DB Dry-run
 
 ```text
 safeToExecute: true
 blockers: []
 packs delete: 31
-objects delete: 1686 / 711221835 bytes
 accounts: create canonical 3; delete non-canonical
+```
+
+## 9. Object Dry-run
+
+```text
+objects delete: 1686
+bytes: 711221835
+orphan: 1674
+unknown: 0
+missing findings: 18
 ```
 
 CLI:
@@ -152,7 +161,7 @@ MISSING_OBJECT = 0
 
 ## 17. Role Login Smoke
 
-`scripts/p11-role-empty-smoke.ts` ??**PASS**
+`scripts/p11-role-empty-smoke.ts` ? **PASS**
 
 - Admin / Provider / User login OK
 - Admin inbox shows receipt queue
@@ -180,13 +189,13 @@ MISSING_OBJECT = 0
 
 ## 20. Findings
 
-- 18 pre-reset `MISSING_OBJECT` integrity findings (DB storageKey without object) ??cleared by DB truncate; reported in dry-run, not hidden.
+- 18 pre-reset `MISSING_OBJECT` integrity findings (DB storageKey without object) ? cleared by DB truncate; reported in dry-run, not hidden.
 - Personal/dev accounts present before reset were removed in favor of canonical `@jyk.local` trio.
 
 ## 21. Remaining Risk
 
 - Local `.env` must include `JYKSTORE_ADMIN_EMAILS=admin@jyk.local` for allowlist promotion on login.
-- Backups live only under `tmp-p11-clean-reset/` ??retain outside git if needed.
+- Backups live only under `tmp-p11-clean-reset/` ? retain outside git if needed.
 - P13 must register a **new** pack (no restore of wiped packs).
 
 ## 22. Final Verdict
@@ -195,9 +204,9 @@ MISSING_OBJECT = 0
 P11 DB / OBJECT STORAGE CLEAN RESET PASSED
 ```
 
-### ???? ??
+### Deletion evidence
 
-| ??? | Before | Deleted | Kept | After | Result |
+| Area | Before | Deleted | Kept | After | Result |
 |---|---:|---:|---:|---:|---|
 | User | 5 | 5 | 3 (seeded) | 3 | PASS |
 | ProviderProfile | 44 | 44 | 1 | 1 | PASS |
