@@ -75,9 +75,10 @@ describe("legacy builder freeze routes", () => {
     );
   });
 
-  it("shows safe notice on admin KU drafts page", () => {
+  it("redirects admin KU drafts bookmarks to admin reviews", () => {
     const page = readSource("src/app/(store)/admin/knowledge-unit-drafts/page.tsx");
-    assert.ok(page.includes("내부 지식 생성 기능 종료"));
+    assert.ok(page.includes("redirect"));
+    assert.ok(page.includes("adminReviews"));
     assert.ok(!page.includes("AdminKnowledgeUnitDraftReviewPanel"));
   });
 });

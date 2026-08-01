@@ -81,8 +81,8 @@ type WorkStatusFilter =
 const FILTER_TO_GROUPS: Record<WorkStatusFilter, AdminWorkInboxQueueGroup[] | null> = {
   all: null,
   accept: ["ACCEPT_REQUIRED"],
-  generate: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
-  quality: ["GENERATE_REQUIRED", "QUALITY_CHECK_REQUIRED"],
+  generate: ["GENERATE_REQUIRED"],
+  quality: ["GENERATE_REQUIRED"],
   provider_review: ["PROVIDER_REVIEW_IN_PROGRESS"],
   service_validation: ["ADMIN_REVIEW_REQUIRED"],
   pack_review: ["ADMIN_REVIEW_REQUIRED"],
@@ -130,16 +130,14 @@ function DisplayStatusBadge({
       ? "bg-emerald-100 text-emerald-900"
       : queueGroup === "PROVIDER_REVIEW_IN_PROGRESS"
         ? "bg-violet-100 text-violet-900"
-        : queueGroup === "QUALITY_CHECK_REQUIRED"
-          ? "bg-amber-100 text-amber-900"
-          : queueGroup === "PROVIDER_SUPPLEMENT_REQUIRED" ||
-              queueGroup === "RETURNED_OR_REJECTED"
-            ? "bg-rose-100 text-rose-900"
-            : queueGroup === "ADMIN_REVIEW_REQUIRED" || queueGroup === "ADMIN_REVIEW_IN_PROGRESS"
-              ? "bg-orange-100 text-orange-900"
-              : queueGroup === "GENERATE_REQUIRED"
-                ? "bg-sky-100 text-sky-900"
-                : "bg-indigo-100 text-indigo-900";
+        : queueGroup === "PROVIDER_SUPPLEMENT_REQUIRED" ||
+            queueGroup === "RETURNED_OR_REJECTED"
+          ? "bg-rose-100 text-rose-900"
+          : queueGroup === "ADMIN_REVIEW_REQUIRED" || queueGroup === "ADMIN_REVIEW_IN_PROGRESS"
+            ? "bg-orange-100 text-orange-900"
+            : queueGroup === "GENERATE_REQUIRED"
+              ? "bg-sky-100 text-sky-900"
+              : "bg-indigo-100 text-indigo-900";
   return (
     <span
       className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${className}`}
@@ -181,8 +179,6 @@ function adminWorkInboxDetailHref(
       return item.workerZipPhase === "ACCEPTED"
         ? `${base}?step=knowledgeScope`
         : `${base}?step=generation`;
-    case "QUALITY_CHECK_REQUIRED":
-      return `${base}?step=generation`;
     case "PROVIDER_REVIEW_IN_PROGRESS":
     case "RETURNED_OR_REJECTED":
       return `${base}?step=publish`;
@@ -960,10 +956,7 @@ export function AdminWorkInboxPageClient({
     ? activeQueue === "receipt" || activeQueue === "accept"
       ? []
       : filteredViewItems
-    : [
-        ...filterAdminWorkInboxByQueueGroup(filteredViewItems, "GENERATE_REQUIRED"),
-        ...filterAdminWorkInboxByQueueGroup(filteredViewItems, "QUALITY_CHECK_REQUIRED"),
-      ];
+    : filterAdminWorkInboxByQueueGroup(filteredViewItems, "GENERATE_REQUIRED");
   const providerReviewInProgressItems = stageFiltered
     ? []
     : filterAdminWorkInboxByQueueGroup(filteredViewItems, "PROVIDER_REVIEW_IN_PROGRESS");

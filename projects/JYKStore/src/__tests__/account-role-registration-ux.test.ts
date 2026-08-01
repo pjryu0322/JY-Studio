@@ -49,7 +49,8 @@ describe("account role registration UX", () => {
     const adminPage = readSource("src/app/(store)/admin/knowledge-unit-drafts/page.tsx");
     assert.ok(!account.includes("AdminKnowledgeUnitDraftReviewPanel"));
     assert.ok(!account.includes("knowledge-unit-drafts"));
-    assert.ok(adminPage.includes("기능은 종료되었습니다"));
+    assert.ok(adminPage.includes("redirect"));
+    assert.ok(adminPage.includes("adminReviews"));
     assert.ok(!adminPage.includes("AdminKnowledgeUnitDraftReviewPanel"));
   });
 });

@@ -5,6 +5,7 @@
  * phase markers. No DB/IO. Keep this the single source of truth for
  * "can the admin move to step X" decisions so UI and API routes agree.
  */
+import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import type {
   AdminProviderReviewPhase,
   AdminPublishGatePhase,
@@ -13,12 +14,8 @@ import type {
   AdminWorkerZipPhase,
 } from "./admin-workflow-state";
 
-/** Open admin-facing supplement phases block service validation / provider re-request. */
-const OPEN_ADMIN_SUPPLEMENT_PHASES = ["PENDING", "ACCEPTED", "CLARIFY", "RESOLVED"] as const;
-
-export function isOpenAdminSupplementPhase(phase: string | null | undefined): boolean {
-  return (OPEN_ADMIN_SUPPLEMENT_PHASES as readonly string[]).includes(phase ?? "");
-}
+/** Alias of provider open-supplement SoT — keep name for admin workflow call sites. */
+export const isOpenAdminSupplementPhase = isOpenProviderSupplementPhase;
 
 const RECEIPT_DONE_ENOUGH_PHASES = ["ACCEPTED", "PROCESSING", "COMPLETED", "FAILED"] as const;
 

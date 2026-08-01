@@ -39,9 +39,11 @@ next-env.d.ts
 # Local MinIO binary/data (dev)
 .local/
 
-# P4.3 real-ZIP validation scratch (large worker outputs)
+# Phase E2E / validation scratch (local only; never commit)
 /tmp-p4-3-validation/
 /tmp-p4-3-1-e2e/
+/tmp-p*-e2e/
+/tmp-p*-browser-e2e/
 
 # Do not commit local embedding model trees if ever copied into the repo
 /models/

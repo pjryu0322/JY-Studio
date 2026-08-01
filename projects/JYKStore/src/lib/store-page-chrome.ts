@@ -215,12 +215,6 @@ export function resolveStorePageChrome(
       description: "생성, 점검, 보정 순으로 지식데이터를 처리합니다.",
     };
   }
-  if (pathname === ROUTES.adminKnowledgeUnitDrafts) {
-    return {
-      title: "내부 지식 생성 기능 종료",
-      description: "이 기능은 더 이상 사용하지 않습니다.",
-    };
-  }
   if (pathname === ROUTES.adminOps) {
     return {
       title: "운영 콘솔",

@@ -21,6 +21,7 @@ export const ROUTES = {
   /** @deprecated Use `login`. Kept as alias so old links resolve to the shared login page. */
   adminLogin: "/login",
   adminReviews: "/admin/reviews",
+  /** @deprecated P10: redirects to adminReviews; bookmark compatibility only. */
   adminKnowledgeUnitDrafts: "/admin/knowledge-unit-drafts",
   adminOps: "/admin/ops",
   adminOpsUsage: "/admin/ops/usage",
@@ -150,7 +151,6 @@ export type BottomTabKey =
   | "provider"
   | "providerReview"
   | "admin"
-  | "adminAccept"
   | "adminReceipt"
   | "adminKnowledgeScope"
   | "adminGeneration"
@@ -173,7 +173,6 @@ export const BOTTOM_TABS: readonly {
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
   { key: "admin", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📥" },
-  { key: "adminAccept", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📁" },
   { key: "adminReceipt", href: adminQueuePath("receipt"), label: "자료 접수", icon: "📥" },
   {
     key: "adminKnowledgeScope",
@@ -234,7 +233,6 @@ export function bottomTabActive(
         pathname.startsWith(`${ROUTES.providerReviews}/`)
       );
     case "admin":
-    case "adminAccept":
     case "adminReceipt":
       return (
         pathname === ROUTES.admin &&
