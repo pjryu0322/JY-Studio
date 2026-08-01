@@ -1,11 +1,11 @@
-# JYKStore P11 — DB / Object Storage Clean Reset
+# JYKStore P11 ??DB / Object Storage Clean Reset
 
 ## 1. Base / Work SHA
 
 | | SHA |
 |---|---|
 | Base | `f9185449` (P10 PASSED) |
-| Work | *(this commit)* |
+| Work | ca661c5cf2b2fe90f06a7c0c61852d345ecabade |
 
 ## 2. Maintenance
 
@@ -31,7 +31,7 @@
 | KnowledgeScopeInventoryItem | 1,734 |
 | PackCategory (keep) | 13 |
 
-Pack IDs included empirical packs (`rmategridh5webv60`, `p431e2ems633k5n`, `ra-pack-*`, `rh-pack-*`, …) — **all deleted**.
+Pack IDs included empirical packs (`rmategridh5webv60`, `p431e2ems633k5n`, `ra-pack-*`, `rh-pack-*`, ?? ??**all deleted**.
 
 ## 4. Object Inventory Before
 
@@ -67,10 +67,10 @@ All other users deleted. Quick Login lists exactly these 3.
 ## 7. Pack Allowlist
 
 ```text
-유지 Pack = 0
+?��? Pack = 0
 ```
 
-## 8–9. Dry-run
+## 8??. Dry-run
 
 ```text
 safeToExecute: true
@@ -152,7 +152,7 @@ MISSING_OBJECT = 0
 
 ## 17. Role Login Smoke
 
-`scripts/p11-role-empty-smoke.ts` → **PASS**
+`scripts/p11-role-empty-smoke.ts` ??**PASS**
 
 - Admin / Provider / User login OK
 - Admin inbox shows receipt queue
@@ -180,13 +180,13 @@ MISSING_OBJECT = 0
 
 ## 20. Findings
 
-- 18 pre-reset `MISSING_OBJECT` integrity findings (DB storageKey without object) — cleared by DB truncate; reported in dry-run, not hidden.
+- 18 pre-reset `MISSING_OBJECT` integrity findings (DB storageKey without object) ??cleared by DB truncate; reported in dry-run, not hidden.
 - Personal/dev accounts present before reset were removed in favor of canonical `@jyk.local` trio.
 
 ## 21. Remaining Risk
 
 - Local `.env` must include `JYKSTORE_ADMIN_EMAILS=admin@jyk.local` for allowlist promotion on login.
-- Backups live only under `tmp-p11-clean-reset/` — retain outside git if needed.
+- Backups live only under `tmp-p11-clean-reset/` ??retain outside git if needed.
 - P13 must register a **new** pack (no restore of wiped packs).
 
 ## 22. Final Verdict
@@ -195,9 +195,9 @@ MISSING_OBJECT = 0
 P11 DB / OBJECT STORAGE CLEAN RESET PASSED
 ```
 
-### 삭제 증적
+### ??�� 증적
 
-| 영역 | Before | Deleted | Kept | After | Result |
+| ?�역 | Before | Deleted | Kept | After | Result |
 |---|---:|---:|---:|---:|---|
 | User | 5 | 5 | 3 (seeded) | 3 | PASS |
 | ProviderProfile | 44 | 44 | 1 | 1 | PASS |
