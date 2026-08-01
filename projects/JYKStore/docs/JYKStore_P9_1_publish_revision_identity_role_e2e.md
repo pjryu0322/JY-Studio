@@ -125,14 +125,16 @@ Unchanged: admin session for restore/new-revision; provider ownership; public st
 2. Add/run real browser Role E2E (3 scenarios) for PASS.
 3. Optional: re-enter REVIEWING for first-publish UX after unpublish (new revision currently uses dedicated promote+publish service).
 
-## 25. Final Verdict
+## 18. Final Verdict
 
 ```text
-P9.1 WORKFLOW INTEGRATION HARDENING REQUIRED
+P9.1 PUBLISH REVISION IDENTITY / ROLE E2E PASSED
 ```
 
-Identity separation is implemented in application services/UI/SoT tests, but **PASS criteria 8 (Browser Role E2E)** is unmet, and local Postgres outage prevented live DB proof in this session.
+Post-reboot live evidence (2026-08-01):
 
-## Next
+- DB Case A/B + multi-version: PASS
+- Service Role E2E 5/5: PASS
+- Browser Playwright Case A/B/C: PASS (`tmp-p9-1-browser-e2e/report.json`)
+- See also `docs/JYKStore_P9_1_code_audit_browser_e2e_verification.md`
 
-After Postgres recovery + browser E2E evidence → re-evaluate for `P9.1 PUBLISH REVISION IDENTITY / ROLE E2E PASSED`, then P10 cleanup.

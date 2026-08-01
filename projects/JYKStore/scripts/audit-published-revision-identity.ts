@@ -53,9 +53,14 @@ async function auditPack(packId: string) {
   const binding = parseProviderReviewRevisionBinding(markers.providerReviewSummary);
   const publicPack = await loadPublicRetrievalPack(packId);
   let publicServedGenerationId: string | null = null;
+  let publicServeError: string | null = null;
   if (publicPack) {
-    const scope = await resolvePublicRetrievalGenerationScope(publicPack.versionId);
-    publicServedGenerationId = scope.searchIndexGenerationId;
+    try {
+      const scope = await resolvePublicRetrievalGenerationScope(publicPack.versionId);
+      publicServedGenerationId = scope.searchIndexGenerationId;
+    } catch (error) {
+      publicServeError = error instanceof Error ? error.message : String(error);
+    }
   }
   const recovery = await resolvePublishRecoveryForPack(packId);
 
@@ -67,13 +72,15 @@ async function auditPack(packId: string) {
       : null;
 
   const risk =
-    Boolean(reviewedId) &&
-    Boolean(publicServedGenerationId) &&
-    reviewedId !== publicServedGenerationId
-      ? "REVIEWED_NE_SERVED"
-      : recovery.mode === "PUBLISH_NEW_REVISION" && reviewedId === productionId
-        ? "DRAFT_REVIEW_POINTS_AT_PRODUCTION"
-        : "OK";
+    publicServeError
+      ? "PUBLIC_SERVE_ERROR"
+      : Boolean(reviewedId) &&
+          Boolean(publicServedGenerationId) &&
+          reviewedId !== publicServedGenerationId
+        ? "REVIEWED_NE_SERVED"
+        : recovery.mode === "PUBLISH_NEW_REVISION" && reviewedId === productionId
+          ? "DRAFT_REVIEW_POINTS_AT_PRODUCTION"
+          : "OK";
 
   return {
     packId: pack.packId,
@@ -86,6 +93,7 @@ async function auditPack(packId: string) {
     providerReviewPhase: markers.providerReviewPhase,
     publicServedVersionId: publicPack?.versionId ?? null,
     publicServedGenerationId,
+    publicServeError,
     recoveryMode: recovery.mode,
     identityMatch,
     risk,
