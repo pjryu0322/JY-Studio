@@ -1,11 +1,11 @@
-# JYKStore P11 ??DB / Object Storage Clean Reset
+# JYKStore P11 ? DB / Object Storage Clean Reset
 
 ## 1. Base / Work SHA
 
 | | SHA |
 |---|---|
 | Base | `f9185449` (P10 PASSED) |
-| Work | ca661c5cf2b2fe90f06a7c0c61852d345ecabade |
+| Work | `1c825a90` (docs) / `ca661c5c` (reset) |
 
 ## 2. Maintenance
 
@@ -67,7 +67,7 @@ All other users deleted. Quick Login lists exactly these 3.
 ## 7. Pack Allowlist
 
 ```text
-?†Ï? Pack = 0
+???? Pack = 0
 ```
 
 ## 8??. Dry-run
@@ -195,9 +195,9 @@ MISSING_OBJECT = 0
 P11 DB / OBJECT STORAGE CLEAN RESET PASSED
 ```
 
-### ??†ú Ï¶ùÏ†Å
+### ???? ??
 
-| ?ÅÏó≠ | Before | Deleted | Kept | After | Result |
+| ??? | Before | Deleted | Kept | After | Result |
 |---|---:|---:|---:|---:|---|
 | User | 5 | 5 | 3 (seeded) | 3 | PASS |
 | ProviderProfile | 44 | 44 | 1 | 1 | PASS |
