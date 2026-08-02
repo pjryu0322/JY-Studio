@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
@@ -21,11 +21,14 @@ import {
   ADMIN_REVIEW_CTA_UNPUBLISH,
 } from "@/lib/role-based-ux-copy";
 import { packDetailPath, ROUTES } from "@/lib/routes";
+import { assemblePackWorkflowFacts } from "@/lib/workflow/pack-workflow-facts-assemble";
+import { buildPackWorkflowSnapshot } from "@/lib/workflow/pack-workflow-snapshot";
 import type { PublishRecoveryResolution } from "@/lib/workflow/publish-recovery";
 import { UiTooltip } from "@/components/UiTooltip";
 
 /**
- * P6/P9.1 — Publish workbench: first publish, 게시 중단, Restore Existing, New Revision.
+ * P6/P9.1 / P12.1 — Publish workbench driven by PackWorkflowSnapshot actions.
+ * Server publishing/* policies remain command enforcement SoT.
  */
 export function AdminApprovalPublishWorkbenchPanel({
   packId,
@@ -36,6 +39,7 @@ export function AdminApprovalPublishWorkbenchPanel({
   quality,
   workerZipPhase,
   channelGates,
+  knowledgeScopeFinalized = true,
   onUpdated,
   onGoGeneration,
   onGoQuality,
@@ -51,6 +55,7 @@ export function AdminApprovalPublishWorkbenchPanel({
   readonly quality: AdminQualityGateSnapshot;
   readonly workerZipPhase: AdminWorkerZipPhase;
   readonly channelGates?: AdminServiceChannelGatesSnapshot | null;
+  readonly knowledgeScopeFinalized?: boolean;
   readonly onUpdated: (next: AdminReviewDetailDto) => void;
   readonly onGoGeneration?: () => void;
   readonly onGoQuality?: () => void;
@@ -74,9 +79,8 @@ export function AdminApprovalPublishWorkbenchPanel({
     channelGates,
   });
 
-  const showDecisionForm = vm.canDecide && detail.pack.status === "REVIEWING";
-  const isPublishedLike = vm.status === "PUBLISHED" || vm.status === "VERIFIED";
   const isDraft = detail.pack.status === "DRAFT";
+  const isPublishedLike = detail.pack.status === "PUBLISHED" || detail.pack.status === "VERIFIED";
 
   useEffect(() => {
     if (!isDraft) {
@@ -97,6 +101,53 @@ export function AdminApprovalPublishWorkbenchPanel({
     };
   }, [packId, isDraft, detail.pack.updatedAt, detail.pack.status]);
 
+  const snapshot = useMemo(() => {
+    const facts = assemblePackWorkflowFacts({
+      packId,
+      packStatus: detail.pack.status,
+      workerZipPhase,
+      knowledgeScopeFinalized,
+      quality,
+      openSupplement,
+      serviceValidationPhase: serviceDone ? "PASSED" : "NONE",
+      providerReviewPhase: providerConfirmed
+        ? "CONFIRMED"
+        : "NONE",
+      packReviewStatus: detail.latestReview?.status ?? null,
+      recoveryMode: recovery?.mode ?? null,
+      preservedGenerationId: recovery?.preservedGenerationId ?? null,
+      productionGenerationId: recovery?.preservedGenerationId ?? null,
+      generationId: recovery?.currentDraftGenerationId ?? null,
+    });
+    return buildPackWorkflowSnapshot(facts);
+  }, [
+    packId,
+    detail.pack.status,
+    detail.latestReview?.status,
+    workerZipPhase,
+    knowledgeScopeFinalized,
+    quality,
+    openSupplement,
+    serviceDone,
+    providerConfirmed,
+    recovery,
+  ]);
+
+  const actions = useMemo(
+    () => new Set(snapshot.availableActions),
+    [snapshot.availableActions],
+  );
+
+  const showDecisionForm =
+    actions.has("PUBLISH_FIRST_REVISION") && detail.pack.status === "REVIEWING";
+  const showUnpublish = actions.has("UNPUBLISH");
+  const showRestore = actions.has("RESTORE_EXISTING_REVISION");
+  const showNewRevision = actions.has("PUBLISH_NEW_REVISION");
+  const showNewRevisionBlocked =
+    isDraft &&
+    recovery?.mode === "PUBLISH_NEW_REVISION" &&
+    !showNewRevision;
+
   const noCorrection =
     quality.completed && !quality.hasBlockers && quality.failCount === 0;
   const gates = [
@@ -105,11 +156,24 @@ export function AdminApprovalPublishWorkbenchPanel({
     { id: "provider", label: "제공자 검토 완료", done: providerConfirmed && !openSupplement },
   ];
 
-  const runRemediation = (id: string) => {
-    if (id === "generation") onGoGeneration?.();
-    else if (id === "correction") (onGoCorrection ?? onGoQuality)?.();
-    else if (id === "publish" || id === "providerConfirm") onGoProviderReview?.();
-    else if (id === "serviceValidation" || id === "searchValidation") onGoServiceValidation?.();
+  const runRemediation = (code: string) => {
+    if (code === "QUALITY_BLOCKERS" || code === "UNRESOLVED_CORRECTION" || code === "OPEN_SUPPLEMENT") {
+      (onGoCorrection ?? onGoQuality)?.();
+      return;
+    }
+    if (code === "SERVICE_VALIDATION_REQUIRED") {
+      onGoServiceValidation?.();
+      return;
+    }
+    if (code === "PROVIDER_REVIEW_REQUIRED" || code === "PROVIDER_REVIEW_STALE") {
+      onGoProviderReview?.();
+      return;
+    }
+    if (code === "INVENTORY_NOT_FINALIZED") {
+      onGoGeneration?.();
+      return;
+    }
+    onGoGeneration?.();
   };
 
   const onUnpublish = async () => {
@@ -160,11 +224,20 @@ export function AdminApprovalPublishWorkbenchPanel({
   };
 
   const recoveryBadge =
-    recovery?.mode === "RESTORE_EXISTING"
+    actions.has("RESTORE_EXISTING_REVISION")
       ? "기존 게시본 복구 가능"
-      : recovery?.mode === "PUBLISH_NEW_REVISION"
+      : actions.has("PUBLISH_NEW_REVISION") || recovery?.mode === "PUBLISH_NEW_REVISION"
         ? "새 Revision 게시 필요"
         : null;
+
+  const blockingForUi =
+    snapshot.blockingReasons.length > 0
+      ? snapshot.blockingReasons
+      : vm.blockedReasons.map((message) => ({
+          code: "LEGACY_BLOCK",
+          message,
+          step: "publish" as const,
+        }));
 
   return (
     <div className="space-y-2">
@@ -174,10 +247,10 @@ export function AdminApprovalPublishWorkbenchPanel({
           <UiTooltip content={recovery?.message || vm.summaryMessage}>
             <span
               className={`rounded px-2 py-0.5 text-[11px] font-bold ${
-                vm.status === "READY_TO_DECIDE" ||
+                showDecisionForm ||
                 isPublishedLike ||
-                recovery?.mode === "RESTORE_EXISTING" ||
-                recovery?.canPublishNewRevision
+                showRestore ||
+                showNewRevision
                   ? "bg-emerald-50 text-emerald-900"
                   : "bg-amber-50 text-amber-950"
               }`}
@@ -202,22 +275,26 @@ export function AdminApprovalPublishWorkbenchPanel({
           ))}
         </ul>
 
-        {vm.status === "BLOCKED" && vm.remediationActions.length > 0 ? (
+        {!showDecisionForm &&
+        !showUnpublish &&
+        !showRestore &&
+        !showNewRevision &&
+        blockingForUi.length > 0 ? (
           <div className="flex flex-wrap gap-1">
-            {vm.remediationActions.map((action) => (
+            {blockingForUi.slice(0, 3).map((reason) => (
               <button
-                key={action.id}
+                key={`${reason.code}:${reason.message}`}
                 type="button"
-                onClick={() => runRemediation(action.id)}
+                onClick={() => runRemediation(reason.code)}
                 className="min-h-[32px] rounded border border-slate-300 bg-white px-2 text-[11px] font-bold text-slate-900"
               >
-                {action.label}
+                {reason.message}
               </button>
             ))}
           </div>
         ) : null}
 
-        {isPublishedLike ? (
+        {showUnpublish ? (
           <div className="flex flex-wrap gap-2">
             <a
               href={packDetailPath(packId)}
@@ -242,7 +319,7 @@ export function AdminApprovalPublishWorkbenchPanel({
           </div>
         ) : null}
 
-        {isDraft && recovery?.mode === "RESTORE_EXISTING" ? (
+        {showRestore ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -260,13 +337,13 @@ export function AdminApprovalPublishWorkbenchPanel({
           </div>
         ) : null}
 
-        {isDraft && recovery?.mode === "PUBLISH_NEW_REVISION" ? (
+        {showNewRevision || showNewRevisionBlocked ? (
           <div className="space-y-2">
             <p className="text-[11px] text-slate-600">
               새 Draft Revision이 있습니다. 기존 게시본 복구는 차단되며, 검토한 Draft를
               PRODUCTION으로 승격해 게시해야 합니다.
             </p>
-            {recovery.canPublishNewRevision ? (
+            {showNewRevision ? (
               <button
                 type="button"
                 disabled={lifecycleBusy !== null}
@@ -279,7 +356,8 @@ export function AdminApprovalPublishWorkbenchPanel({
               </button>
             ) : (
               <div className="flex flex-wrap gap-1">
-                {!serviceDone ? (
+                {snapshot.blockingReasons.some((r) => r.code === "SERVICE_VALIDATION_REQUIRED") ||
+                !serviceDone ? (
                   <button
                     type="button"
                     onClick={() => onGoServiceValidation?.()}
@@ -288,7 +366,8 @@ export function AdminApprovalPublishWorkbenchPanel({
                     서비스 검증으로 이동
                   </button>
                 ) : null}
-                {!providerConfirmed ? (
+                {snapshot.blockingReasons.some((r) => r.code === "PROVIDER_REVIEW_REQUIRED") ||
+                !providerConfirmed ? (
                   <button
                     type="button"
                     onClick={() => onGoProviderReview?.()}

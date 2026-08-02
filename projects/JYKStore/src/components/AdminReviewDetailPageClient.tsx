@@ -371,6 +371,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             quality={quality}
             workerZipPhase={workerZipPhase}
             channelGates={channelGates}
+            knowledgeScopeFinalized={knowledgeScopeReady}
             onUpdated={(next) => {
               setDetail(next);
               void refreshSilently();
