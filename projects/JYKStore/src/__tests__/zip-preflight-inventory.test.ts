@@ -121,10 +121,16 @@ describe("admin 사전정리 UX wiring", () => {
     );
     assert.ok(card.includes("admin_preflight_excluded"));
     assert.ok(!card.includes("|| generationDone)"));
-    const genService = readFileSync(
-      join(projectRoot, "src/lib/python-worker/worker-zip/admin-execution.ts"),
-      "utf8",
-    );
+    const genService = [
+      readFileSync(
+        join(projectRoot, "src/lib/python-worker/worker-zip/admin-execution/execute-worker-run.ts"),
+        "utf8",
+      ),
+      readFileSync(
+        join(projectRoot, "src/lib/python-worker/worker-zip/admin-execution/prepare-admin-generation.ts"),
+        "utf8",
+      ),
+    ].join("\n");
     assert.ok(genService.includes("adminExcludePaths"));
     assert.ok(genService.includes("adminPreflightExclusions"));
     const runner = readFileSync(
