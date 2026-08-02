@@ -88,7 +88,7 @@ describe("admin provider review P0 (open supplement)", () => {
   });
 
   it("markAdminServiceValidationPassed rejects open supplement with PROVIDER_SUPPLEMENT_OPEN", () => {
-    const markers = readSource("src/lib/store-workflow-markers.ts");
+    const markers = readSource("src/lib/workflow/markers/service-validation.ts");
     const fnStart = markers.indexOf("export async function markAdminServiceValidationPassed");
     assert.ok(fnStart >= 0);
     const fnBody = markers.slice(fnStart, fnStart + 2500);

@@ -122,7 +122,7 @@ describe("admin 사전정리 UX wiring", () => {
     assert.ok(card.includes("admin_preflight_excluded"));
     assert.ok(!card.includes("|| generationDone)"));
     const genService = readFileSync(
-      join(projectRoot, "src/lib/python-worker/worker-zip-import-provider-service.ts"),
+      join(projectRoot, "src/lib/python-worker/worker-zip/admin-execution.ts"),
       "utf8",
     );
     assert.ok(genService.includes("adminExcludePaths"));

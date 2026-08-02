@@ -9,7 +9,10 @@ import {
   WORKER_ZIP_REQUEST_ACCEPTED_STATUS,
   WORKER_ZIP_REQUEST_TRIGGER,
 } from "@/lib/python-worker/worker-zip-import-provider-service";
-import { batchResolveStoreWorkflowMarkers } from "@/lib/store-workflow-markers";
+import {
+  batchResolveStoreWorkflowMarkers,
+  type StoreWorkflowMarkerSnapshot,
+} from "@/lib/store-workflow-markers";
 import type { PackWorkflowFacts } from "@/lib/workflow/pack-workflow-facts";
 import {
   normalizePackReviewStatus,
@@ -38,6 +41,19 @@ type PrismaLike = Pick<
 
 const WORKER_ZIP_IMPORT_TRIGGER = "WORKER_ZIP_IMPORT";
 
+const EMPTY_MARKER_SNAPSHOT: StoreWorkflowMarkerSnapshot = {
+  providerReviewPhase: "NONE",
+  serviceValidationPhase: "NONE",
+  providerReviewRequestedAt: null,
+  providerReviewConfirmedAt: null,
+  serviceValidationPassedAt: null,
+  providerReviewSummary: null,
+  providerChangesRequest: null,
+  providerSupplementPhase: "NONE",
+  providerSupplement: null,
+  providerSupplementSubmittedAt: null,
+};
+
 export async function loadPackWorkflowFacts(
   packId: string,
   client: PrismaLike = prisma,
@@ -65,10 +81,20 @@ export async function loadPackWorkflowFacts(
 export async function batchLoadPackWorkflowFacts(
   packIds: readonly string[],
   client: PrismaLike = prisma,
+  options?: { markersByPackId?: Map<string, StoreWorkflowMarkerSnapshot> },
 ): Promise<Map<string, PackWorkflowFacts>> {
   const unique = [...new Set(packIds.map((id) => id.trim()).filter(Boolean))];
   const out = new Map<string, PackWorkflowFacts>();
   if (unique.length === 0) return out;
+
+  const providedMarkers = options?.markersByPackId;
+  const markersPromise: Promise<Map<string, StoreWorkflowMarkerSnapshot>> = providedMarkers
+    ? Promise.resolve(
+        new Map(
+          unique.map((id) => [id, providedMarkers.get(id) ?? EMPTY_MARKER_SNAPSHOT]),
+        ),
+      )
+    : batchResolveStoreWorkflowMarkers(unique, client as never);
 
   const [
     packs,
@@ -176,7 +202,7 @@ export async function batchLoadPackWorkflowFacts(
       orderBy: { createdAt: "desc" },
       select: { entityId: true, metadata: true, createdAt: true },
     }),
-    batchResolveStoreWorkflowMarkers(unique, client as never),
+    markersPromise,
   ]);
 
   const packStatusById = new Map(packs.map((p) => [p.packId, p.status]));

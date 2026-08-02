@@ -837,7 +837,7 @@ describe("store workflow handoff gates", () => {
   });
 
   it("service-validation complete API surfaces binding errors", () => {
-    const markers = readSource("src/lib/store-workflow-markers.ts");
+    const markers = readSource("src/lib/workflow/markers/service-validation.ts");
     assert.ok(markers.includes("BINDING_MISSING") || markers.includes("STALE_BINDING"));
     assert.ok(markers.includes("WORKER_ZIP_GENERATION_MISSING"));
     assert.ok(markers.includes("WORKER_ZIP_NOT_PASSED"));

@@ -98,7 +98,10 @@ export async function listReviewingPacks() {
   const { batchAttachInboxWorkflow, withInboxWorkflow } = await import(
     "@/lib/admin-work-inbox/admin-work-inbox-workflow"
   );
-  const workflowByPack = await batchAttachInboxWorkflow(items.map((item) => item.packId));
+  const workflowByPack = await batchAttachInboxWorkflow(
+    items.map((item) => item.packId),
+    { markersByPackId },
+  );
   return withInboxWorkflow(items, workflowByPack);
 }
 

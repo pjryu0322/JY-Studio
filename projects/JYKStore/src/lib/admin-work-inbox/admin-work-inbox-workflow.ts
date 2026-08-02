@@ -7,13 +7,15 @@ import {
   buildPackWorkflowSnapshot,
   toPackWorkflowRuntimeSummary,
 } from "@/lib/workflow/pack-workflow-snapshot";
+import type { StoreWorkflowMarkerSnapshot } from "@/lib/store-workflow-markers";
 
 export type InboxWorkflowAttachment = PackWorkflowRuntimeSummary;
 
 export async function batchAttachInboxWorkflow(
   packIds: readonly string[],
+  options?: { markersByPackId?: Map<string, StoreWorkflowMarkerSnapshot> },
 ): Promise<Map<string, InboxWorkflowAttachment>> {
-  const factsByPack = await batchLoadPackWorkflowFacts(packIds);
+  const factsByPack = await batchLoadPackWorkflowFacts(packIds, undefined, options);
   const out = new Map<string, InboxWorkflowAttachment>();
   for (const [packId, facts] of factsByPack) {
     out.set(
