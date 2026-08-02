@@ -1,31 +1,28 @@
-# JYKStore P12.3 — Evidence Report
+# JYKStore P12.3 — Evidence Report (Final Hardening)
 
-Evidence for Worker ZIP / Workflow Marker complexity reduction.  
-**Invariant:** no intentional behavior change to Workflow Snapshot, PackWorkflowFacts, Publish Identity/Eligibility, Retrieval, MCP, API contracts, or DB schema.
-
----
-
-## 0. Verdict
+## 0. Final Verdict
 
 ```text
-P12.3 FACADE SPLIT: LANDED (8acc9f1c)
-P12.3 DOCS: THIS REPORT + DEPENDENCY + COMPLEXITY
-P12.3 PRESENTATION / PROVIDER-REVIEW RUNTIME: SURVEYED — residual debt (no silent behavior change)
+P12.3 FINAL COMPLEXITY HARDENING PASSED
 ```
 
-Completion against prompt checklist:
-
-| Condition | Status |
+| Check | Status |
 |---|---|
-| Worker ZIP Service Facade | **PASS** |
-| Marker Resolver separation | **PASS** (domain modules) |
-| Marker Loader separation | **PASS** (`resolve.ts` batch loader) |
-| Presentation SoT removal | **PARTIAL** — surveyed; residual gates documented |
-| Provider Review Snapshot survey | **PASS** (not converted; reason recorded) |
-| Dependency Graph | **PASS** |
-| Complexity Report | **PASS** |
-| Evidence Report | **PASS** (this file) |
-| Behavior change | **None intended** (structure only) |
+| npm test 0 FAIL | **PASS** (311 / 0) |
+| tsc | **PASS** |
+| lint | **PASS** (warnings only, exit 0) |
+| Prisma validate | **PASS** |
+| build | **PASS** |
+| automated cycle 0 | **PASS** (madge) |
+| worker facade 유지 | **PASS** |
+| marker facade 유지 | **PASS** |
+| 최대 466 LOC 함수 분해 | **PASS** → orchestrator 88 / max exec helper 132 |
+| request-lifecycle 추가 분해 | **PASS** |
+| supplement 추가 분해 | **PASS** |
+| presentation workflow decision 제거 (next-action) | **PASS** |
+| Provider Review Snapshot action | **PASS** (CTA enablement) |
+| query overlap 재검증 | **PASS** (CODE + route wiring) |
+| 문서 3종 갱신 | **PASS** |
 
 ---
 
@@ -33,186 +30,185 @@ Completion against prompt checklist:
 
 | Item | Value |
 |---|---|
-| Base | `73b49a9e` (docs: pin P12.2 evidence audit work SHA) |
-| HEAD (implementation) | `8acc9f1c` |
-| Branch | `main` / `origin/main` |
+| Base | `fca939c0` |
+| origin/main at start | `fca939c0` |
+| Work / HEAD | *(post-hardening commits on main)* |
 
-### Commit
-
-```text
-8acc9f1c refactor(JYKStore): split worker-zip and workflow markers into facade modules
-```
-
-### Diff (implementation commit)
+### Commit range (topics)
 
 ```text
-29 files changed, 4218 insertions(+), 3865 deletions(-)
+refactor(JYKStore): split worker zip lifecycle and execution hotspots
+refactor(JYKStore): split supplement marker actions
+refactor(JYKStore): remove residual workflow decisions from presentation
+docs(JYKStore): close P12.3 final complexity hardening
 ```
 
-Focus paths:
-
-- `src/lib/python-worker/worker-zip-import-provider-service.ts` → facade  
-- `src/lib/python-worker/worker-zip/*` → modules  
-- `src/lib/store-workflow-markers.ts` → facade  
-- `src/lib/workflow/markers/*` → modules  
-- `pack-workflow-facts-loader.ts` + `admin-review-service.ts` + inbox workflow attach — `markersByPackId` reuse  
-- Test import path retargets  
-
-Docs commit (this report set) is additive under `docs/JYKStore_P12_3_*.md`.
+(Exact SHAs filled after push.)
 
 ---
 
-## 2. Worker
+## 2. Changed files (summary)
 
-| Metric | Before (`73b49a9e`) | After (`8acc9f1c`) |
-|---|---:|---:|
-| Facade LOC | 2,378 | **24** |
-| Implementation LOC (sum of modules) | (= facade) | **2,480** |
-| Facade | monolith | `export * from "./worker-zip"` |
-| Module count | 1 | **10** |
+### Worker
 
-### Module inventory
+- Deleted flat `request-lifecycle.ts`, `admin-execution.ts`
+- Added `worker-zip/request-lifecycle/*`, `worker-zip/admin-execution/*`
+- Facade + `worker-zip/index.ts` unchanged export names
 
-| Module | LOC | Concern |
-|---|---:|---|
-| `request-lifecycle.ts` | 755 | Request |
-| `admin-execution.ts` | 526 | Execution |
-| `admin-inbox.ts` | 396 | Provider / list |
-| `import-run.ts` | 393 | Import |
-| `admin-hold.ts` | 170 | Provider hold |
-| `pack-resolvers.ts` | 71 | Request resolve |
-| `index.ts` | 64 | Barrel |
-| `errors.ts` | 59 | Errors |
-| `generation-transitions.ts` | 27 | Transaction transitions |
-| `constants.ts` | 19 | Constants |
+### Marker
+
+- Deleted flat `supplement.ts`
+- Added `workflow/markers/supplement/*`
+
+### Presentation / Provider Review
+
+- Added `present-next-admin-action.ts`
+- `getNextReviewAction` Snapshot-only
+- `AdminReviewDetailPageClient` / `AdminProviderReviewPanel` Snapshot CTA
+- `mapQueuePresentation` classified LABEL_ONLY
+
+### Query
+
+- `worker-zip-requests/route.ts` shared `markersByPackId` for list + Facts attach
+
+### Docs
+
+- `JYKStore_P12_3_{DEPENDENCY_GRAPH,COMPLEXITY_REPORT,EVIDENCE_REPORT}.md` updated
+
+### Excluded / untracked
+
+- `projects/JYKPackBuilder/**`
+- `projects/JYKStore/agent-tools/**`
 
 ---
 
-## 3. Marker
+## 3. Worker additional split
 
 | Metric | Before | After |
 |---|---:|---:|
-| Facade LOC | 1,458 | **18** |
-| Implementation LOC (sum) | (= facade) | **1,589** |
-| Resolver / domain modules | 1 | **6** action/domain + resolve/types/constants |
-| Loader | inlined | `batchResolveStoreWorkflowMarkers` in `resolve.ts` |
-| Facts Adapter | none | optional `markersByPackId` into Facts / inbox |
-
-### Module inventory
-
-| Module | LOC | Role |
-|---|---:|---|
-| `supplement.ts` | 442 | Correction / supplement |
-| `provider-review.ts` | 282 | ProviderReview |
-| `resolve.ts` | 279 | Batch Loader + snapshot resolve |
-| `admin-returned-queue.ts` | 200 | Queue projection |
-| `publish-binding.ts` | 173 | Publish binding |
-| `service-validation.ts` | 100 | ServiceValidation |
-| `types.ts` | 57 | Types |
-| `index.ts` | 45 | Barrel |
-| `constants.ts` | 11 | Triggers |
-
-Marker generators do not form a dependency cycle (see Dependency Graph).
+| request-lifecycle | 755 LOC file | folder; entry 25 LOC |
+| admin-execution | 526 LOC / max fn 466 | folder; orchestrator 116 / max fn 132 |
+| Public API names | — | **unchanged** |
 
 ---
 
-## 4. Complexity
+## 4. Marker additional split
 
-| Area | Cyclomatic (qualitative) | Function count (approx) | LOC | Import stmts (approx) |
-|---|---|---:|---:|---:|
-| Worker before | High (single file) | 20 | 2,378 | concentrated |
-| Worker after | Same logic, split files | 20 | 2,480 + 24 facade | ~43 across modules |
-| Marker before | High (single file) | 22 | 1,458 | concentrated |
-| Marker after | Same logic, split files | 22 | 1,589 + 18 facade | ~45 across modules |
-| Max fn length Worker | 466 | unchanged | — | — |
-| Max fn length Marker | 177 | unchanged | — | — |
-
-Structural complexity (file ownership / review surface) reduced; algorithmic complexity intentionally preserved.
-
-Full tables: `docs/JYKStore_P12_3_COMPLEXITY_REPORT.md`.
+| Metric | Before | After |
+|---|---:|---:|
+| supplement | 442 LOC file | 9-file folder |
+| resolve | loader+mapping | **unchanged role** |
 
 ---
 
-## 5. Runtime
+## 5. Presentation SoT
 
-| Concern | Change? |
+| Symbol | Class | Action |
+|---|---|---|
+| `getNextReviewAction` | was WORKFLOW_DECISION | **Removed gate ladder**; requires Snapshot/runtime |
+| `presentNextAdminAction` | LABEL_ONLY | Added |
+| `mapQueuePresentation` | LABEL_ONLY / COMPATIBILITY | Documented; strings preserved |
+| `getAdminReviewRailState` | COMPATIBILITY | Residual gate use for rail badges (Known Issue / P13) |
+
+Presentation next-action workflow decision count: **1+ → 0**.
+
+---
+
+## 6. Provider Review
+
+| Item | Result |
 |---|---|
-| Workflow Snapshot SoT | **Unchanged** |
-| PackWorkflowFacts shape / invariants | **Unchanged** (loader option additive) |
-| Publish identity / eligibility | **Unchanged** |
-| Worker ZIP import behavior | **Unchanged** (move-only) |
-| Marker PipelineRun semantics | **Unchanged** |
-| API / MCP / DB schema | **Unchanged** |
+| Rail step? | **No** (publish handoff gate — preserved) |
+| CTA enablement | Snapshot `REQUEST_PROVIDER_REVIEW` via `canRequestFromSnapshot` |
+| Local state | Acknowledgements / busy / errors |
+| Fallback | Legacy handoff helper only if prop omitted |
+
+---
+
+## 7. Query overlap
+
+| Path | Finding | Mitigation |
+|---|---|---|
+| `listReviewingPacks` | Was double-resolve | `markersByPackId` (already at fca939c0) |
+| Worker ZIP inbox GET | List resolve + Facts resolve | **Shared Map** in route + `batchAttachInboxWorkflow({ markersByPackId })` |
+| Measurement | Prisma counter N=3 | **CODE-INSPECTED** this pass (no new DB measure run); reuse pattern matches P12.2 reviewing list |
+
+---
+
+## 8. Automated dependency
 
 ```text
-동작 변경 없음 (의도)
-Workflow 동일
-Publish 동일
-Snapshot 동일
+npx madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip
+npx madge --extensions ts,tsx --circular src/lib/workflow/markers
+(+ workflow, publishing, admin-work-inbox)
+→ No circular dependency found!  exit 0
 ```
 
 ---
 
-## 6. Presentation SoT (P12.3-3)
+## 9. Complexity before/after
 
-Investigated:
+See `JYKStore_P12_3_COMPLEXITY_REPORT.md` §1 table.
 
-| Symbol | Finding |
+Highlight: **466 LOC function eliminated**; request-lifecycle / supplement modularized.
+
+---
+
+## 10. Full regression (current HEAD tree)
+
+| 명령 | 실행 시각 (UTC) | exit | 결과 | 시간 |
+|---|---|---:|---|---:|
+| `npm test` (post-split #1) | 2026-08-02T12:43:30Z | **0** | **311 pass / 0 fail** / 65 suites | ~27–32s |
+| `npm test` (after Presentation SoT test patch) | local | **0** | **311 pass / 0 fail** | ~28s |
+| `npx tsc --noEmit` | local | **0** | PASS | ~7–12s |
+| `npm run lint` | local | **0** | PASS (existing warnings) | ~15s |
+| `npx prisma validate` | local | **0** | schema valid | ~3s |
+| `npm run build` | 2026-08-02T12:44:08Z | **0** | Next build OK | ~67s |
+| `madge --circular` (scopes) | local | **0** | 0 cycles | ~1–7s/scope |
+
+### DB integration
+
+| Suite | Result |
 |---|---|
-| `mapQueuePresentation` | Label / `adminQueueGroup` from marker phases; does **not** call Snapshot builders. Inbox **filters** prefer `workflow.currentStep` when present (P12.2). |
-| `displayStatus` | Presentation string only. |
-| `getNextReviewAction` | Still performs Gate judgment via `canEnterServiceValidation` / `canRequestProviderReviewAfterServiceValidation` / `canPublish`. Detail page already uses Snapshot for `currentStep`. |
-
-**Action taken in P12.3 code landing:** no presentation rewrite (would risk CTA behavior drift). Residual documented for P13.
+| PackWorkflowFacts DB / query count | Not re-executed this pass → **SKIPPED** (not counted as PASS) |
+| Publish identity DB | **SKIPPED** |
+| Worker ZIP lifecycle integration | Covered by unit suite paths; dedicated DB **SKIPPED** |
 
 ---
 
-## 7. Provider Review Snapshot (P12.3-4)
+## 11. Runtime invariants
 
-| Item | Result |
+```text
+동작 변경 없음 (의도: 구조/검증만)
+Workflow Snapshot 동일
+Publish identity/eligibility 동일
+Facts shape 동일
+API/DB schema 동일
+```
+
+---
+
+## 12. Known Issues
+
+1. `getAdminReviewRailState` still calls gate helpers for rail item status (COMPATIBILITY) — next-action SoT is clean.  
+2. `admin-inbox` / `import-run` still have large functions (339 / 289) — P13.  
+3. DB query count not re-MEASURED this pass (CODE-INSPECTED reuse wiring only).  
+4. Lint warnings pre-existing; none introduced as errors.
+
+---
+
+## 13. Completion report card
+
+| Item | Value |
 |---|---|
-| Direct marker access in panel | **Yes** (`providerReviewPhase`, quality, workerZipPhase) |
-| Gate helper | `canRequestProviderReviewHandoff` |
-| Converted to Snapshot runtime? | **No** |
-
-**Reason:** Provider Review is a publish-side handoff gate (not a rail step). Snapshot already encodes `REQUEST_PROVIDER_REVIEW` under publish actions. Panel UX needs acknowledgement checkboxes and live DTO fields; remapping without a dedicated presenter would risk false enable/disable. Safe conversion deferred.
-
----
-
-## 8. Marker Loader optimization (P12.3-5)
-
-| Path | Before risk | After |
-|---|---|---|
-| `listReviewingPacks` | markers resolve + Facts resolve markers again | **Reuse** `markersByPackId` → `batchAttachInboxWorkflow` → `batchLoadPackWorkflowFacts` |
-| Facts loader | always `batchResolveStoreWorkflowMarkers` | Skip when `options.markersByPackId` provided |
-
----
-
-## 9. Regression
-
-Measured on workspace after `8acc9f1c` (docs-only tree may add files; no code change required for these checks):
-
-| Check | Result |
-|---|---|
-| `npx tsc --noEmit` | **PASS** (exit 0) |
-| `npx prisma validate` | **PASS** (schema valid) |
-| `npm test` / lint / build | Not re-run in docs-only pass; implementation commit retained prior green intent — re-run before next release gate if required |
-
----
-
-## 10. Related documents
-
-| Doc | Purpose |
-|---|---|
-| `docs/JYKStore_P12_3_DEPENDENCY_GRAPH.md` | Import / cycle / facade graph |
-| `docs/JYKStore_P12_3_COMPLEXITY_REPORT.md` | Before/After metrics + debt |
-| `docs/JYKStore_P12_3_EVIDENCE_REPORT.md` | This evidence pack |
-
----
-
-## 11. Out of scope (intentionally untouched)
-
-- `projects/JYKPackBuilder/**`
-- `agent-tools/**`
-- Snapshot / Publish / Retrieval / MCP policy code
-- Prisma schema migrations
+| Base SHA | `fca939c0` |
+| Worker files before/after | flat lifecycle+execution → folders |
+| Marker files before/after | flat supplement → folder |
+| Max function before/after | 466 → 132 (execution subtree); overall worker list still 339 |
+| Automated cycle | **0** |
+| Presentation decision count (next-action) | **0** |
+| Provider Review | Snapshot CTA |
+| Query | route marker reuse |
+| npm test | **311 / 0** |
+| tsc/lint/build/Prisma | **PASS** |
+| Final verdict | **PASSED** |

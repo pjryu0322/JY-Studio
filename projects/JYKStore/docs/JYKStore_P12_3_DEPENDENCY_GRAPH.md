@@ -1,212 +1,122 @@
-# JYKStore P12.3 — Dependency Graph
-
-Structural dependency map after Worker ZIP / Workflow Marker complexity reduction.  
-Scope: `projects/JYKStore/**` only. Policies (Snapshot, Facts, Publish, Retrieval, MCP, API, schema) unchanged.
+# JYKStore P12.3 — Dependency Graph (Final Hardening)
 
 | | SHA |
 |---|---|
-| Base (pre-P12.3) | `73b49a9e` |
-| HEAD (facade split) | `8acc9f1c` |
+| Base (pre-final) | `fca939c0` |
+| Work | see Evidence Report HEAD |
 
 ---
 
-## 1. Top-level layers
+## 1. Manual analysis (structural)
 
 ```text
-UI / Routes / API
-        │
-        ▼
-Application facades (stable import paths)
-  • worker-zip-import-provider-service.ts
-  • store-workflow-markers.ts
-  • admin-review-service.ts (publishing + list)
-        │
-        ├──────────────────┬──────────────────┐
-        ▼                  ▼                  ▼
- worker-zip/*        workflow/markers/*   workflow Snapshot stack
- (Request/Exec/      (Resolve/Loader/     Facts → Snapshot → Presenters
-  Import/Provider)    Domain resolvers)
-        │                  │                  ▲
-        │                  └──────────────────┘
-        │                     markersByPackId reuse
-        ▼
- Prisma / PipelineRun / SearchIndexGeneration / S3 / Python Worker
+Facades
+  worker-zip-import-provider-service.ts → worker-zip/*
+  store-workflow-markers.ts → workflow/markers/*
+
+Worker ZIP
+  request-lifecycle/*  (submit, withdraw, accept, reject, rejection-response, state-query, policy)
+  admin-execution/*    (prepare → execute → finalize/fail; thin run-admin-generation orchestrator)
+  import-run / admin-inbox / admin-hold / pack-resolvers
+
+Markers
+  resolve.ts (batch loader)
+  provider-review / service-validation / publish-binding / admin-returned-queue
+  supplement/* (admin-decision, clarification, note, withdraw, review-reentry, policy)
+
+Facts → Snapshot (SoT)
+  markersByPackId reuse → batchLoadPackWorkflowFacts → buildPackWorkflowSnapshot
 ```
 
----
+### Forbidden edges (manual)
 
-## 2. Worker ZIP import graph
-
-### 2.1 Module map (responsibility)
-
-| Module | Role (P12.3 target) |
+| Edge | Status |
 |---|---|
-| `worker-zip-import-provider-service.ts` | **Facade** — re-export only |
-| `worker-zip/index.ts` | Barrel |
-| `request-lifecycle.ts` | **Request** — submit / accept / reject / withdraw |
-| `pack-resolvers.ts` | **Request** — pack ownership / draft resolve |
-| `admin-execution.ts` | **Execution** — admin generation run orchestration |
-| `import-run.ts` | **Import** — documents / chunk / vector / index pipeline bind |
-| `generation-transitions.ts` | **Transaction** — generation status transitions |
-| `admin-hold.ts` / `admin-inbox.ts` | **Provider** — hold phase, list progress/status |
-| `errors.ts` / `constants.ts` | Shared |
+| module → facade reverse | **None** |
+| marker → snapshot | **None** |
+| worker → snapshot | **None** |
+| domain → React | **None** |
+| UI → Prisma | **None** (routes/services only) |
 
-### 2.2 Internal edges (acyclic)
+---
 
-```text
-index → (barrel exports)
+## 2. Automated cycle check
 
-admin-execution
-  → import-run
-  → pack-resolvers
-  → errors, constants
+Tool: `madge` (`npx madge --extensions ts,tsx --circular <path>`)
 
-import-run
-  → pack-resolvers
-  → generation-transitions
-  → errors
-  → (external) worker pipeline / generation bridge / successor-reset
-
-request-lifecycle
-  → admin-hold
-  → pack-resolvers
-  → errors, constants
-
-admin-inbox
-  → store-workflow-markers (batchResolve)
-  → admin-work-inbox-view-model
-  → constants
-
-admin-hold → constants
-pack-resolvers → errors
-```
-
-**Cycle check:** no A↔B cycles among `worker-zip/*` modules. DAG only (execution → import → transitions; lifecycle → hold).
-
-### 2.3 External consumers (unchanged paths)
+| Scope | Files processed | Result | Exit |
+|---|---:|---|---:|
+| `src/lib/python-worker/worker-zip` | 24+ (post-split) | **No circular dependency** | 0 |
+| `src/lib/workflow/markers` | 17+ | **No circular dependency** | 0 |
+| `src/lib/workflow` | 24 | **No circular dependency** | 0 |
+| `src/lib/publishing` | 10 | **No circular dependency** | 0 |
+| `src/lib/admin-work-inbox` | 4 | **No circular dependency** | 0 |
+| Combined worker-zip + markers (post-hardening) | 41 | **No circular dependency** | 0 |
 
 ```text
-API / jobs / tests
-  → @/lib/python-worker/worker-zip-import-provider-service
-  → @/lib/python-worker (re-exports)
+Circular dependency = 0
 ```
 
 ---
 
-## 3. Workflow Marker import graph
+## 3. New module graphs (post-hardening)
 
-### 3.1 Module map
-
-| Module | Domain / role |
-|---|---|
-| `store-workflow-markers.ts` | **Facade** |
-| `markers/index.ts` | Barrel |
-| `markers/resolve.ts` | **Batch Loader** + marker snapshot resolve |
-| `markers/types.ts` / `constants.ts` | Shared types / triggers |
-| `markers/provider-review.ts` | ProviderReview mutations |
-| `markers/service-validation.ts` | ServiceValidation marker |
-| `markers/supplement.ts` | Correction / supplement |
-| `markers/publish-binding.ts` | Publish binding / generation evidence |
-| `markers/admin-returned-queue.ts` | Returned-queue projection (labels via inbox VM) |
-
-Receipt / KnowledgeScope / Generation markers remain **Facts-side** (PipelineRun ZIP phases + inventory), not separate mutation modules — resolvers for those domains live in Facts loader + Snapshot, not in Marker mutation files.
-
-### 3.2 Internal edges
+### request-lifecycle/
 
 ```text
-index → resolve | provider-review | service-validation | supplement
-      | publish-binding | admin-returned-queue | types | constants
+index → submit-request | withdraw-request | admin-accept | admin-reject
+      | rejection-response | request-state-query | types | request-status-policy
 
-provider-review → resolve, publish-binding, constants, types
-service-validation → resolve, constants, types
-publish-binding → resolve, constants, types
-supplement → provider-review, types
-admin-returned-queue → constants, types (+ inbox view-model)
-resolve → constants, types
+submit / withdraw / accept / reject / rejection-response
+  → pack-resolvers, admin-hold, errors, constants (as needed)
+request-state-query → request-status-policy, admin-hold
 ```
 
-**Cycle check:** `supplement → provider-review` is one-way. No cycles. Domain mutation modules do **not** import each other except supplement → provider-review (re-request after supplement).
-
-### 3.3 Marker → Facts → Snapshot (Facts Adapter path)
+### admin-execution/
 
 ```text
-batchResolveStoreWorkflowMarkers (Loader)
-        │
-        ▼ optional markersByPackId
-batchLoadPackWorkflowFacts          ← Facts Adapter / loader
-        │
-        ▼
-buildPackWorkflowSnapshot           ← SoT (Step / Action / Gate / Blocking)
-        │
-        ▼
-toPackWorkflowRuntimeSummary        ← Inbox presentation slice
+index → run-admin-generation (+ types)
+
+run-admin-generation (orchestrator)
+  → prepare-admin-generation
+  → execute-worker-run
+  → finalize-generation | fail-generation
+
+execute-worker-run → import-run
+prepare → pack-resolvers, storage helpers
 ```
 
-**Duplicate-query mitigation (P12.3-5):**
-
-- `listReviewingPacks` resolves markers once, passes `markersByPackId` into `batchAttachInboxWorkflow` → `batchLoadPackWorkflowFacts`.
-- Without the option, Facts loader would call `batchResolveStoreWorkflowMarkers` again (3× findMany).
-
----
-
-## 4. Snapshot / Publishing / Worker cross-graph
+### markers/supplement/
 
 ```text
-                    ┌─────────────────────┐
-                    │ PackWorkflowSnapshot│ ← pure SoT
-                    └──────────▲──────────┘
-                               │
-                    PackWorkflowFacts (typed)
-                               ▲
-              ┌────────────────┴────────────────┐
-              │                                 │
-     markers/resolve                     worker-zip phases
-     (providerReview,                    (receipt / generation)
-      serviceValidation,                 via PipelineRun
-      supplement)                        + import-run
-              │                                 │
-              └────────────┬────────────────────┘
-                           ▼
-                    Publishing policies
-                    (identity / eligibility)
-                           ▲
-                    admin-review-service facade
+index → admin-decision | clarification | note | withdraw | review-reentry | policy | request | types
+review-reentry → provider-review (one-way)
 ```
 
-Worker does **not** import Snapshot. Markers do **not** import Snapshot. Snapshot consumes marker-derived Facts only.
+---
+
+## 4. Presentation residual edges
+
+| Symbol | Class | Notes |
+|---|---|---|
+| `presentNextAdminAction` | LABEL_ONLY | Snapshot/runtime → CTA labels |
+| `getNextReviewAction` | LABEL_ONLY | **Requires** snapshot/runtime; no gate re-judgment |
+| `mapQueuePresentation` | LABEL_ONLY / COMPATIBILITY | Phase → inbox chrome strings |
+| `filterAdminWorkQueue` | FILTER_ONLY | Prefers `workflow.currentStep` |
+| `getAdminReviewRailState` | COMPATIBILITY | Still uses gate helpers for rail item status (not next-action SoT) |
+| `AdminProviderReviewPanel` | Snapshot CTA + local ack | `canRequestFromSnapshot` from `availableActions` |
 
 ---
 
-## 5. Presentation residual edges (not SoT)
+## 5. Query reuse path
 
-| Symbol | File | Depends on Snapshot? | Notes |
-|---|---|---|---|
-| `mapQueuePresentation` | `admin-work-inbox-view-model.ts` | No | Label / queue-group map from marker **phases** |
-| `getNextReviewAction` | `admin-review-rail.ts` | No | Still calls gate helpers (`canEnter*`, `canPublish`) |
-| `filterAdminWorkQueue` | `admin-work-inbox-view-model.ts` | Prefers `workflow.currentStep` | Snapshot-first when attached |
-| `AdminProviderReviewPanel` | component | No | Uses `canRequestProviderReviewHandoff` + marker phases |
+```text
+worker-zip-requests GET
+  resolveWorkflowMarkers (shared Map)
+  → listAdminWorkerZipRequests
+  → batchAttachInboxWorkflow({ markersByPackId })
+  → batchLoadPackWorkflowFacts (skips marker re-query)
 
-See Complexity Report § Remaining Technical Debt and Evidence § Presentation / Provider Review.
-
----
-
-## 6. Cycle summary
-
-| Subgraph | Cycles |
-|---|---|
-| `worker-zip/*` | **None** |
-| `workflow/markers/*` | **None** |
-| Worker ↔ Markers | Markers used by admin-inbox only (one-way) |
-| Markers ↔ Snapshot | Via Facts loader only (one-way) |
-| Facades ↔ modules | Facades re-export; no reverse import into facade body |
-
----
-
-## 7. Facade contract
-
-| Stable path | Implementation |
-|---|---|
-| `@/lib/python-worker/worker-zip-import-provider-service` | `export * from "./worker-zip"` |
-| `@/lib/store-workflow-markers` | `export * from "@/lib/workflow/markers"` |
-
-Call sites keep pre-P12.3 import paths; no API contract change.
+listReviewingPacks
+  batchResolve once → markersByPackId → batchAttachInboxWorkflow
+```
