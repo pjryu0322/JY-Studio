@@ -3,7 +3,7 @@
 **Audit time (UTC):** 2026-08-02T00:05:26Z (live SQL/S3)  
 **Auditor mode:** evidence-only (source + live DB + Object Storage + API + build)  
 **Base (P10):** `f9185449`  
-**HEAD / origin/main:** `791bf8f5d56cef4847e9e4fac158aef2403a3e26`
+**HEAD / origin/main:** `467678f4` (evidence audit docs) / reset impl `ca661c5c`
 
 ---
 
