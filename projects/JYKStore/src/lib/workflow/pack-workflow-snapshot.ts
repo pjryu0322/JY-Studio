@@ -24,12 +24,15 @@ import type {
   WorkflowBlockingReason,
   WorkflowStepState,
 } from "@/lib/workflow/pack-workflow-facts";
+import type { PublishRecoveryMode } from "@/lib/workflow/publish-recovery";
 
 export type PackWorkflowSnapshot = {
   packId: string;
   currentStep: AdminWorkflowStep;
   blockingReasons: WorkflowBlockingReason[];
   availableActions: WorkflowAction[];
+  /** Passthrough from facts for presentation copy only — not a UI gate input. */
+  recoveryMode: PublishRecoveryMode | null;
   receipt: StepSnapshot;
   knowledgeScope: StepSnapshot;
   generation: StepSnapshot;
@@ -314,6 +317,7 @@ export function buildPackWorkflowSnapshot(facts: PackWorkflowFacts): PackWorkflo
     currentStep,
     blockingReasons,
     availableActions,
+    recoveryMode: facts.publishing.recoveryMode,
     receipt: stepSnap(
       "receipt",
       resolveStepState({

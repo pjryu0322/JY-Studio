@@ -28,7 +28,6 @@ import {
 } from "@/lib/provider-supplement-request";
 import {
   buildAdminQualityGateSnapshot,
-  getAdminReviewRailState,
   getNextReviewAction,
   type AdminWorkerZipPhase,
 } from "@/lib/role-workspace/admin-review-rail";
@@ -37,6 +36,8 @@ import {
   resolveAdminWorkflowStepQuery,
   type AdminWorkflowStep,
 } from "@/lib/workflow";
+import { assemblePackWorkflowFacts } from "@/lib/workflow/pack-workflow-facts-assemble";
+import { buildPackWorkflowSnapshot } from "@/lib/workflow/pack-workflow-snapshot";
 import { ROUTES as APP_ROUTES } from "@/lib/routes";
 
 /** null = no explicit ?step (resolve from workflow after load). ops → external. */
@@ -137,6 +138,36 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
 
   const quality = useMemo(() => buildAdminQualityGateSnapshot(detail), [detail]);
 
+  const openSupplement = isOpenProviderSupplementPhase(
+    workflowMarkers.providerSupplementPhase,
+  );
+
+  const packWorkflowSnapshot = useMemo(() => {
+    if (!detail) return null;
+    return buildPackWorkflowSnapshot(
+      assemblePackWorkflowFacts({
+        packId,
+        packStatus: detail.pack.status,
+        workerZipPhase,
+        knowledgeScopeFinalized: knowledgeScopeReady,
+        quality,
+        openSupplement,
+        serviceValidationPhase: workflowMarkers.serviceValidationPhase,
+        providerReviewPhase: workflowMarkers.providerReviewPhase,
+        invariantMode: "warn",
+      }),
+    );
+  }, [
+    detail,
+    packId,
+    workerZipPhase,
+    knowledgeScopeReady,
+    quality,
+    openSupplement,
+    workflowMarkers.serviceValidationPhase,
+    workflowMarkers.providerReviewPhase,
+  ]);
+
   const nextAction = useMemo(
     () =>
       getNextReviewAction({
@@ -150,28 +181,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     [workerZipPhase, quality, workflowMarkers, detail],
   );
 
-  const resolvedWorkflowStep = useMemo(() => {
-    const probe = getAdminReviewRailState({
-      packId,
-      workerZipPhase,
-      quality,
-      providerReviewPhase: workflowMarkers.providerReviewPhase,
-      serviceValidationPhase: workflowMarkers.serviceValidationPhase,
-      providerSupplementPhase: workflowMarkers.providerSupplementPhase,
-      detail,
-      activeStep: requestedStep ?? "receipt",
-      knowledgeScopeReady,
-    });
-    return probe.currentStep;
-  }, [
-    packId,
-    workerZipPhase,
-    quality,
-    workflowMarkers,
-    detail,
-    requestedStep,
-    knowledgeScopeReady,
-  ]);
+  const resolvedWorkflowStep = packWorkflowSnapshot?.currentStep ?? "receipt";
 
   const activeStep = requestedStep ?? resolvedWorkflowStep;
 
@@ -207,9 +217,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const showPublish = activeStep === "publish";
   const providerConfirmed = workflowMarkers.providerReviewPhase === "CONFIRMED";
   const serviceDone = workflowMarkers.serviceValidationPhase === "PASSED";
-  const openSupplement = isOpenProviderSupplementPhase(
-    workflowMarkers.providerSupplementPhase,
-  );
   const generationDone = workerZipPhase === "COMPLETED";
 
   return (
@@ -370,7 +377,6 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
             openSupplement={openSupplement}
             quality={quality}
             workerZipPhase={workerZipPhase}
-            channelGates={channelGates}
             knowledgeScopeFinalized={knowledgeScopeReady}
             onUpdated={(next) => {
               setDetail(next);
