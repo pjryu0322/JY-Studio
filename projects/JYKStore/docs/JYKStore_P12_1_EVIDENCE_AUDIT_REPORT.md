@@ -32,15 +32,14 @@ git push -u origin HEAD   # executed during audit
 | Item | SHA |
 |---|---|
 | Base | `cba955e6ff7a735aad55ba556c2bdedf463389fc` |
-| Implementation Work | `62fa7961020e2140ec20611123c243f0a3581c22` |
-| Evidence report commit / HEAD | `e2272246327db06947b13d3eb2dc6e403cb563c3` |
-| origin/main | `e2272246327db06947b13d3eb2dc6e403cb563c3` |
+| Implementation Work (audited) | `62fa7961020e2140ec20611123c243f0a3581c22` |
+| Evidence docs on origin/main | tip after `docs(JYKStore): add P12.1 workflow snapshot evidence audit` |
 
 ```text
-HEAD = origin/main = e2272246  ✅
+HEAD = origin/main  ✅ (verified at push time)
 ```
 
-Push: P12.1 implementation `cba955e6..62fa7961`, then evidence docs on top.  
+Push: P12.1 implementation `cba955e6..62fa7961`, then this evidence docs commit.  
 Untracked excluded: `projects/JYKPackBuilder/`, `projects/JYKStore/agent-tools/`
 
 ### Commit range `cba955e6..HEAD` (5 commits)
