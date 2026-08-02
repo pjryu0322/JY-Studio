@@ -15,7 +15,11 @@ import {
   batchAttachInboxWorkflow,
   withInboxWorkflow,
 } from "@/lib/admin-work-inbox/admin-work-inbox-workflow";
-import { listAdminProviderReturnedPacks } from "@/lib/store-workflow-markers";
+import {
+  batchResolveStoreWorkflowMarkers,
+  listAdminProviderReturnedPacks,
+  type StoreWorkflowMarkerSnapshot,
+} from "@/lib/store-workflow-markers";
 import { listAdminWorkerZipRequests } from "@/lib/python-worker/worker-zip-import-provider-service";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
@@ -31,15 +35,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Resolve markers once for ZIP list + Facts attach (avoid double batchResolve).
+    const markersByPackId = new Map<string, StoreWorkflowMarkerSnapshot>();
+    const resolveWorkflowMarkers = async (packIds: string[]) => {
+      const missing = packIds.filter((id) => !markersByPackId.has(id));
+      if (missing.length > 0) {
+        const batch = await batchResolveStoreWorkflowMarkers(missing);
+        for (const [packId, markers] of batch) {
+          markersByPackId.set(packId, markers);
+        }
+      }
+      const out = new Map<string, StoreWorkflowMarkerSnapshot>();
+      for (const packId of packIds) {
+        const markers = markersByPackId.get(packId);
+        if (markers) out.set(packId, markers);
+      }
+      return out;
+    };
+
     const [items, returnedItems] = await Promise.all([
-      listAdminWorkerZipRequests(),
+      listAdminWorkerZipRequests({ resolveWorkflowMarkers }),
       listAdminProviderReturnedPacks(),
     ]);
     const packIds = [
       ...items.map((item) => item.packId),
       ...returnedItems.map((item) => item.packId),
     ];
-    const workflowByPack = await batchAttachInboxWorkflow(packIds);
+    await resolveWorkflowMarkers(packIds);
+    const workflowByPack = await batchAttachInboxWorkflow(packIds, {
+      markersByPackId,
+    });
     return jsonWithClientIdCookie(
       {
         clientId,

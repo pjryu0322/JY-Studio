@@ -21,6 +21,9 @@ describe("admin provider review workbench (publish gate)", () => {
     assert.ok(!detail.includes("제공자 확인 요청</button>"));
     assert.ok(panel.includes("제공자 검토 요청 전 확인"));
     assert.ok(panel.includes("canRequestProviderReviewHandoff"));
+    assert.ok(panel.includes("canRequestFromSnapshot"));
+    assert.ok(detail.includes("canRequestFromSnapshot"));
+    assert.ok(detail.includes("REQUEST_PROVIDER_REVIEW"));
     assert.ok(panel.includes("AdminProviderSupplementPanel"));
   });
 

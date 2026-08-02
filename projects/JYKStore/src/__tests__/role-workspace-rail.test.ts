@@ -11,6 +11,8 @@ import {
 } from "../lib/role-workspace/admin-review-rail.ts";
 import { getConsumerRailState } from "../lib/role-workspace/consumer-rail.ts";
 import { getProviderPackRailState } from "../lib/role-workspace/provider-pack-rail.ts";
+import { assemblePackWorkflowFacts } from "../lib/workflow/pack-workflow-facts-assemble.ts";
+import { buildPackWorkflowSnapshot } from "../lib/workflow/pack-workflow-snapshot.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -98,6 +100,31 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
   };
 }
 
+
+function snapshotFor(input: {
+  detail: AdminReviewDetailDto;
+  workerZipPhase: "NONE" | "REQUESTED" | "ACCEPTED" | "COMPLETED" | "FAILED" | "REJECTED" | "PROCESSING";
+  quality: ReturnType<typeof buildAdminQualityGateSnapshot>;
+  providerReviewPhase: "NONE" | "REQUESTED" | "CONFIRMED" | "WITHDRAWN";
+  serviceValidationPhase: "NONE" | "PASSED";
+  knowledgeScopeFinalized?: boolean;
+  openSupplement?: boolean;
+}) {
+  return buildPackWorkflowSnapshot(
+    assemblePackWorkflowFacts({
+      packId: input.detail.pack.packId,
+      packStatus: input.detail.pack.status,
+      workerZipPhase: input.workerZipPhase,
+      knowledgeScopeFinalized: input.knowledgeScopeFinalized ?? true,
+      quality: input.quality,
+      openSupplement: input.openSupplement ?? false,
+      serviceValidationPhase: input.serviceValidationPhase,
+      providerReviewPhase: input.providerReviewPhase,
+      invariantMode: "warn",
+    }),
+  );
+}
+
 describe("getNextReviewAction", () => {
   it("routes to service validation after quality passed (before provider review)", () => {
     const detail = baseDetail();
@@ -108,6 +135,13 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "COMPLETED",
+        quality,
+        providerReviewPhase: "NONE",
+        serviceValidationPhase: "NONE",
+      }),
     });
     assert.equal(action.kind, "GO_SERVICE_VALIDATION");
     assert.equal(action.primaryLabel, "서비스 검증으로 이동");
@@ -122,6 +156,14 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "ACCEPTED",
+        quality,
+        providerReviewPhase: "NONE",
+        serviceValidationPhase: "NONE",
+        knowledgeScopeFinalized: false,
+      }),
     });
     assert.equal(action.kind, "NONE");
     assert.match(action.message, /지식데이터 생성|접수|대상/);
@@ -136,6 +178,13 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "COMPLETED",
+        quality,
+        providerReviewPhase: "NONE",
+        serviceValidationPhase: "NONE",
+      }),
     });
     assert.equal(action.kind, "GO_SERVICE_VALIDATION");
     assert.notEqual(action.kind, "REQUEST_PROVIDER_REVIEW");
@@ -163,6 +212,13 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "PASSED",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "COMPLETED",
+        quality,
+        providerReviewPhase: "NONE",
+        serviceValidationPhase: "PASSED",
+      }),
     });
     assert.equal(action.kind, "REQUEST_PROVIDER_REVIEW");
     assert.equal(action.primaryLabel, "제공자 검토 요청");
@@ -177,6 +233,13 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "CONFIRMED",
       serviceValidationPhase: "PASSED",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "COMPLETED",
+        quality,
+        providerReviewPhase: "CONFIRMED",
+        serviceValidationPhase: "PASSED",
+      }),
     });
     assert.equal(action.kind, "GO_FINAL_DECISION");
     assert.equal(action.primaryLabel, "게시 단계로 이동");
@@ -216,10 +279,33 @@ describe("getNextReviewAction", () => {
       providerReviewPhase: "NONE",
       serviceValidationPhase: "NONE",
       detail,
+      snapshot: snapshotFor({
+        detail,
+        workerZipPhase: "COMPLETED",
+        quality,
+        providerReviewPhase: "NONE",
+        serviceValidationPhase: "NONE",
+      }),
     });
     assert.equal(action.kind, "REGENERATE_KNOWLEDGE");
     assert.equal(action.tone, "blocked");
     assert.ok((action.blockedReasons?.length ?? 0) > 0);
+  });
+
+  it("requires snapshot or runtime (Presentation SoT)", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    assert.throws(
+      () =>
+        getNextReviewAction({
+          workerZipPhase: "COMPLETED",
+          quality,
+          providerReviewPhase: "NONE",
+          serviceValidationPhase: "NONE",
+          detail,
+        }),
+      /snapshot or runtime/,
+    );
   });
 });
 

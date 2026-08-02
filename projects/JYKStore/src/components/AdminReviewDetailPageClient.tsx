@@ -177,8 +177,13 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         serviceValidationPhase: workflowMarkers.serviceValidationPhase,
         providerSupplementPhase: workflowMarkers.providerSupplementPhase,
         detail,
+        snapshot: packWorkflowSnapshot,
       }),
-    [workerZipPhase, quality, workflowMarkers, detail],
+    [workerZipPhase, quality, workflowMarkers, detail, packWorkflowSnapshot],
+  );
+
+  const canRequestProviderReviewFromSnapshot = Boolean(
+    packWorkflowSnapshot?.availableActions.includes("REQUEST_PROVIDER_REVIEW"),
   );
 
   const resolvedWorkflowStep = packWorkflowSnapshot?.currentStep ?? "receipt";
@@ -364,6 +369,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
               providerReviewRequestedAt={workflowMarkers.providerReviewRequestedAt}
               providerReviewConfirmedAt={workflowMarkers.providerReviewConfirmedAt}
               supplementState={supplementState}
+              canRequestFromSnapshot={canRequestProviderReviewFromSnapshot}
               onChanged={refreshSilently}
               onGoQuality={() => goStep("generation")}
               onError={setError}

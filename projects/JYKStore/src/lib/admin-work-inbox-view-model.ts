@@ -164,6 +164,12 @@ export function buildAdminWorkInboxItemViewModel(
   };
 }
 
+/**
+ * LABEL_ONLY / COMPATIBILITY — maps marker phases → inbox displayStatus / ctaLabel /
+ * adminQueueGroup strings for list chrome. Does **not** resolve currentStep or publish
+ * eligibility (those use PackWorkflowSnapshot via `row.workflow`). Prefer not changing
+ * Korean display strings (tests assert labels).
+ */
 function mapQueuePresentation(input: {
   packStatus: string;
   workflowStatus: StoreWorkflowStatus;

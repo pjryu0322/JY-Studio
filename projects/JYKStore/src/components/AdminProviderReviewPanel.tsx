@@ -53,6 +53,7 @@ export function AdminProviderReviewPanel({
   providerReviewRequestedAt,
   providerReviewConfirmedAt,
   supplementState,
+  canRequestFromSnapshot,
   onChanged,
   onGoQuality,
   onError,
@@ -65,6 +66,11 @@ export function AdminProviderReviewPanel({
   readonly providerReviewRequestedAt: string | null;
   readonly providerReviewConfirmedAt: string | null;
   readonly supplementState: ProviderSupplementRequestState | null;
+  /**
+   * When provided (Detail Snapshot path), CTA enablement prefers
+   * availableActions includes REQUEST_PROVIDER_REVIEW — no gate re-judgment.
+   */
+  readonly canRequestFromSnapshot?: boolean;
   readonly onChanged: () => Promise<void> | void;
   readonly onGoQuality: () => void;
   readonly onError: (message: string) => void;
@@ -76,6 +82,7 @@ export function AdminProviderReviewPanel({
 
   const hasOpenSupplement = isOpenProviderSupplementPhase(supplementState?.adminPhase);
 
+  // Legacy fallback when Snapshot is not passed (compat / tests).
   const canRequestGate = canRequestProviderReviewHandoff({
     workerZipPhase,
     quality,
@@ -83,6 +90,7 @@ export function AdminProviderReviewPanel({
     providerSupplementPhase: supplementState?.adminPhase,
   });
 
+  /** Phase-display labels only — not used to re-judge publish eligibility when Snapshot is set. */
   const blockReasons = useMemo(() => {
     const reasons: string[] = [];
     if (hasOpenSupplement) {
@@ -114,11 +122,13 @@ export function AdminProviderReviewPanel({
     checkedCorrectionScope &&
     (!quality.hasWarnings || checkedWarnings);
 
-  const canSubmitRequest =
-    canRequestGate &&
-    !hasOpenSupplement &&
-    acknowledgementsReady &&
-    blockReasons.length === 0;
+  const snapshotPath = canRequestFromSnapshot !== undefined;
+  const canSubmitRequest = snapshotPath
+    ? Boolean(canRequestFromSnapshot) && !hasOpenSupplement && acknowledgementsReady
+    : canRequestGate &&
+      !hasOpenSupplement &&
+      acknowledgementsReady &&
+      blockReasons.length === 0;
 
   const showRequestForm =
     !hasOpenSupplement &&

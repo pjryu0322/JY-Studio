@@ -10,6 +10,7 @@ import {
 } from "@/lib/admin-review-decision";
 import { isReviewAccepted, isPendingAdminReview } from "@/lib/admin-review-tabs";
 import type { NextReviewAction, RoleRailItem } from "@/lib/role-workspace/types";
+import { presentNextAdminAction } from "@/lib/role-workspace/present-next-admin-action";
 import { ROUTES, adminQueuePath, adminReviewDetailPath } from "@/lib/routes";
 import { isOpenProviderSupplementPhase } from "@/lib/provider-supplement-request";
 import type {
@@ -30,6 +31,8 @@ import {
   type AdminWorkerZipPhase,
   type AdminWorkflowStep,
 } from "@/lib/workflow";
+import type { PackWorkflowRuntimeSummary } from "@/lib/workflow/pack-workflow-facts";
+import type { PackWorkflowSnapshot } from "@/lib/workflow/pack-workflow-snapshot";
 
 export type { AdminWorkerZipPhase, AdminQualityGateSnapshot };
 /** @deprecated Prefer AdminWorkflowStep from `@/lib/workflow`. */
@@ -86,8 +89,9 @@ export function buildAdminQualityGateSnapshot(
 }
 
 /**
- * Next CTA after generation / correction / service validation / publish gate.
- * Provider review is requested only after service validation passes.
+ * Next CTA chrome after generation / correction / service validation / publish.
+ * Presentation SoT only: maps Snapshot/runtime → labels via presentNextAdminAction.
+ * Does not call canEnter* / canPublish (judgment stays in Snapshot builders).
  */
 export function getNextReviewAction(input: {
   workerZipPhase: AdminWorkerZipPhase;
@@ -96,148 +100,27 @@ export function getNextReviewAction(input: {
   serviceValidationPhase: StoreServiceValidationPhase;
   providerSupplementPhase?: string | null;
   detail: AdminReviewDetailDto | null;
+  /** Required Presentation SoT input (Detail always builds Snapshot). */
+  snapshot?: PackWorkflowSnapshot | null;
+  runtime?: PackWorkflowRuntimeSummary | null;
 }): NextReviewAction {
-  const {
-    workerZipPhase,
-    quality,
-    providerReviewPhase,
-    serviceValidationPhase,
-    detail,
-  } = input;
-  const openSupplement = isOpenProviderSupplementPhase(
-    input.providerSupplementPhase ?? "NONE",
-  );
-  const serviceDone = serviceValidationPhase === "PASSED";
-
-  if (workerZipPhase === "PROCESSING") {
-    return {
-      kind: "NONE",
-      primaryLabel: "",
-      message: "지식데이터 생성이 진행 중입니다.",
-      tone: "ready",
-    };
+  if (input.snapshot == null && input.runtime == null) {
+    throw new Error(
+      "getNextReviewAction requires snapshot or runtime (P12.3 Presentation SoT)",
+    );
   }
-
-  if (
-    workerZipPhase === "NONE" ||
-    workerZipPhase === "REQUESTED" ||
-    workerZipPhase === "REJECTED" ||
-    workerZipPhase === "ACCEPTED"
-  ) {
-    return {
-      kind: "NONE",
-      primaryLabel: "",
-      message:
-        workerZipPhase === "ACCEPTED"
-          ? "지식화 대상 확인 후 지식데이터 생성을 진행하세요."
-          : "자료 접수를 먼저 완료하세요.",
-      tone: "ready",
-    };
-  }
-
-  if (workerZipPhase === "FAILED" || (quality.completed && quality.hasBlockers)) {
-    return {
-      kind: "REGENERATE_KNOWLEDGE",
-      primaryLabel: "지식데이터 재생성",
-      secondaryKind: "REQUEST_PROVIDER_FIX",
-      secondaryLabel: "제공자 보완요청",
-      message: "차단 이슈 또는 생성 실패가 있어 다음 단계로 진행할 수 없습니다.",
-      tone: "blocked",
-      blockedReasons:
-        quality.blockers.length > 0 ? quality.blockers : ["지식데이터 생성이 실패했습니다."],
-    };
-  }
-
-  if (workerZipPhase === "COMPLETED" && !quality.completed) {
-    return {
-      kind: "RERUN_QUALITY",
-      primaryLabel: "품질 결과 확인",
-      message: "지식데이터 생성이 완료되었습니다. 생성 결과·자동 품질을 확인하세요.",
-      tone: "ready",
-    };
-  }
-
-  if (
-    canEnterServiceValidation({
-      workerZipPhase,
-      quality,
-      openSupplement,
-    }) &&
-    !serviceDone
-  ) {
-    return {
-      kind: "GO_SERVICE_VALIDATION",
-      primaryLabel: "서비스 검증으로 이동",
-      secondaryKind: quality.hasWarnings ? "REQUEST_PROVIDER_FIX" : "RERUN_QUALITY",
-      secondaryLabel: quality.hasWarnings ? "보정으로 이동" : "품질 결과 다시 보기",
-      message: quality.hasWarnings
-        ? "생성·품질 확인이 끝났습니다. WARNING은 보정에서 검토할 수 있습니다. 서비스 검증을 진행하세요."
-        : "생성·품질 확인이 끝났습니다. API·MCP·Export 서비스 검증을 진행하세요.",
-      tone: quality.hasWarnings ? "warning" : "ready",
-    };
-  }
-
-  if (
-    canRequestProviderReviewAfterServiceValidation({
-      serviceValidationPhase,
-      providerReviewPhase,
-      openSupplement,
-      workerZipPhase,
-      quality,
-    })
-  ) {
-    return {
-      kind: "REQUEST_PROVIDER_REVIEW",
-      primaryLabel: "제공자 검토 요청",
-      message: "서비스 검증이 통과되었습니다. 제공자에게 서비스 결과 검토를 요청하세요.",
-      tone: "ready",
-    };
-  }
-
-  if (providerReviewPhase === "REQUESTED") {
-    return {
-      kind: "NONE",
-      primaryLabel: "",
-      message: "제공자 검토 대기 중입니다. 승인되면 게시할 수 있습니다.",
-      tone: "ready",
-    };
-  }
-
-  if (
-    canPublish({
-      serviceValidationPhase,
-      providerReviewPhase,
-      openSupplement,
-    })
-  ) {
-    const canDecide =
-      detail != null &&
-      (isReviewAccepted(detail) || isPendingAdminReview(detail) || canApproveAdminReview(detail));
-    return {
-      kind: "GO_FINAL_DECISION",
-      primaryLabel: "게시 단계로 이동",
-      message: canDecide
-        ? "제공자 승인이 확인되었습니다. 게시(승인)를 진행하세요."
-        : "제공자 승인이 확인되었습니다. 게시 단계로 이동하세요.",
-      tone: quality.hasWarnings ? "warning" : "ready",
-    };
-  }
-
-  if (openSupplement) {
-    return {
-      kind: "REQUEST_PROVIDER_FIX",
-      primaryLabel: "보정으로 이동",
-      message: "열린 제공자 보완요청이 있습니다. 보정 단계에서 처리하세요.",
-      tone: "warning",
-    };
-  }
-
-  return {
-    kind: "NONE",
-    primaryLabel: "",
-    message: "",
-    tone: "ready",
-  };
+  const canDecide =
+    input.detail != null &&
+    (isReviewAccepted(input.detail) ||
+      isPendingAdminReview(input.detail) ||
+      canApproveAdminReview(input.detail));
+  return presentNextAdminAction({
+    snapshot: input.snapshot,
+    runtime: input.runtime,
+    hasQualityWarnings: input.quality.hasWarnings,
+    qualityBlockerMessages: input.quality.blockers,
+    canDecidePublish: canDecide,
+  });
 }
 
 export function getAdminReviewRailState(input: {
