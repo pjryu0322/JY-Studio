@@ -5,7 +5,7 @@
 | Item | Value |
 |---|---|
 | Base (origin/main at start) | `cba955e6` |
-| Work | (see git log after commits) |
+| Work | `e650970d` (suite close; docs pin follows) |
 
 ## 2. 기존 결함 재현
 
