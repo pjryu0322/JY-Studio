@@ -31,6 +31,8 @@ describe("Publish Workbench Snapshot CTAs", () => {
         providerReviewPhase: "NONE",
         recoveryMode: "RESTORE_EXISTING",
         preservedGenerationId: "prod-1",
+        generationId: "draft-1",
+        invariantMode: "warn",
       }),
     );
     assert.ok(restore.availableActions.includes("RESTORE_EXISTING_REVISION"));
@@ -52,6 +54,8 @@ describe("Publish Workbench Snapshot CTAs", () => {
         openSupplement: false,
         serviceValidationPhase: "PASSED",
         providerReviewPhase: "CONFIRMED",
+        generationId: "g1",
+        invariantMode: "strict",
       }),
     );
     assert.ok(first.availableActions.includes("PUBLISH_FIRST_REVISION"));
@@ -74,21 +78,22 @@ describe("Publish Workbench Snapshot CTAs", () => {
         openSupplement: false,
         serviceValidationPhase: "PASSED",
         providerReviewPhase: "CONFIRMED",
+        generationId: "g1",
+        invariantMode: "strict",
       }),
     );
     assert.ok(published.availableActions.includes("UNPUBLISH"));
   });
 
-  it("panel source consumes buildPackWorkflowSnapshot / availableActions", () => {
+  it("panel source consumes Snapshot presenter (no buildAdminApprovalPublishViewModel)", () => {
     const src = readFileSync(
       join(projectRoot, "src/components/AdminApprovalPublishWorkbenchPanel.tsx"),
       "utf8",
     );
     assert.ok(src.includes("buildPackWorkflowSnapshot"));
-    assert.ok(src.includes("assemblePackWorkflowFacts"));
-    assert.ok(src.includes("availableActions"));
-    assert.ok(src.includes("RESTORE_EXISTING_REVISION"));
-    assert.ok(src.includes("PUBLISH_NEW_REVISION"));
-    assert.ok(src.includes("PUBLISH_FIRST_REVISION"));
+    assert.ok(src.includes("presentPublishWorkbenchFromSnapshot"));
+    assert.ok(!src.includes("buildAdminApprovalPublishViewModel"));
+    assert.ok(src.includes("presentation.checklist"));
+    assert.ok(src.includes("presentation.showRestore"));
   });
 });

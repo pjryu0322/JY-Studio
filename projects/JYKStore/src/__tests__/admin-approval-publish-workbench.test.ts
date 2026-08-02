@@ -147,13 +147,12 @@ describe("admin approval publish hardening", () => {
 
   it("gates AdminReviewAcceptTab on snapshot PUBLISH_FIRST_REVISION (not REVIEWING alone)", () => {
     const panel = readSource("src/components/AdminApprovalPublishWorkbenchPanel.tsx");
-    assert.ok(panel.includes("showDecisionForm"));
+    assert.ok(panel.includes("presentPublishWorkbenchFromSnapshot"));
     assert.ok(panel.includes("buildPackWorkflowSnapshot"));
-    assert.ok(panel.includes("PUBLISH_FIRST_REVISION"));
-    assert.ok(panel.includes('detail.pack.status === "REVIEWING"'));
+    assert.ok(!panel.includes("buildAdminApprovalPublishViewModel"));
+    assert.ok(panel.includes("presentation.showDecisionForm"));
     assert.ok(panel.includes("onGoProviderReview"));
     assert.ok(panel.includes("onGoServiceValidation"));
-    assert.ok(panel.includes("보정 없음"));
     assert.ok(panel.includes("게시"));
   });
 

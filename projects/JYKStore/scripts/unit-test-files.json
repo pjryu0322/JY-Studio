@@ -241,6 +241,8 @@
   "src/__tests__/pack-workflow-snapshot.test.ts",
   "src/__tests__/pack-workflow-facts-normalize.test.ts",
   "src/__tests__/pack-workflow-facts-loader.test.ts",
+  "src/__tests__/pack-workflow-facts-invariants.test.ts",
+  "src/__tests__/pack-workflow-facts-loader.db.test.ts",
   "src/__tests__/admin-work-inbox-navigation-snapshot.test.ts",
   "src/__tests__/admin-publish-workbench-snapshot.test.ts",
   "src/__tests__/p11-clean-reset-safety.test.ts",
