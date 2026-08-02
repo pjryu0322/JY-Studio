@@ -51,13 +51,28 @@ describe("P9 workflow SoT / republish / public version policy", () => {
   });
 
   it("approvePackReview still requires REVIEWING; restore/new-revision are post-unpublish paths", () => {
-    const service = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
-    assert.match(service, /export async function approvePackReview/);
-    assert.match(service, /detailBefore\.pack\.status !== "REVIEWING"/);
-    assert.match(service, /export async function restorePublishedPackAfterUnpublish/);
-    assert.match(service, /RESTORE_EXISTING_AFTER_UNPUBLISH/);
-    assert.match(service, /NOT_UNPUBLISHED_DRAFT/);
-    assert.match(service, /export async function publishNewRevisionAfterUnpublish/);
+    const approve = readFileSync(
+      join(root, "src/lib/publishing/publish-first-revision.ts"),
+      "utf8",
+    );
+    const restore = readFileSync(
+      join(root, "src/lib/publishing/restore-published-revision.ts"),
+      "utf8",
+    );
+    const publishNew = readFileSync(
+      join(root, "src/lib/publishing/publish-new-revision.ts"),
+      "utf8",
+    );
+    const facade = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
+    assert.match(approve, /export async function approvePackReview/);
+    assert.match(approve, /detailBefore\.pack\.status !== "REVIEWING"/);
+    assert.match(restore, /export async function restorePublishedPackAfterUnpublish/);
+    assert.match(restore, /RESTORE_EXISTING_AFTER_UNPUBLISH/);
+    assert.match(restore, /NOT_UNPUBLISHED_DRAFT/);
+    assert.match(publishNew, /export async function publishNewRevisionAfterUnpublish/);
+    assert.match(facade, /approvePackReview/);
+    assert.match(facade, /restorePublishedPackAfterUnpublish/);
+    assert.match(facade, /publishNewRevisionAfterUnpublish/);
 
     const api = readFileSync(join(root, "src/lib/admin-review-api.ts"), "utf8");
     assert.match(api, /export async function restorePublishAdminReview/);

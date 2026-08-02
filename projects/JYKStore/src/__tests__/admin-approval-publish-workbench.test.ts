@@ -166,11 +166,14 @@ describe("admin approval publish hardening", () => {
   });
 
   it("approvePackReview still gates open supplement and store workflow", () => {
-    const service = readSource("src/lib/admin-review-service.ts");
-    assert.ok(service.includes("PROVIDER_SUPPLEMENT_OPEN"));
-    assert.ok(service.includes("SERVICE_VALIDATION_REQUIRED"));
-    assert.ok(service.includes("PROVIDER_CONFIRM_REQUIRED"));
-    assert.ok(service.includes("assertProviderReviewBindingCurrent"));
-    assert.ok(service.includes("UNRESOLVED_CORRECTION"));
+    const approve = readSource("src/lib/publishing/publish-first-revision.ts");
+    const eligibility = readSource("src/lib/publishing/publish-eligibility-policy.ts");
+    const facade = readSource("src/lib/admin-review-service.ts");
+    assert.ok(eligibility.includes("PROVIDER_SUPPLEMENT_OPEN"));
+    assert.ok(eligibility.includes("SERVICE_VALIDATION_REQUIRED"));
+    assert.ok(eligibility.includes("PROVIDER_CONFIRM_REQUIRED"));
+    assert.ok(approve.includes("assertProviderReviewBindingCurrent"));
+    assert.ok(approve.includes("UNRESOLVED_CORRECTION"));
+    assert.ok(facade.includes("approvePackReview"));
   });
 });

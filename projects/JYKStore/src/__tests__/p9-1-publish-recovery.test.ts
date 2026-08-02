@@ -59,17 +59,26 @@ describe("P9.1 publish recovery SoT", () => {
   });
 
   it("restore service rejects Draft B review as evidence for Production A", () => {
-    const service = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
-    assert.match(service, /NEW_REVISION_PENDING/);
-    assert.match(service, /RESTORE_EXISTING_AFTER_UNPUBLISH/);
-    assert.match(service, /export async function publishNewRevisionAfterUnpublish/);
-    assert.match(service, /PUBLISH_NEW_REVISION_AFTER_UNPUBLISH/);
-    // Restore must not call assertProviderReviewBindingCurrent
-    const restoreFn = service.slice(
-      service.indexOf("export async function restorePublishedPackAfterUnpublish"),
-      service.indexOf("export async function publishNewRevisionAfterUnpublish"),
+    const restore = readFileSync(
+      join(root, "src/lib/publishing/restore-published-revision.ts"),
+      "utf8",
     );
-    assert.doesNotMatch(restoreFn, /assertProviderReviewBindingCurrent/);
+    const publishNew = readFileSync(
+      join(root, "src/lib/publishing/publish-new-revision.ts"),
+      "utf8",
+    );
+    const identity = readFileSync(
+      join(root, "src/lib/publishing/publish-identity-policy.ts"),
+      "utf8",
+    );
+    const facade = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
+    assert.match(identity, /NEW_REVISION_PENDING/);
+    assert.match(restore, /RESTORE_EXISTING_AFTER_UNPUBLISH/);
+    assert.match(publishNew, /export async function publishNewRevisionAfterUnpublish/);
+    assert.match(publishNew, /PUBLISH_NEW_REVISION_AFTER_UNPUBLISH/);
+    assert.match(facade, /publishNewRevisionAfterUnpublish/);
+    // Restore must not call assertProviderReviewBindingCurrent
+    assert.doesNotMatch(restore, /assertProviderReviewBindingCurrent/);
   });
 
   it("UI CTAs distinguish restore vs new revision vs reject vs unpublish", () => {

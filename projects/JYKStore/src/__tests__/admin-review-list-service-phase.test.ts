@@ -69,8 +69,9 @@ describe("admin review list item serviceValidationPhase", () => {
     assert.ok(service.includes("batchResolveStoreWorkflowMarkers"));
     assert.ok(service.includes("workflowMarkers"));
     assert.ok(service.includes("toAdminReviewListItem(pack"));
-    const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
-    assert.ok(inbox.includes("serviceValidationPhase: item.serviceValidationPhase"));
+    const inbox = readSource("src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
+    const mappers = readSource("src/lib/admin-work-inbox/admin-work-inbox-mappers.ts");
+    assert.ok(mappers.includes("serviceValidationPhase: item.serviceValidationPhase"));
     assert.ok(inbox.includes("partitionAdminReviewRequiredByServicePhase"));
   });
 });

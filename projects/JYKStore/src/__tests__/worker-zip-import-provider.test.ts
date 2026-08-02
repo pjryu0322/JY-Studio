@@ -682,14 +682,18 @@ describe("worker-zip routes + UI wiring (P7.3 source contracts)", () => {
   });
 
   it("admin console surfaces the generation request queue", () => {
-    const inbox = readSrc("components/AdminWorkInboxPageClient.tsx");
+    const inbox = readSrc("components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
+    const sections = readSrc("components/admin-work-inbox/AdminWorkInboxSections.tsx");
+    const mappers = readSrc("lib/admin-work-inbox/admin-work-inbox-mappers.ts");
     assert.match(inbox, /fetchAdminWorkerZipRequests/);
-    assert.match(inbox, /ADMIN_WORK_SECTION_ACCEPT_TITLE/);
-    assert.match(inbox, /ADMIN_WORK_SECTION_GENERATE_TITLE/);
-    assert.match(inbox, /ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE/);
-    assert.match(inbox, /ADMIN_WORK_SECTION_PACK_REVIEW_TITLE/);
-    assert.match(inbox, /buildAdminWorkInboxItemViewModel|countAdminWorkInboxWaiting/);
+    assert.match(sections, /ADMIN_WORK_SECTION_ACCEPT_TITLE/);
+    assert.match(sections, /ADMIN_WORK_SECTION_GENERATE_TITLE/);
+    assert.match(sections, /ADMIN_WORK_SECTION_PROVIDER_REVIEW_TITLE/);
+    assert.match(sections, /ADMIN_WORK_SECTION_PACK_REVIEW_TITLE/);
+    assert.match(mappers, /buildAdminWorkInboxItemViewModel/);
+    assert.match(inbox, /countAdminWorkInboxWaiting/);
     assert.doesNotMatch(inbox, /생성 완료/);
+    assert.doesNotMatch(sections, /생성 완료/);
     const page = readSrc("app/(store)/admin/page.tsx");
     assert.match(page, /AdminWorkInboxPageClient/);
     const queue = readSrc("components/AdminWorkerZipRequestQueue.tsx");

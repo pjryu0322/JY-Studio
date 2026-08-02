@@ -20,16 +20,18 @@ describe("admin work inbox UX (P2)", () => {
   });
 
   it("deep-links detail steps to P2 workflow ids", () => {
-    const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
-    assert.ok(inbox.includes("step=receipt"));
-    assert.ok(inbox.includes("step=knowledgeScope"));
-    assert.ok(inbox.includes("step=serviceValidation"));
-    assert.ok(inbox.includes("step=publish"));
-    assert.ok(!inbox.includes("step=providerConfirm"));
-    assert.ok(!inbox.includes("step=searchValidation"));
-    assert.ok(!inbox.includes("step=decision"));
-    assert.ok(!inbox.includes("step=queue"));
-    assert.ok(inbox.includes("adminWorkInboxDetailHref"));
+    const nav = readSource("src/lib/admin-work-inbox/admin-work-inbox-navigation.ts");
+    const inbox = readSource("src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
+    assert.ok(nav.includes("step=receipt"));
+    assert.ok(nav.includes("step=knowledgeScope"));
+    assert.ok(nav.includes("step=serviceValidation"));
+    assert.ok(nav.includes("step=publish"));
+    assert.ok(!nav.includes("step=providerConfirm"));
+    assert.ok(!nav.includes("step=searchValidation"));
+    assert.ok(!nav.includes("step=decision"));
+    assert.ok(!nav.includes("step=queue"));
+    assert.ok(nav.includes("adminWorkInboxDetailHref"));
+    assert.ok(nav.includes("normalizeAdminWorkQueue"));
     assert.ok(inbox.includes("filterAdminWorkQueue"));
     assert.ok(inbox.includes("parseAdminWorkQueue"));
   });
@@ -50,7 +52,7 @@ describe("admin work inbox UX (P2)", () => {
   it("exposes admin-only stage rails for P2 queues", () => {
     const routes = readSource("src/lib/routes.ts");
     const nav = readSource("src/components/BottomTabNav.tsx");
-    const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
+    const inbox = readSource("src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
     assert.ok(routes.includes("adminQueuePath"));
     assert.ok(routes.includes('label: "자료 접수"'));
     assert.ok(routes.includes('label: "지식화 대상 확인"'));

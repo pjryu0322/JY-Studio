@@ -42,17 +42,22 @@ describe("admin first screen landing", () => {
   });
 
   it("admin inbox exposes operations queue copy without consumer discovery language", () => {
-    const inbox = readSource("src/components/AdminWorkInboxPageClient.tsx");
+    const inbox = readSource("src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
+    const sections = readSource("src/components/admin-work-inbox/AdminWorkInboxSections.tsx");
     const chrome = readSource("src/lib/store-page-chrome.ts");
     const copy = readSource("src/lib/role-based-ux-copy.ts");
-    assert.ok(inbox.includes("AdminWorkInboxPageClient") || inbox.includes("ADMIN_WORK_SECTION"));
-    assert.ok(inbox.includes("ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE"));
-    assert.ok(inbox.includes("ADMIN_WORK_SECTION_ACCEPT_TITLE"));
-    assert.ok(inbox.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
+    assert.ok(inbox.includes("AdminWorkInboxPageClient") || sections.includes("ADMIN_WORK_SECTION"));
+    assert.ok(sections.includes("ADMIN_WORK_SECTION_SERVICE_VALIDATION_TITLE"));
+    assert.ok(sections.includes("ADMIN_WORK_SECTION_ACCEPT_TITLE"));
+    assert.ok(sections.includes("ADMIN_WORK_SECTION_PACK_REVIEW_TITLE"));
     assert.ok(!inbox.includes("추천 지식팩"));
     assert.ok(!inbox.includes("인기 지식팩"));
     assert.ok(!inbox.includes("TodayView"));
     assert.ok(!inbox.includes("투데이"));
+    assert.ok(!sections.includes("추천 지식팩"));
+    assert.ok(!sections.includes("인기 지식팩"));
+    assert.ok(!sections.includes("TodayView"));
+    assert.ok(!sections.includes("투데이"));
     assert.ok(!copy.includes("오늘 처리할 일"));
     assert.ok(copy.includes('ADMIN_WORK_INBOX_TITLE = "지식데이터 접수"'));
     assert.ok(copy.includes('ADMIN_WORK_INBOX_DESCRIPTION = ""'));

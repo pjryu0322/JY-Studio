@@ -74,7 +74,23 @@ describe("zip preflight inventory", () => {
 describe("admin 사전정리 UX wiring", () => {
   it("exposes preflight column, dialog, and admin API route", () => {
     const inbox = readFileSync(
-      join(projectRoot, "src/components/AdminWorkInboxPageClient.tsx"),
+      join(projectRoot, "src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx"),
+      "utf8",
+    );
+    const table = readFileSync(
+      join(projectRoot, "src/components/admin-work-inbox/AdminWorkInboxTable.tsx"),
+      "utf8",
+    );
+    const shared = readFileSync(
+      join(projectRoot, "src/components/admin-work-inbox/admin-work-inbox-shared.tsx"),
+      "utf8",
+    );
+    const summary = readFileSync(
+      join(projectRoot, "src/components/admin-work-inbox/AdminWorkInboxSummary.tsx"),
+      "utf8",
+    );
+    const format = readFileSync(
+      join(projectRoot, "src/lib/admin-work-inbox/admin-work-inbox-format.ts"),
       "utf8",
     );
     const dialog = readFileSync(
@@ -86,19 +102,19 @@ describe("admin 사전정리 UX wiring", () => {
       "utf8",
     );
     const api = readFileSync(join(projectRoot, "src/lib/admin-review-api.ts"), "utf8");
-    assert.ok(inbox.includes("사전정리"));
+    assert.ok(table.includes("사전정리"));
     assert.ok(inbox.includes("AdminZipPreflightInventoryPanel"));
-    assert.ok(inbox.includes("PreflightInventoryIcon"));
-    assert.ok(inbox.includes("GenerationCreateIcon"));
+    assert.ok(shared.includes("PreflightInventoryIcon"));
+    assert.ok(shared.includes("GenerationCreateIcon"));
     assert.ok(inbox.includes("setSelectedPreflightPack(null)"));
-    assert.ok(inbox.includes("ADMIN_WORK_GENERATION_TARGETS_TITLE"));
+    assert.ok(summary.includes("ADMIN_WORK_GENERATION_TARGETS_TITLE"));
     assert.ok(inbox.includes("preflightCollapsed"));
     assert.ok(inbox.includes("setPreflightCollapsed(true)"));
     assert.ok(!inbox.includes("autoStartGeneration"));
     assert.ok(!inbox.includes("generationSessionKey"));
-    assert.ok(inbox.includes("접수일"));
-    assert.ok(inbox.includes("formatInboxDate"));
-    assert.ok(!inbox.includes("접수일자"));
+    assert.ok(table.includes("접수일"));
+    assert.ok(format.includes("formatInboxDate") || table.includes("formatInboxDate"));
+    assert.ok(!table.includes("접수일자"));
     const card = readFileSync(
       join(projectRoot, "src/components/AdminWorkerZipGenerationCard.tsx"),
       "utf8",
