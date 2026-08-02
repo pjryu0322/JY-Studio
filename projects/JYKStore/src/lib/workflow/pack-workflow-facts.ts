@@ -1,18 +1,25 @@
 /**
- * PackWorkflowFacts — raw facts collected from DB/services (loader may use Prisma).
+ * PackWorkflowFacts — typed facts collected from DB/services (loader may use Prisma).
  * Snapshot resolvers must treat this as immutable input and stay pure.
+ * Legacy/DB string normalization happens only in the Facts loader / compatibility adapters.
  */
 import type { PackStatus } from "@prisma/client";
+import type { PackReviewStatusValue } from "@/lib/pack-review-status";
+import type {
+  AdminProviderReviewPhase,
+  AdminServiceValidationPhase,
+  AdminWorkerZipPhase,
+} from "@/lib/workflow/admin-workflow-state";
 import type { AdminWorkflowStep } from "@/lib/workflow/admin-workflow-steps";
 import type { PublishRecoveryMode } from "@/lib/workflow/publish-recovery";
 
 export type PackWorkflowFacts = {
   packId: string;
-  packStatus: PackStatus | string;
+  packStatus: PackStatus;
 
   receipt: {
     accepted: boolean;
-    workerZipPhase: string | null;
+    workerZipPhase: AdminWorkerZipPhase;
     sourceRevisionId: string | null;
     workingCopyId: string | null;
   };
@@ -38,12 +45,12 @@ export type PackWorkflowFacts = {
   };
 
   serviceValidation: {
-    phase: string | null;
+    phase: AdminServiceValidationPhase;
     generationId: string | null;
   };
 
   providerReview: {
-    phase: string | null;
+    phase: AdminProviderReviewPhase;
     generationId: string | null;
     confirmed: boolean;
   };
@@ -51,7 +58,7 @@ export type PackWorkflowFacts = {
   publishing: {
     productionGenerationId: string | null;
     preservedGenerationId: string | null;
-    packReviewStatus: string | null;
+    packReviewStatus: PackReviewStatusValue | null;
     recoveryMode: PublishRecoveryMode | null;
   };
 };
@@ -75,9 +82,30 @@ export type WorkflowBlockingReason = {
   step: AdminWorkflowStep | "providerReview";
 };
 
+export type WorkflowStepState =
+  | "NOT_STARTED"
+  | "AVAILABLE"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "WARNING"
+  | "BLOCKED";
+
 export type StepSnapshot = {
   step: AdminWorkflowStep;
-  ready: boolean;
-  blocked: boolean;
+  state: WorkflowStepState;
   label: string;
+  blockingReasons: WorkflowBlockingReason[];
+  availableActions: WorkflowAction[];
+  /** Derived: state is AVAILABLE or IN_PROGRESS (compat). */
+  ready: boolean;
+  /** Derived: state is BLOCKED (compat). */
+  blocked: boolean;
+};
+
+/** Inbox / detail presentation slice derived from a Snapshot. */
+export type PackWorkflowRuntimeSummary = {
+  currentStep: AdminWorkflowStep;
+  stepState: WorkflowStepState;
+  availableActions: WorkflowAction[];
+  blockingReasons: WorkflowBlockingReason[];
 };
