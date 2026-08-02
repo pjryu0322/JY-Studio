@@ -83,7 +83,7 @@ export async function listReviewingPacks() {
     packs.map((pack) => pack.packId),
   );
 
-  return packs
+  const items = packs
     .map((pack) =>
       toAdminReviewListItem(pack, {
         workflowMarkers: markersByPackId.get(pack.packId) ?? null,
@@ -94,6 +94,12 @@ export async function listReviewingPacks() {
       if (!item.reviewStatus) return false;
       return isOpenPackReviewStatus(item.reviewStatus);
     });
+
+  const { batchAttachInboxWorkflow, withInboxWorkflow } = await import(
+    "@/lib/admin-work-inbox/admin-work-inbox-workflow"
+  );
+  const workflowByPack = await batchAttachInboxWorkflow(items.map((item) => item.packId));
+  return withInboxWorkflow(items, workflowByPack);
 }
 
 export async function getAdminReviewDetail(packId: string): Promise<AdminReviewDetailDto | null> {

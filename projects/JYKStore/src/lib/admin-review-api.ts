@@ -77,6 +77,29 @@ export type AdminWorkerZipGenerationResult = {
   error?: { code: string; message: string; retryable: boolean; supportRequired: boolean };
 };
 
+export type AdminInboxWorkflowDto = {
+  currentStep:
+    | "receipt"
+    | "knowledgeScope"
+    | "generation"
+    | "correction"
+    | "serviceValidation"
+    | "publish";
+  stepState:
+    | "NOT_STARTED"
+    | "AVAILABLE"
+    | "IN_PROGRESS"
+    | "COMPLETED"
+    | "WARNING"
+    | "BLOCKED";
+  availableActions: string[];
+  blockingReasons: Array<{
+    code: string;
+    message: string;
+    step: string;
+  }>;
+};
+
 export type AdminWorkerZipRequestListItem = {
   packId: string;
   packName: string;
@@ -106,6 +129,8 @@ export type AdminWorkerZipRequestListItem = {
   adminQueueGroup: string;
   ctaLabel: string;
   isWaitingForAdmin: boolean;
+  /** PackWorkflowSnapshot runtime summary (P12.1). */
+  workflow?: AdminInboxWorkflowDto | null;
 };
 
 export type AdminProviderReturnedPackListItem = {
@@ -133,6 +158,8 @@ export type AdminProviderReturnedPackListItem = {
   adminQueueGroup: string;
   ctaLabel: string;
   isWaitingForAdmin: boolean;
+  /** PackWorkflowSnapshot runtime summary (P12.1). */
+  workflow?: AdminInboxWorkflowDto | null;
 };
 
 /** List DRAFT packs with open/completed ZIP requests, plus provider 보완요청 returns. */

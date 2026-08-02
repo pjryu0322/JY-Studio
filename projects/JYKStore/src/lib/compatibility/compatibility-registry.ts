@@ -60,4 +60,18 @@ export const COMPATIBILITY_REGISTRY: readonly CompatibilityEntry[] = [
     reason: "Import compatibility during P12 split",
     removalGate: "After all call sites import publishing/",
   },
+  {
+    id: "admin-queue-group-to-step",
+    legacyContract: "adminQueueGroup switch → detail ?step=",
+    canonicalContract: "PackWorkflowSnapshot.currentStep via adminWorkInboxDetailHref",
+    reason: "P12.1 removes queue-group SoT from inbox navigation",
+    removalGate: "After inbox rows always carry workflow summary",
+  },
+  {
+    id: "store-workflow-markers-ui",
+    legacyContract: "UI/components reading markers for currentStep/CTA",
+    canonicalContract: "batchLoadPackWorkflowFacts → buildPackWorkflowSnapshot",
+    reason: "Markers remain Facts loader input only",
+    removalGate: "P13 after zero direct marker→step UI paths",
+  },
 ] as const;

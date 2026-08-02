@@ -9,6 +9,7 @@ import type {
   StoreProviderReviewPhase,
   StoreServiceValidationPhase,
 } from "@/lib/store-workflow-status";
+import type { PackWorkflowRuntimeSummary } from "@/lib/workflow/pack-workflow-facts";
 import {
   getReleaseGateApprovalMessage,
   meetsReleaseGateForApproval,
@@ -51,6 +52,8 @@ export type AdminReviewListItemDto = {
   /** Store workflow marker — used by admin work inbox phase split. */
   providerReviewPhase: StoreProviderReviewPhase;
   serviceValidationPhase: StoreServiceValidationPhase;
+  /** PackWorkflowSnapshot runtime summary (P12.1). */
+  workflow?: PackWorkflowRuntimeSummary | null;
 };
 
 export type AdminReviewDetailDto = {

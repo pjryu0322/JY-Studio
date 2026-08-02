@@ -19,6 +19,7 @@ import {
   normalizeAdminWorkQueue,
   type AdminWorkQueueKey,
 } from "@/lib/routes";
+import type { PackWorkflowRuntimeSummary } from "@/lib/workflow/pack-workflow-facts";
 
 export const ADMIN_WORK_INBOX_QUEUE_GROUPS = [
   "ACCEPT_REQUIRED",
@@ -62,6 +63,7 @@ export type AdminWorkInboxItemSource = {
   qualityCheckedAt?: string | null;
   /** NOT_CHECKED / IN_PROGRESS / PASS / WARNING / FAIL */
   qualityStatus?: string | null;
+  workflow?: PackWorkflowRuntimeSummary | null;
 };
 
 export type AdminWorkInboxItemViewModel = {
@@ -87,6 +89,8 @@ export type AdminWorkInboxItemViewModel = {
   acceptedAt: string | null;
   qualityCheckedAt: string | null;
   qualityStatus: string | null;
+  /** PackWorkflowSnapshot runtime summary (SoT for currentStep / actions). */
+  workflow: PackWorkflowRuntimeSummary | null;
 };
 
 export function buildAdminWorkInboxItemViewModel(
@@ -156,6 +160,7 @@ export function buildAdminWorkInboxItemViewModel(
     acceptedAt: input.acceptedAt?.trim() || null,
     qualityCheckedAt: input.qualityCheckedAt?.trim() || null,
     qualityStatus: input.qualityStatus?.trim() || null,
+    workflow: input.workflow ?? null,
   };
 }
 
@@ -368,6 +373,7 @@ export function mergeAdminWorkInboxViewModels(
       workerZipPhase: preferPhase(primary.workerZipPhase, secondary.workerZipPhase),
       requestedAt: primary.requestedAt ?? secondary.requestedAt,
       acceptedAt: primary.acceptedAt ?? secondary.acceptedAt,
+      workflow: primary.workflow ?? secondary.workflow ?? null,
     });
   }
   return [...byPack.values()];

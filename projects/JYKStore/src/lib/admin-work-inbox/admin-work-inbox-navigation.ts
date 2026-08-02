@@ -4,13 +4,24 @@ import {
   normalizeAdminWorkQueue,
   type AdminWorkQueueKey,
 } from "@/lib/routes";
+import type { AdminWorkflowStep } from "@/lib/workflow/admin-workflow-steps";
+
+const QUEUE_TO_STEP: Partial<Record<AdminWorkQueueKey, AdminWorkflowStep>> = {
+  receipt: "receipt",
+  "knowledge-scope": "knowledgeScope",
+  generation: "generation",
+  correction: "correction",
+  "service-validation": "serviceValidation",
+  publish: "publish",
+};
 
 /**
- * Detail deep-link for an inbox row: prefer explicit queue scope step,
- * otherwise map `adminQueueGroup` → workflow step query.
+ * Detail deep-link for an inbox row.
+ * Prefer explicit canonical queue scope step; otherwise use Snapshot currentStep.
+ * Queue-group / phase switches are not allowed here (P12.1).
  */
 export function adminWorkInboxDetailHref(
-  item: AdminWorkInboxItemViewModel,
+  item: Pick<AdminWorkInboxItemViewModel, "packId" | "workflow">,
   queueScope: AdminWorkQueueKey | "all" = "all",
 ): string {
   const base = adminReviewDetailPath(item.packId);
@@ -18,41 +29,9 @@ export function adminWorkInboxDetailHref(
     queueScope === "all" || queueScope === "ops"
       ? queueScope
       : normalizeAdminWorkQueue(queueScope);
-  switch (scope) {
-    case "receipt":
-      return `${base}?step=receipt`;
-    case "knowledge-scope":
-      return `${base}?step=knowledgeScope`;
-    case "generation":
-      return `${base}?step=generation`;
-    case "correction":
-      return `${base}?step=correction`;
-    case "service-validation":
-      return `${base}?step=serviceValidation`;
-    case "publish":
-      return `${base}?step=publish`;
-    default:
-      break;
-  }
-  switch (item.adminQueueGroup) {
-    case "ACCEPT_REQUIRED":
-      return `${base}?step=receipt`;
-    case "GENERATE_REQUIRED":
-      return item.workerZipPhase === "ACCEPTED"
-        ? `${base}?step=knowledgeScope`
-        : `${base}?step=generation`;
-    case "PROVIDER_REVIEW_IN_PROGRESS":
-    case "RETURNED_OR_REJECTED":
-      return `${base}?step=publish`;
-    case "PROVIDER_SUPPLEMENT_REQUIRED":
-      return `${base}?step=correction`;
-    case "ADMIN_REVIEW_REQUIRED":
-      return item.serviceValidationPhase === "PASSED"
-        ? `${base}?step=publish`
-        : `${base}?step=serviceValidation`;
-    case "ADMIN_REVIEW_IN_PROGRESS":
-      return `${base}?step=publish`;
-    default:
-      return base;
-  }
+
+  const fromQueue = scope !== "all" && scope !== "ops" ? QUEUE_TO_STEP[scope] : undefined;
+  const step = fromQueue ?? item.workflow?.currentStep ?? null;
+  if (!step) return base;
+  return `${base}?step=${step}`;
 }

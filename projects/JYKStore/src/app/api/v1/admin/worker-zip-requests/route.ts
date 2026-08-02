@@ -11,6 +11,10 @@
 import { NextRequest } from "next/server";
 import { requireAdminSession } from "@/lib/admin-route-guard";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import {
+  batchAttachInboxWorkflow,
+  withInboxWorkflow,
+} from "@/lib/admin-work-inbox/admin-work-inbox-workflow";
 import { listAdminProviderReturnedPacks } from "@/lib/store-workflow-markers";
 import { listAdminWorkerZipRequests } from "@/lib/python-worker/worker-zip-import-provider-service";
 import { logSafeRouteError } from "@/lib/safe-logging";
@@ -31,9 +35,20 @@ export async function GET(request: NextRequest) {
       listAdminWorkerZipRequests(),
       listAdminProviderReturnedPacks(),
     ]);
-    return jsonWithClientIdCookie({ clientId, items, returnedItems }, clientId, {
-      status: 200,
-    });
+    const packIds = [
+      ...items.map((item) => item.packId),
+      ...returnedItems.map((item) => item.packId),
+    ];
+    const workflowByPack = await batchAttachInboxWorkflow(packIds);
+    return jsonWithClientIdCookie(
+      {
+        clientId,
+        items: withInboxWorkflow(items, workflowByPack),
+        returnedItems: withInboxWorkflow(returnedItems, workflowByPack),
+      },
+      clientId,
+      { status: 200 },
+    );
   } catch (error) {
     logSafeRouteError({
       scope: "admin/worker-zip-requests",

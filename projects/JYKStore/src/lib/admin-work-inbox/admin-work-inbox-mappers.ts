@@ -9,10 +9,19 @@ import {
   type AdminWorkInboxQueueGroup,
 } from "@/lib/admin-work-inbox-view-model";
 import type { ProviderSupplementAdminPhase } from "@/lib/provider-supplement-request";
+import type { PackWorkflowRuntimeSummary } from "@/lib/workflow/pack-workflow-facts";
 
 export type ReturnedInboxViewModel = AdminWorkInboxItemViewModel & { metaLine?: string };
 
+function asWorkflowSummary(
+  workflow: AdminWorkerZipRequestListItem["workflow"] | PackWorkflowRuntimeSummary | null | undefined,
+): PackWorkflowRuntimeSummary | null {
+  if (!workflow) return null;
+  return workflow as PackWorkflowRuntimeSummary;
+}
+
 export function zipItemToViewModel(item: AdminWorkerZipRequestListItem): AdminWorkInboxItemViewModel {
+  const workflow = asWorkflowSummary(item.workflow);
   if (item.displayStatus && item.adminQueueGroup && item.ctaLabel) {
     return {
       packId: item.packId,
@@ -37,6 +46,7 @@ export function zipItemToViewModel(item: AdminWorkerZipRequestListItem): AdminWo
       acceptedAt: item.acceptedAt ?? null,
       qualityCheckedAt: item.qualityCheckedAt ?? null,
       qualityStatus: item.qualityStatus ?? null,
+      workflow,
     };
   }
   return buildAdminWorkInboxItemViewModel({
@@ -55,6 +65,7 @@ export function zipItemToViewModel(item: AdminWorkerZipRequestListItem): AdminWo
     acceptedAt: item.acceptedAt,
     qualityCheckedAt: item.qualityCheckedAt,
     qualityStatus: item.qualityStatus,
+    workflow,
   });
 }
 
@@ -70,6 +81,7 @@ export function reviewItemToViewModel(item: AdminReviewListItemDto): AdminWorkIn
     categoryId: item.categoryId,
     categoryName: item.categoryName,
     providerName: item.providerName,
+    workflow: item.workflow ?? null,
   });
 }
 
@@ -109,6 +121,7 @@ export function returnedItemToViewModel(item: AdminProviderReturnedPackListItem)
     categoryName: item.categoryName,
     providerName: item.providerName,
     versionLabel: item.versionLabel,
+    workflow: asWorkflowSummary(item.workflow),
   });
 
   return {
