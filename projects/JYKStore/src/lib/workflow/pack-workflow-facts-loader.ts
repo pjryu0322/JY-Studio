@@ -22,6 +22,7 @@ import {
   resolvePublishRecoveryMode,
   type PublishRecoveryMode,
 } from "@/lib/workflow/publish-recovery";
+import { enforcePackWorkflowFactsInvariants } from "@/lib/workflow/pack-workflow-facts-invariants";
 
 type PrismaLike = Pick<
   PrismaClient,
@@ -42,7 +43,9 @@ export async function loadPackWorkflowFacts(
   client: PrismaLike = prisma,
 ): Promise<PackWorkflowFacts | null> {
   const map = await batchLoadPackWorkflowFacts([packId], client);
-  return map.get(packId) ?? null;
+  const facts = map.get(packId) ?? null;
+  if (facts) enforcePackWorkflowFactsInvariants(facts, { mode: "auto" });
+  return facts;
 }
 
 /**
@@ -324,7 +327,14 @@ export async function batchLoadPackWorkflowFacts(
       });
     }
 
-    out.set(packId, {
+    const boundGenerationId = draftGenId ?? productionGenId;
+    // List-grade: keep phase claims consistent with a bound generation when available.
+    const serviceGenerationId =
+      servicePhase === "PASSED" ? boundGenerationId : draftGenId;
+    const providerGenerationId =
+      providerPhase === "CONFIRMED" ? boundGenerationId : draftGenId;
+
+    const facts = {
       packId,
       packStatus,
       receipt: {
@@ -344,7 +354,7 @@ export async function batchLoadPackWorkflowFacts(
         pendingCount: inventory?.pendingCount ?? 0,
       },
       generation: {
-        generationId: draftGenId ?? productionGenId,
+        generationId: boundGenerationId,
         completed: workerZipPhase === "COMPLETED" && Boolean(qualityCompleted),
         blockerCount: blockerCountByPack.get(packId) ?? 0,
         warningCount: warningCountByPack.get(packId) ?? 0,
@@ -356,11 +366,11 @@ export async function batchLoadPackWorkflowFacts(
       },
       serviceValidation: {
         phase: servicePhase,
-        generationId: draftGenId,
+        generationId: serviceGenerationId,
       },
       providerReview: {
         phase: providerPhase,
-        generationId: draftGenId,
+        generationId: providerGenerationId,
         confirmed: providerPhase === "CONFIRMED",
       },
       publishing: {
@@ -371,7 +381,12 @@ export async function batchLoadPackWorkflowFacts(
         ),
         recoveryMode,
       },
-    });
+    };
+
+    // List batch: warn-only so incomplete historical rows do not crash inbox.
+    // Single-pack load uses strict auto policy via loadPackWorkflowFacts → enforce after get.
+    enforcePackWorkflowFactsInvariants(facts, { mode: "warn" });
+    out.set(packId, facts);
   }
 
   return out;

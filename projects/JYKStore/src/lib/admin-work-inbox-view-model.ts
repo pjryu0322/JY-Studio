@@ -482,31 +482,47 @@ export function filterAdminWorkQueue(
 ): AdminWorkInboxItemViewModel[] {
   const canonical =
     queue === "all" || queue === "ops" ? queue : normalizeAdminWorkQueue(queue);
+
   switch (canonical) {
     case "receipt":
-      return items.filter((i) => i.adminQueueGroup === "ACCEPT_REQUIRED");
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "receipt"
+          : i.adminQueueGroup === "ACCEPT_REQUIRED",
+      );
     case "knowledge-scope":
-      return items.filter(isAdminKnowledgeScopeQueueItem);
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "knowledgeScope"
+          : isAdminKnowledgeScopeQueueItem(i),
+      );
     case "generation":
-      return items.filter(
-        (i) => isAdminGenerationQueueItem(i) || isAdminQualityQueueItem(i),
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "generation"
+          : isAdminGenerationQueueItem(i) || isAdminQualityQueueItem(i),
       );
     case "correction":
-      // Session quality-ack is applied in the inbox client via filterAdminCorrectionQueue.
-      return items.filter(isAdminCorrectionSupplementItem);
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "correction"
+          : isAdminCorrectionSupplementItem(i),
+      );
     case "service-validation":
-      return items.filter(
-        (i) =>
-          i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
-          i.serviceValidationPhase !== "PASSED",
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "serviceValidation"
+          : i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+            i.serviceValidationPhase !== "PASSED",
       );
     case "publish":
-      return items.filter(
-        (i) =>
-          i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
-          i.adminQueueGroup === "ADMIN_REVIEW_IN_PROGRESS" ||
-          (i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
-            i.serviceValidationPhase === "PASSED"),
+      return items.filter((i) =>
+        i.workflow
+          ? i.workflow.currentStep === "publish"
+          : i.adminQueueGroup === "PROVIDER_REVIEW_IN_PROGRESS" ||
+            i.adminQueueGroup === "ADMIN_REVIEW_IN_PROGRESS" ||
+            (i.adminQueueGroup === "ADMIN_REVIEW_REQUIRED" &&
+              i.serviceValidationPhase === "PASSED"),
       );
     case "ops":
     case "all":

@@ -18,6 +18,7 @@ import {
   normalizeServiceValidationPhase,
   normalizeWorkerZipPhase,
 } from "@/lib/workflow/pack-workflow-facts-normalize";
+import { enforcePackWorkflowFactsInvariants } from "@/lib/workflow/pack-workflow-facts-invariants";
 import type { PublishRecoveryMode } from "@/lib/workflow/publish-recovery";
 
 export type AssemblePackWorkflowFactsInput = {
@@ -40,6 +41,8 @@ export type AssemblePackWorkflowFactsInput = {
   preservedGenerationId?: string | null;
   packReviewStatus?: PackReviewStatusValue | string | null;
   recoveryMode?: PublishRecoveryMode | null;
+  /** Default auto — throw in test/dev. */
+  invariantMode?: "auto" | "strict" | "warn";
 };
 
 export function assemblePackWorkflowFacts(
@@ -47,7 +50,9 @@ export function assemblePackWorkflowFacts(
 ): PackWorkflowFacts {
   const workerZipPhase = normalizeWorkerZipPhase(input.workerZipPhase);
   const providerPhase = normalizeProviderReviewPhase(input.providerReviewPhase);
-  return {
+  const servicePhase = normalizeServiceValidationPhase(input.serviceValidationPhase);
+  const generationId = input.generationId ?? null;
+  const facts: PackWorkflowFacts = {
     packId: input.packId,
     packStatus: normalizePackStatus(input.packStatus),
     receipt: {
@@ -66,7 +71,7 @@ export function assemblePackWorkflowFacts(
       pendingCount: input.pendingCount ?? 0,
     },
     generation: {
-      generationId: input.generationId ?? null,
+      generationId,
       completed: input.quality.completed,
       blockerCount: input.quality.hasBlockers
         ? Math.max(1, input.quality.blockers.length)
@@ -81,12 +86,12 @@ export function assemblePackWorkflowFacts(
       openSupplement: input.openSupplement,
     },
     serviceValidation: {
-      phase: normalizeServiceValidationPhase(input.serviceValidationPhase),
-      generationId: input.generationId ?? null,
+      phase: servicePhase,
+      generationId: servicePhase === "PASSED" ? generationId : generationId,
     },
     providerReview: {
       phase: providerPhase,
-      generationId: input.generationId ?? null,
+      generationId: providerPhase === "CONFIRMED" ? generationId : generationId,
       confirmed: providerPhase === "CONFIRMED",
     },
     publishing: {
@@ -96,4 +101,8 @@ export function assemblePackWorkflowFacts(
       recoveryMode: input.recoveryMode ?? null,
     },
   };
+  enforcePackWorkflowFactsInvariants(facts, {
+    mode: input.invariantMode ?? "auto",
+  });
+  return facts;
 }
