@@ -141,7 +141,7 @@ describe("provider service quality + admin ops log", () => {
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "STALE",
     );
@@ -160,7 +160,7 @@ describe("provider service quality + admin ops log", () => {
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "STALE",
     );
@@ -176,7 +176,7 @@ describe("provider service quality + admin ops log", () => {
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "STALE",
     );
@@ -188,11 +188,11 @@ describe("provider service quality + admin ops log", () => {
           indexGenerationId: "g1",
           invalidatedAt: null,
           channel: "API",
-          details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+          details: { retrievalRankingPolicyVersion: "relevance_diversity_v3" },
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "CURRENT",
     );
@@ -208,7 +208,7 @@ describe("provider service quality + admin ops log", () => {
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "STALE",
     );
@@ -231,7 +231,7 @@ describe("provider service quality + admin ops log", () => {
         },
         bindingFingerprint: "a",
         bindingIndexGenerationId: "g1",
-        expectedRankingPolicyVersion: "relevance_diversity_v2",
+        expectedRankingPolicyVersion: "relevance_diversity_v3",
       }),
       "CURRENT",
     );

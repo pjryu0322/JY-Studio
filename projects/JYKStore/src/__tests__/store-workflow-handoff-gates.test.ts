@@ -848,7 +848,7 @@ describe("store workflow handoff gates", () => {
     const ui = readSource("src/lib/role-workspace/admin-service-validation-view-model.ts");
     const panel = readSource("src/components/AdminServiceValidationWorkbenchPanel.tsx");
     assert.ok(ui.includes("bindingStatus"));
-    assert.ok(panel.includes("bindingStatus") || panel.includes("vm.bindingStatus"));
+    assert.ok(panel.includes("vm.summaryMessage") || panel.includes("summaryMessage"));
     assert.ok(ui.includes("최신 산출물 기준 API/MCP/ZIP 검증을 다시 수행해야 합니다."));
   });
 

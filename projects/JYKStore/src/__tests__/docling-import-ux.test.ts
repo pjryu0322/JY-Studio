@@ -122,7 +122,7 @@ describe("docling import UX sources", () => {
     assert.ok(!page.includes("AdminReviewProcessingEvidenceTab"));
     assert.ok(!page.includes("includeProcessing"));
     assert.ok(!page.includes("fetchAdminDoclingImportApi"));
-    assert.ok(page.includes("AdminWorkerZipGenerationCard"));
+    assert.ok(page.includes("AdminKnowledgeGenerationPanel"));
 
     const processing = readSource("src/components/AdminReviewProcessingEvidenceTab.tsx");
     assert.ok(processing.includes("AdminReview"));

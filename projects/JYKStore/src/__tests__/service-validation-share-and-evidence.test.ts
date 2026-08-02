@@ -64,7 +64,7 @@ describe("service validation share + incomplete evidence", () => {
     const fp = computeResultFingerprint({
       query: baseRun.query,
       indexGenerationId: baseRun.indexGenerationId,
-      rankingPolicyVersion: "relevance_diversity_v2",
+      rankingPolicyVersion: "relevance_diversity_v3",
       items: itemsA,
     });
     assert.equal(
@@ -72,12 +72,12 @@ describe("service validation share + incomplete evidence", () => {
         apiRun: {
           ...baseRun,
           resultFingerprint: fp,
-          rankingPolicyVersion: "relevance_diversity_v2",
+          rankingPolicyVersion: "relevance_diversity_v3",
         },
         mcpRun: {
           ...baseRun,
           resultFingerprint: fp,
-          rankingPolicyVersion: "relevance_diversity_v2",
+          rankingPolicyVersion: "relevance_diversity_v3",
         },
         apiResults: itemsA,
         mcpResults: itemsB,
@@ -96,7 +96,7 @@ describe("service validation share + incomplete evidence", () => {
     const fp = computeResultFingerprint({
       query: baseRun.query,
       indexGenerationId: baseRun.indexGenerationId,
-      rankingPolicyVersion: "relevance_diversity_v2",
+      rankingPolicyVersion: "relevance_diversity_v3",
       items: itemsA,
     });
     assert.equal(
@@ -104,7 +104,7 @@ describe("service validation share + incomplete evidence", () => {
         apiRun: {
           ...baseRun,
           resultFingerprint: fp,
-          rankingPolicyVersion: "relevance_diversity_v2",
+          rankingPolicyVersion: "relevance_diversity_v3",
         },
         mcpRun: {
           ...baseRun,

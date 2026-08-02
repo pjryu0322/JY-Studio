@@ -49,7 +49,7 @@ describe("role-based account UX", () => {
     assert.ok(routes.includes('key: "ops"'));
     assert.ok(routes.includes('label: "운영 사용량"'));
     assert.ok(routes.includes('label: "AuditLog"'));
-    assert.ok(routes.includes('label: "Ops 대시보드"'));
+    assert.ok(routes.includes('label: "공개/운영"'));
     assert.ok(!routes.includes('key: "settings"'));
     assert.ok(nav.includes("appRailTabsForRole"));
     assert.ok(nav.includes('role === "ADMIN"'));

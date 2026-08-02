@@ -97,7 +97,7 @@ function buildSubmitFixture(overrides: FixtureOverrides = {}) {
     {
       step: "SEARCH_EVALUATING",
       status: "PASS",
-      details: { retrievalRankingPolicyVersion: "relevance_diversity_v2" },
+      details: { retrievalRankingPolicyVersion: "relevance_diversity_v3" },
     },
     { step: "READY_FOR_REVIEW", status: "PASS", details: null },
   ];

@@ -104,11 +104,16 @@ describe("one account one role UX", () => {
     // Admin rail must not include provider center (admins cannot act as providers).
     const adminBlock = nav.slice(nav.indexOf('role === "ADMIN"'), nav.indexOf('role === "PROVIDER"'));
     assert.ok(adminBlock.includes('"admin"'));
-    assert.ok(adminBlock.includes('"categories"'));
+    assert.ok(adminBlock.includes('"adminKnowledgeScope"'));
+    assert.ok(adminBlock.includes('"adminGeneration"'));
+    assert.ok(adminBlock.includes('"adminCorrection"'));
+    assert.ok(adminBlock.includes('"adminServiceValidation"'));
+    assert.ok(adminBlock.includes('"adminPublish"'));
     assert.ok(adminBlock.includes('"account"'));
     assert.ok(adminBlock.includes('"opsUsage"'));
     assert.ok(adminBlock.includes('"opsAudit"'));
     assert.ok(adminBlock.includes('"ops"'));
+    assert.ok(!adminBlock.includes('"categories"'));
     assert.ok(!adminBlock.includes('"settings"'));
     assert.ok(!adminBlock.includes('"provider"'));
     assert.ok(!adminBlock.includes('"providerReview"'));
