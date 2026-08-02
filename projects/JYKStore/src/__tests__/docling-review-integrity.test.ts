@@ -45,10 +45,12 @@ describe("docling-review-integrity", () => {
 
     const service = read("src/lib/admin-review-service.ts");
     assert.ok(service.includes("assertDoclingReviewIntegrityOrThrow"));
-    assert.ok(service.includes('verifyObjectStorage: "HEAD_ONLY"'));
     assert.ok(service.includes('verifyObjectStorage: "FULL"'));
     assert.ok(service.includes("validateDoclingReviewIntegrity"));
-    assert.ok(service.includes("resolveReviewPackageMode"));
+
+    assert.ok(service.includes('verifyObjectStorage: "HEAD_ONLY"'));
+    const approve = read("src/lib/publishing/publish-first-revision.ts");
+    assert.ok(approve.includes("resolveReviewPackageMode"));
 
     const integrity = read("src/lib/docling-import/docling-review-integrity-service.ts");
     assert.ok(integrity.includes("DOCLING_REVIEW_OBJECT_INTEGRITY_FAILED"));

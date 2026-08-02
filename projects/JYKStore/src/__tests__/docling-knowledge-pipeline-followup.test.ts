@@ -187,11 +187,14 @@ describe("docling knowledge pipeline follow-up hardening", () => {
 
   it("approve path promotes exact generation inside transaction", () => {
     const root = join(import.meta.dirname, "../..");
-    const admin = readFileSync(join(root, "src/lib/admin-review-service.ts"), "utf8");
-    assert.ok(admin.includes("promoteDraftIndexToProduction"));
-    assert.ok(admin.includes("pipelineRunId: evidence.pipelineRunId"));
-    assert.ok(admin.includes("indexGenerationId:"));
-    assert.ok(admin.includes("제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다"));
+    const approve = readFileSync(
+      join(root, "src/lib/publishing/publish-first-revision.ts"),
+      "utf8",
+    );
+    assert.ok(approve.includes("promoteDraftIndexToProduction"));
+    assert.ok(approve.includes("pipelineRunId: evidence.pipelineRunId"));
+    assert.ok(approve.includes("indexGenerationId:"));
+    assert.ok(approve.includes("제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다"));
   });
 });
 

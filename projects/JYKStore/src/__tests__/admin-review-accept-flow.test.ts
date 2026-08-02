@@ -167,7 +167,7 @@ describe("admin review accept flow", () => {
     assert.equal(canRejectWithoutAccept(blocked), true);
     assert.ok(collectAcceptBlockers(blocked).includes("제출 스냅샷이 없습니다."));
 
-    const service = readSource("src/lib/admin-review-service.ts");
-    assert.ok(service.includes("canRejectWithoutAccept"));
+    const reject = readSource("src/lib/publishing/reject-pack-review.ts");
+    assert.ok(reject.includes("canRejectWithoutAccept"));
   });
 });

@@ -145,12 +145,12 @@ describe("admin approval publish hardening", () => {
     assert.equal(verified.canDecide, false);
   });
 
-  it("gates AdminReviewAcceptTab on vm.canDecide (not REVIEWING alone)", () => {
+  it("gates AdminReviewAcceptTab on snapshot PUBLISH_FIRST_REVISION (not REVIEWING alone)", () => {
     const panel = readSource("src/components/AdminApprovalPublishWorkbenchPanel.tsx");
     assert.ok(panel.includes("showDecisionForm"));
-    assert.ok(panel.includes("vm.canDecide && detail.pack.status === \"REVIEWING\""));
-    assert.ok(!panel.includes("vm.canDecide || detail.pack.status === \"REVIEWING\""));
-    assert.ok(panel.includes("remediationActions"));
+    assert.ok(panel.includes("buildPackWorkflowSnapshot"));
+    assert.ok(panel.includes("PUBLISH_FIRST_REVISION"));
+    assert.ok(panel.includes('detail.pack.status === "REVIEWING"'));
     assert.ok(panel.includes("onGoProviderReview"));
     assert.ok(panel.includes("onGoServiceValidation"));
     assert.ok(panel.includes("보정 없음"));

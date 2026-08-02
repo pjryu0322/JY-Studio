@@ -22,10 +22,12 @@ describe("admin work inbox UX (P2)", () => {
   it("deep-links detail steps to P2 workflow ids", () => {
     const nav = readSource("src/lib/admin-work-inbox/admin-work-inbox-navigation.ts");
     const inbox = readSource("src/components/admin-work-inbox/AdminWorkInboxPageClient.tsx");
-    assert.ok(nav.includes("step=receipt"));
-    assert.ok(nav.includes("step=knowledgeScope"));
-    assert.ok(nav.includes("step=serviceValidation"));
-    assert.ok(nav.includes("step=publish"));
+    assert.ok(nav.includes('receipt: "receipt"'));
+    assert.ok(nav.includes('"knowledgeScope"') || nav.includes("knowledgeScope"));
+    assert.ok(nav.includes("serviceValidation"));
+    assert.ok(nav.includes('publish: "publish"'));
+    assert.ok(nav.includes("currentStep"));
+    assert.ok(!nav.includes("adminQueueGroup"));
     assert.ok(!nav.includes("step=providerConfirm"));
     assert.ok(!nav.includes("step=searchValidation"));
     assert.ok(!nav.includes("step=decision"));

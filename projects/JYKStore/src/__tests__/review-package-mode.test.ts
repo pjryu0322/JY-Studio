@@ -37,7 +37,7 @@ describe("review-package-mode", () => {
   });
 
   it("approvePackReview branches by package mode and skips release gate for Docling", () => {
-    const service = read("src/lib/admin-review-service.ts");
+    const service = read("src/lib/publishing/publish-first-revision.ts");
     assert.ok(service.includes("resolveReviewPackageMode"));
     assert.ok(service.includes("DOCLING_BUNDLE"));
     assert.ok(service.includes("DISTRIBUTION_ZIP"));
