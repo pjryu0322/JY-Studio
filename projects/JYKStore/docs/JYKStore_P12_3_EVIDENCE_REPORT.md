@@ -32,18 +32,16 @@ P12.3 FINAL COMPLEXITY HARDENING PASSED
 |---|---|
 | Base | `fca939c0` |
 | origin/main at start | `fca939c0` |
-| Work / HEAD | *(post-hardening commits on main)* |
+| Work / HEAD | `ba868317` |
 
-### Commit range (topics)
+### Commit range
 
 ```text
-refactor(JYKStore): split worker zip lifecycle and execution hotspots
-refactor(JYKStore): split supplement marker actions
-refactor(JYKStore): remove residual workflow decisions from presentation
-docs(JYKStore): close P12.3 final complexity hardening
+8e680205 refactor(JYKStore): split worker zip lifecycle and execution hotspots
+02f38760 refactor(JYKStore): split supplement marker actions
+716eae6d refactor(JYKStore): remove residual workflow decisions from presentation
+ba868317 docs(JYKStore): close P12.3 final complexity hardening
 ```
-
-(Exact SHAs filled after push.)
 
 ---
 

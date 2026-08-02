@@ -3,7 +3,7 @@
 | | SHA |
 |---|---|
 | Base (pre-final) | `fca939c0` |
-| Work | see Evidence Report HEAD |
+| Work / HEAD | `ba868317` |
 
 ---
 

@@ -4,6 +4,7 @@
 |---|---|
 | Pre-final (docs) | `fca939c0` |
 | Facade split | `8acc9f1c` |
+| Final hardening HEAD | `ba868317` |
 
 ---
 
