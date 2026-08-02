@@ -20,8 +20,8 @@ All required hardening items from P12.1 HARDENING REQUIRED were addressed with m
 | Item | Value |
 |---|---|
 | Base (pre-P12.2) | `92cd7869` (origin/main at start of P12.2) |
-| Work / HEAD | *(filled at commit/push time)* |
-| origin/main | must equal HEAD after push |
+| Work / HEAD | `0c8a7980` |
+| origin/main | `0c8a7980` |
 
 ### Commit range (expected topics)
 
