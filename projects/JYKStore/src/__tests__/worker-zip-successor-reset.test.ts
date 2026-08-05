@@ -134,7 +134,7 @@ describe("resetWorkerZipSuccessorStateAfterGeneration", () => {
 
   it("is invoked from runProviderWorkerZipImport after READY", () => {
     const src = readFileSync(
-      path.join(root, "src/lib/python-worker/worker-zip/import-run.ts"),
+      path.join(root, "src/lib/python-worker/worker-zip/import-run/finalize-import.ts"),
       "utf8",
     );
     assert.match(src, /resetWorkerZipSuccessorStateAfterGeneration/);
