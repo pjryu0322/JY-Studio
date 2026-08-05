@@ -20,8 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # Dummy URL for prisma validate / generate (no live DB in this job)
-      DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
@@ -33,15 +31,22 @@ jobs:
       - name: Install
         run: npm ci
       - name: Prisma generate
+        env:
+          DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
         run: npx prisma generate
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint
       - name: Prisma validate
+        env:
+          DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
         run: npx prisma validate
       - name: Unit tests
+        # Intentionally no DATABASE_URL — unit suite must not hit a live Postgres
         run: npm test
+        env:
+          NODE_ENV: test
       - name: Madge cycles
         run: |
           npx --yes madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip
@@ -109,8 +114,13 @@ jobs:
         run: |
           set -o pipefail
           npm run test:db:p12 2>&1 | tee db-test-output.txt
-          if grep -E "^\s*# skip|tests [0-9]+.*skipped [1-9]|ℹ skipped [1-9]" db-test-output.txt; then
+          # Match real skip counts only (avoid matching "# skipped 0" or suite titles)
+          if grep -E '# skipped [1-9]|ℹ skip[^\n]*[1-9]' db-test-output.txt; then
             echo "DB tests must not skip when JYKSTORE_DB_TESTS=1"
+            exit 1
+          fi
+          if ! grep -qE '# fail 0' db-test-output.txt; then
+            echo "DB suite did not report fail 0"
             exit 1
           fi
       - name: Upload DB summary

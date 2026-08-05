@@ -226,7 +226,7 @@ async function seedPublishedPack(suffix: string) {
   };
 }
 
-describe("P9.1 publish revision identity (skipped without DATABASE_URL)", {
+describe("P9.1 publish revision identity", {
   skip: !Boolean(process.env.DATABASE_URL?.trim()) && process.env.JYKSTORE_DB_TESTS !== "1",
 }, () => {
   const cleanups: Array<() => Promise<void>> = [];
