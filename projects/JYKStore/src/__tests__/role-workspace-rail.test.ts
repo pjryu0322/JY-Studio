@@ -9,6 +9,7 @@ import {
   getAdminReviewRailState,
   getNextReviewAction,
 } from "../lib/role-workspace/admin-review-rail.ts";
+import { presentAdminReviewRail } from "../lib/role-workspace/present-admin-review-rail.ts";
 import { getConsumerRailState } from "../lib/role-workspace/consumer-rail.ts";
 import { getProviderPackRailState } from "../lib/role-workspace/provider-pack-rail.ts";
 import { assemblePackWorkflowFacts } from "../lib/workflow/pack-workflow-facts-assemble.ts";
@@ -306,6 +307,64 @@ describe("getNextReviewAction", () => {
         }),
       /snapshot or runtime/,
     );
+  });
+});
+
+describe("presentAdminReviewRail", () => {
+  it("maps Snapshot step states and uses snapshot.currentStep (not re-derived)", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    const snapshot = snapshotFor({
+      detail,
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "NONE",
+    });
+    assert.equal(snapshot.currentStep, "serviceValidation");
+
+    const rail = presentAdminReviewRail({
+      packId: "pack-1",
+      activeStep: "generation",
+      snapshot,
+    });
+    assert.equal(rail.currentStep, snapshot.currentStep);
+    assert.equal(rail.items.length, 6);
+    assert.equal(rail.items.find((i) => i.id === "generation")?.status, "current");
+    assert.equal(rail.items.find((i) => i.id === "serviceValidation")?.status, "next");
+    assert.ok(rail.items.every((i) => i.href?.includes("/admin/reviews/pack-1")));
+  });
+
+  it("badges publish from availableActions / provider-review labels only", () => {
+    const detail = baseDetail();
+    const quality = buildAdminQualityGateSnapshot(detail);
+    const snapshot = snapshotFor({
+      detail,
+      workerZipPhase: "COMPLETED",
+      quality,
+      providerReviewPhase: "NONE",
+      serviceValidationPhase: "PASSED",
+    });
+    assert.ok(snapshot.availableActions.includes("REQUEST_PROVIDER_REVIEW"));
+    const rail = presentAdminReviewRail({
+      packId: "pack-1",
+      activeStep: "publish",
+      snapshot,
+    });
+    assert.equal(rail.items.find((i) => i.id === "publish")?.badge, "제공자 검토 요청");
+  });
+
+  it("does not import Gate helpers in presenter source", () => {
+    const src = readFileSync(
+      join(here, "../lib/role-workspace/present-admin-review-rail.ts"),
+      "utf8",
+    );
+    assert.ok(!src.includes("canPublish("));
+    assert.ok(!src.includes("canEnterServiceValidation("));
+    assert.ok(!src.includes("canEnterGenerationWithScope("));
+    assert.ok(!src.includes("resolveAdminWorkflowCurrentStep("));
+    assert.ok(!src.includes("resolveAdminPublishGatePhase("));
+    assert.ok(!src.includes("admin-workflow-gates"));
   });
 });
 

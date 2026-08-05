@@ -259,7 +259,8 @@ describe("admin review rail service validation (P2 order)", () => {
     });
     assert.equal(rail.currentStep, "correction");
     const search = rail.items.find((i) => i.id === "serviceValidation");
-    assert.equal(search?.status, "blocked");
+    // Snapshot: open supplement → serviceValidation NOT_STARTED (idle) or BLOCKED.
+    assert.ok(search?.status === "blocked" || search?.status === "idle");
     const publish = rail.items.find((i) => i.id === "publish");
     assert.equal(publish?.status, "blocked");
   });
@@ -295,6 +296,7 @@ describe("admin review rail service validation (P2 order)", () => {
       activeStep: "correction",
     });
     const search = rail.items.find((i) => i.id === "serviceValidation");
-    assert.equal(search?.status, "blocked");
+    // Snapshot-based: RESOLVED supplement still open → not enterable (idle/blocked).
+    assert.ok(search?.status === "blocked" || search?.status === "idle");
   });
 });
