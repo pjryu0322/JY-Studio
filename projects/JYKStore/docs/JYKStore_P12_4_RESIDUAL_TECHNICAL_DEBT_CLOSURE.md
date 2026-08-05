@@ -152,10 +152,14 @@ Secrets: service-container credentials only (no production secrets).
 
 ## 11. Workflow Run 결과
 
-```text
-After push to origin/main: check Actions tab / gh run list
-If not yet observed: CI IMPLEMENTED, RUN NOT VERIFIED at docs authorship time
-```
+| Run | SHA | Result |
+|---|---|---|
+| [31009970317](https://github.com/pjryu0322/JY-Studio/actions/runs/31009970317) | `6a749117` | **FAILED** — prisma validate missing `DATABASE_URL`; db push missing `vector` extension |
+| Follow-up | after CI fix commit | re-run expected green |
+
+Fixes applied in workflow:
+- Dummy `DATABASE_URL` on static job
+- `pgvector/pgvector:pg16` + `CREATE EXTENSION vector` before `db push`
 
 ---
 

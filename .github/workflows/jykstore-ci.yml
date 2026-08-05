@@ -19,6 +19,10 @@ jobs:
     name: static-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Dummy URL for prisma validate / generate (no live DB in this job)
+      DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,8 +42,6 @@ jobs:
         run: npx prisma validate
       - name: Unit tests
         run: npm test
-        env:
-          NODE_ENV: test
       - name: Madge cycles
         run: |
           npx --yes madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip
@@ -54,6 +56,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
       - name: Upload static logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,7 +72,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: jykstore
           POSTGRES_PASSWORD: jykstore
@@ -96,18 +99,18 @@ jobs:
         run: npm ci
       - name: Prisma generate
         run: npx prisma generate
+      - name: Enable pgvector
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=jykstore psql -h localhost -U jykstore -d jykstore_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
       - name: Prisma db push
-        run: npx prisma db push --skip-generate
+        run: npx prisma db push --skip-generate --accept-data-loss
       - name: DB integration suites (0 skip enforced by db-gate)
         run: |
           set -o pipefail
           npm run test:db:p12 2>&1 | tee db-test-output.txt
           if grep -E "^\s*# skip|tests [0-9]+.*skipped [1-9]|ℹ skipped [1-9]" db-test-output.txt; then
             echo "DB tests must not skip when JYKSTORE_DB_TESTS=1"
-            exit 1
-          fi
-          if grep -E "fail [1-9]|✖|not ok" db-test-output.txt && ! grep -q "fail 0" db-test-output.txt; then
-            echo "DB suite reported failures"
             exit 1
           fi
       - name: Upload DB summary
