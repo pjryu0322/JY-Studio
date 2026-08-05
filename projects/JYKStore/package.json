@@ -61,7 +61,10 @@
     "cleanup:legacy-zip-payloads": "tsx scripts/cleanup-legacy-zip-payloads.ts",
     "backfill:search-generations": "tsx scripts/backfill-search-generations.ts",
     "test:db:service-validation": "node --import tsx --test src/__tests__/latest-pipeline-open-review.db.test.ts src/__tests__/service-validation-final-followup.db.test.ts",
-    "test:db:search-scaffold": "node --import tsx --test src/__tests__/search-data-scaffold-enqueue.db.test.ts src/__tests__/source-change-stale.db.test.ts"
+    "test:db:search-scaffold": "node --import tsx --test src/__tests__/search-data-scaffold-enqueue.db.test.ts src/__tests__/source-change-stale.db.test.ts",
+    "test:db:p12": "node --import tsx --test src/__tests__/pack-workflow-facts-loader.db.test.ts src/__tests__/p12-4-query-count-regression.db.test.ts src/__tests__/p12-4-worker-zip-lifecycle.db.test.ts src/__tests__/p9-1-publish-revision-identity.db.test.ts",
+    "audit:complexity": "node scripts/audit-source-complexity.mjs",
+    "audit:cycles": "npx --yes madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip src/lib/workflow/markers src/lib/workflow src/lib/publishing src/lib/admin-work-inbox src/lib/role-workspace"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

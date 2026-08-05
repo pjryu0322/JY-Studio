@@ -1,51 +1,18 @@
 /**
- * P12.2 — Facts Loader → Snapshot integration + MEASURED Prisma query counts.
- * Requires DATABASE_URL (skips when unreachable). Prefer JYKSTORE_DB_TESTS=1.
+ * P12.2/P12.4 — Facts Loader → Snapshot integration + MEASURED Prisma query counts.
+ * JYKSTORE_DB_TESTS=1 forbids skip (CI).
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import { PackStatus, PrismaClient } from "@prisma/client";
 import { batchLoadPackWorkflowFacts, loadPackWorkflowFacts } from "../lib/workflow/pack-workflow-facts-loader.ts";
 import { buildPackWorkflowSnapshot } from "../lib/workflow/pack-workflow-snapshot.ts";
 import { createCountingPrisma } from "../lib/workflow/prisma-query-counter.ts";
-
-function ensureDatabaseUrlFromDotEnv(): void {
-  if (process.env.DATABASE_URL?.trim()) return;
-  const envPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env");
-  if (!existsSync(envPath)) return;
-  const match = readFileSync(envPath, "utf8").match(/^\s*DATABASE_URL\s*=\s*(.+)\s*$/m);
-  if (!match?.[1]) return;
-  let value = match[1].trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1);
-  }
-  process.env.DATABASE_URL = value;
-}
-
-ensureDatabaseUrlFromDotEnv();
-const hasDb = Boolean(process.env.DATABASE_URL?.trim());
+import { requirePostgres } from "./helpers/db-gate.ts";
 
 async function requireDb(t: { skip: (msg?: string) => void }): Promise<PrismaClient | null> {
-  if (!hasDb) {
-    t.skip("DATABASE_URL not set");
-    return null;
-  }
-  const client = new PrismaClient({ log: ["error"] });
-  try {
-    await client.$queryRawUnsafe("SELECT 1");
-    return client;
-  } catch {
-    await client.$disconnect().catch(() => undefined);
-    t.skip("PostgreSQL unreachable at DATABASE_URL");
-    return null;
-  }
+  return requirePostgres(t);
 }
 
 describe("P12.2 PackWorkflowFacts loader DB integration", () => {

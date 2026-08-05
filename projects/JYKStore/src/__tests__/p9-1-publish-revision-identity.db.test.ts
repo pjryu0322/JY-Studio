@@ -46,21 +46,12 @@ function ensureDatabaseUrlFromDotEnv(): void {
 }
 
 ensureDatabaseUrlFromDotEnv();
-const hasDb = Boolean(process.env.DATABASE_URL?.trim());
 const SHA = "fcfc26bf355882620c48df58be112275bd756f50";
 
 async function requireDb(t: { skip: (msg?: string) => void }): Promise<boolean> {
-  if (!hasDb) {
-    t.skip("DATABASE_URL not set");
-    return false;
-  }
-  try {
-    await prisma.$queryRawUnsafe("SELECT 1");
-    return true;
-  } catch {
-    t.skip("PostgreSQL unreachable at DATABASE_URL");
-    return false;
-  }
+  const { requirePostgres } = await import("./helpers/db-gate.ts");
+  const client = await requirePostgres(t, prisma);
+  return Boolean(client);
 }
 
 async function seedPublishedPack(suffix: string) {
@@ -236,7 +227,7 @@ async function seedPublishedPack(suffix: string) {
 }
 
 describe("P9.1 publish revision identity (skipped without DATABASE_URL)", {
-  skip: !hasDb,
+  skip: !Boolean(process.env.DATABASE_URL?.trim()) && process.env.JYKSTORE_DB_TESTS !== "1",
 }, () => {
   const cleanups: Array<() => Promise<void>> = [];
   after(async () => {
