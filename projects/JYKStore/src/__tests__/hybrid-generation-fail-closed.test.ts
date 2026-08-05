@@ -120,7 +120,10 @@ describe("hybrid generation fail-closed", () => {
     }
   });
 
-  it("counts adapter.embed once on the generation path", async () => {
+  it(
+    "counts adapter.embed once on the generation path",
+    { skip: process.env.JYKSTORE_DB_TESTS !== "1" },
+    async () => {
     let embedCalls = 0;
     const queryVector = Array.from({ length: DEFAULT_E5_EMBEDDING_DIMENSION }, (_, i) =>
       i === 0 ? 1 : 0,

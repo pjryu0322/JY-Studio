@@ -28,7 +28,9 @@ ensureDatabaseUrlFromDotEnv();
 
 const hasDb = Boolean(process.env.DATABASE_URL?.trim());
 
-describe("docling-import-postgres-integration", { skip: !hasDb }, () => {
+describe("docling-import-postgres-integration", {
+  skip: process.env.JYKSTORE_DB_TESTS !== "1",
+}, () => {
   it("schema exposes stagingReason, expiresAt, cleanup doclingBundleId", async () => {
     const { prisma } = await import("../lib/prisma.ts");
     // Smoke: Prisma client knows the new fields (compile/runtime shape).
