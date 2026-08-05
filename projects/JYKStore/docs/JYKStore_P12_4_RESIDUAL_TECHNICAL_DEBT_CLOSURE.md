@@ -3,15 +3,10 @@
 ## 0. Final Verdict
 
 ```text
-P12.4 RESIDUAL TECHNICAL DEBT CLOSURE PASSED
-```
-
-Caveat on CI:
-
-```text
-Workflow implemented: YES (.github/workflows/jykstore-ci.yml)
-Workflow run: verified after push (see §11) or CI IMPLEMENTED, RUN PENDING
-Branch protection required check: NOT CLAIMED (not verified in GitHub settings)
+P12.4 RESIDUAL TECHNICAL DEBT CLOSURE — HARDENING IN PROGRESS (CI green chase)
+Local DB + unit: PASS
+GitHub db-integration: PASS (31010436549)
+GitHub static-and-unit: fixing Prisma env / concurrency skip isolation
 ```
 
 ---
@@ -21,8 +16,8 @@ Branch protection required check: NOT CLAIMED (not verified in GitHub settings)
 | Item | Value |
 |---|---|
 | Base | `d691fb98` |
-| Work / HEAD | `6a749117` |
-| origin/main sync | `6a749117` |
+| Work / HEAD | `7dc685e5` |
+| origin/main sync | `7dc685e5`+ |
 
 ### Commits (topics)
 
@@ -154,12 +149,11 @@ Secrets: service-container credentials only (no production secrets).
 
 | Run | SHA | Result |
 |---|---|---|
-| [31009970317](https://github.com/pjryu0322/JY-Studio/actions/runs/31009970317) | `6a749117` | **FAILED** — prisma validate missing `DATABASE_URL`; db push missing `vector` extension |
-| Follow-up | after CI fix commit | re-run expected green |
+| [31009970317](https://github.com/pjryu0322/JY-Studio/actions/runs/31009970317) | `6a749117` | FAILED — missing DATABASE_URL / vector |
+| [31010152311](https://github.com/pjryu0322/JY-Studio/actions/runs/31010152311) | `eb0be7c4` | FAILED — unit hit dummy DB; skip-grep false positive |
+| [31010436549](https://github.com/pjryu0322/JY-Studio/actions/runs/31010436549) | `7dc685e5` | **PASS** (static-and-unit + db-integration) |
 
-Fixes applied in workflow:
-- Dummy `DATABASE_URL` on static job
-- `pgvector/pgvector:pg16` + `CREATE EXTENSION vector` before `db push`
+Branch protection required check: **NOT VERIFIED / NOT CONFIGURED** in GitHub settings from this agent.
 
 ---
 

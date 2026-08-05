@@ -198,7 +198,10 @@ describe("docling knowledge pipeline follow-up hardening", () => {
   });
 });
 
-describe("docling knowledge pipeline postgres concurrency", { skip: !hasDb }, () => {
+describe("docling knowledge pipeline postgres concurrency", {
+  // Live Postgres only under forced DB CI — dummy DATABASE_URL must not run this suite.
+  skip: process.env.JYKSTORE_DB_TESTS !== "1",
+}, () => {
   it("two claimers cannot own the same PENDING knowledge run", async () => {
     const { prisma } = await import("../lib/prisma.ts");
     const { claimNextKnowledgePipelineRun } = await import(

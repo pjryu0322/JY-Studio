@@ -43,10 +43,11 @@ jobs:
           DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
         run: npx prisma validate
       - name: Unit tests
-        # Intentionally no DATABASE_URL — unit suite must not hit a live Postgres
-        run: npm test
+        # Dummy URL satisfies Prisma client env at import; concurrency DB suites require JYKSTORE_DB_TESTS=1
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://jykstore:jykstore@127.0.0.1:5432/jykstore_ci_dummy?schema=public
+        run: npm test
       - name: Madge cycles
         run: |
           npx --yes madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip
