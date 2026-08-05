@@ -369,7 +369,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
               providerReviewRequestedAt={workflowMarkers.providerReviewRequestedAt}
               providerReviewConfirmedAt={workflowMarkers.providerReviewConfirmedAt}
               supplementState={supplementState}
-              canRequestFromSnapshot={canRequestProviderReviewFromSnapshot}
+              canRequestProviderReview={canRequestProviderReviewFromSnapshot}
               onChanged={refreshSilently}
               onGoQuality={() => goStep("generation")}
               onError={setError}

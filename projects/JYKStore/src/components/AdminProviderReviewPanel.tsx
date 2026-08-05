@@ -10,7 +10,6 @@ import {
 } from "@/lib/provider-supplement-request";
 import type { AdminQualityGateSnapshot } from "@/lib/role-workspace/admin-review-rail";
 import type { AdminWorkerZipPhase } from "@/lib/role-workspace/admin-review-rail";
-import { canRequestProviderReviewHandoff } from "@/lib/store-workflow-handoff-gates-policy";
 import { adminReviewDetailPath } from "@/lib/routes";
 
 function formatDateTime(value: string | null | undefined): string {
@@ -43,6 +42,7 @@ function qualityStatusLabel(quality: AdminQualityGateSnapshot): string {
 /**
  * Workbench step3 — 제공자 검토.
  * 요청 전 관리자 확인 체크 + 보완요청 패널을 이 단계에서만 표시한다.
+ * CTA enablement comes from Snapshot availableActions (canRequestProviderReview).
  */
 export function AdminProviderReviewPanel({
   packId,
@@ -53,7 +53,7 @@ export function AdminProviderReviewPanel({
   providerReviewRequestedAt,
   providerReviewConfirmedAt,
   supplementState,
-  canRequestFromSnapshot,
+  canRequestProviderReview,
   onChanged,
   onGoQuality,
   onError,
@@ -67,10 +67,10 @@ export function AdminProviderReviewPanel({
   readonly providerReviewConfirmedAt: string | null;
   readonly supplementState: ProviderSupplementRequestState | null;
   /**
-   * When provided (Detail Snapshot path), CTA enablement prefers
-   * availableActions includes REQUEST_PROVIDER_REVIEW — no gate re-judgment.
+   * Snapshot SoT: availableActions includes REQUEST_PROVIDER_REVIEW.
+   * Required — panel does not re-judge handoff gates.
    */
-  readonly canRequestFromSnapshot?: boolean;
+  readonly canRequestProviderReview: boolean;
   readonly onChanged: () => Promise<void> | void;
   readonly onGoQuality: () => void;
   readonly onError: (message: string) => void;
@@ -82,15 +82,7 @@ export function AdminProviderReviewPanel({
 
   const hasOpenSupplement = isOpenProviderSupplementPhase(supplementState?.adminPhase);
 
-  // Legacy fallback when Snapshot is not passed (compat / tests).
-  const canRequestGate = canRequestProviderReviewHandoff({
-    workerZipPhase,
-    quality,
-    providerReviewPhase,
-    providerSupplementPhase: supplementState?.adminPhase,
-  });
-
-  /** Phase-display labels only — not used to re-judge publish eligibility when Snapshot is set. */
+  /** Phase-display labels only — not used to gate CTA. */
   const blockReasons = useMemo(() => {
     const reasons: string[] = [];
     if (hasOpenSupplement) {
@@ -122,13 +114,8 @@ export function AdminProviderReviewPanel({
     checkedCorrectionScope &&
     (!quality.hasWarnings || checkedWarnings);
 
-  const snapshotPath = canRequestFromSnapshot !== undefined;
-  const canSubmitRequest = snapshotPath
-    ? Boolean(canRequestFromSnapshot) && !hasOpenSupplement && acknowledgementsReady
-    : canRequestGate &&
-      !hasOpenSupplement &&
-      acknowledgementsReady &&
-      blockReasons.length === 0;
+  const canSubmitRequest =
+    canRequestProviderReview && !hasOpenSupplement && acknowledgementsReady;
 
   const showRequestForm =
     !hasOpenSupplement &&
