@@ -1,0 +1,119 @@
+name: JYKStore CI
+
+on:
+  push:
+    paths:
+      - "projects/JYKStore/**"
+      - ".github/workflows/jykstore-ci.yml"
+  pull_request:
+    paths:
+      - "projects/JYKStore/**"
+      - ".github/workflows/jykstore-ci.yml"
+
+defaults:
+  run:
+    working-directory: projects/JYKStore
+
+jobs:
+  static-and-unit:
+    name: static-and-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: projects/JYKStore/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Prisma generate
+        run: npx prisma generate
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Prisma validate
+        run: npx prisma validate
+      - name: Unit tests
+        run: npm test
+        env:
+          NODE_ENV: test
+      - name: Madge cycles
+        run: |
+          npx --yes madge --extensions ts,tsx --circular src/lib/python-worker/worker-zip
+          npx --yes madge --extensions ts,tsx --circular src/lib/workflow/markers
+          npx --yes madge --extensions ts,tsx --circular src/lib/workflow
+          npx --yes madge --extensions ts,tsx --circular src/lib/publishing
+          npx --yes madge --extensions ts,tsx --circular src/lib/admin-work-inbox
+          npx --yes madge --extensions ts,tsx --circular src/lib/role-workspace
+      - name: Complexity / SoT audit
+        run: node scripts/audit-source-complexity.mjs
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+      - name: Upload static logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jykstore-static-and-unit
+          path: |
+            projects/JYKStore/.next/trace
+          if-no-files-found: ignore
+
+  db-integration:
+    name: db-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jykstore
+          POSTGRES_PASSWORD: jykstore
+          POSTGRES_DB: jykstore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jykstore -d jykstore_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jykstore:jykstore@localhost:5432/jykstore_test?schema=public
+      JYKSTORE_DB_TESTS: "1"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: projects/JYKStore/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Prisma generate
+        run: npx prisma generate
+      - name: Prisma db push
+        run: npx prisma db push --skip-generate
+      - name: DB integration suites (0 skip enforced by db-gate)
+        run: |
+          set -o pipefail
+          npm run test:db:p12 2>&1 | tee db-test-output.txt
+          if grep -E "^\s*# skip|tests [0-9]+.*skipped [1-9]|ℹ skipped [1-9]" db-test-output.txt; then
+            echo "DB tests must not skip when JYKSTORE_DB_TESTS=1"
+            exit 1
+          fi
+          if grep -E "fail [1-9]|✖|not ok" db-test-output.txt && ! grep -q "fail 0" db-test-output.txt; then
+            echo "DB suite reported failures"
+            exit 1
+          fi
+      - name: Upload DB summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jykstore-db-integration
+          path: projects/JYKStore/db-test-output.txt
+          if-no-files-found: ignore
